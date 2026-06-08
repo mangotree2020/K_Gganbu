@@ -1,12 +1,13 @@
 import { useEffect } from 'react'
-import { auth } from '@/lib/firebase'
+import { onAuthStateChanged } from '@react-native-firebase/auth'
+import { firebaseAuth } from '@/lib/firebase'
 import { useAuthStore } from '@/features/auth/store'
 
 export function useAuth() {
   const { user, isAuthenticated, isLoading, setUser, setLoading } = useAuthStore()
 
   useEffect(() => {
-    const unsubscribe = auth().onAuthStateChanged((firebaseUser) => {
+    const unsubscribe = onAuthStateChanged(firebaseAuth, (firebaseUser) => {
       if (firebaseUser) {
         setUser({
           id: firebaseUser.uid,

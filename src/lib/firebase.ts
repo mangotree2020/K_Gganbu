@@ -1,3 +1,3 @@
-import auth from '@react-native-firebase/auth'
+import { getAuth } from '@react-native-firebase/auth'
 
-export { auth }
+export const firebaseAuth = getAuth()

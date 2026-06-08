@@ -1,5 +1,5 @@
 import axios from 'axios'
-import { auth } from '@/lib/firebase'
+import { firebaseAuth } from '@/lib/firebase'
 
 export const api = axios.create({
   baseURL: process.env['EXPO_PUBLIC_API_URL'],
@@ -11,7 +11,7 @@ export const api = axios.create({
 
 // Firebase ID Token을 Authorization 헤더에 자동 주입
 api.interceptors.request.use(async (config) => {
-  const user = auth().currentUser
+  const user = firebaseAuth.currentUser
   if (user) {
     const token = await user.getIdToken()
     config.headers.Authorization = `Bearer ${token}`
@@ -24,7 +24,7 @@ api.interceptors.response.use(
   (response) => response,
   async (error) => {
     if (error.response?.status === 401) {
-      const user = auth().currentUser
+      const user = firebaseAuth.currentUser
       if (user) {
         const token = await user.getIdToken(true)
         error.config.headers.Authorization = `Bearer ${token}`
