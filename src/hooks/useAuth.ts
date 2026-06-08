@@ -1,44 +1,26 @@
 import { useEffect } from 'react'
-import { supabase } from '@/lib/supabase'
+import { auth } from '@/lib/firebase'
 import { useAuthStore } from '@/features/auth/store'
 
 export function useAuth() {
   const { user, isAuthenticated, isLoading, setUser, setLoading } = useAuthStore()
 
   useEffect(() => {
-    // 초기 세션 확인
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      if (session?.user) {
+    const unsubscribe = auth().onAuthStateChanged((firebaseUser) => {
+      if (firebaseUser) {
         setUser({
-          id: session.user.id,
-          email: session.user.email!,
-          fullName: (session.user.user_metadata?.['full_name'] as string) ?? null,
-          avatarUrl: (session.user.user_metadata?.['avatar_url'] as string) ?? null,
-          createdAt: session.user.created_at,
-        })
-      } else {
-        setLoading(false)
-      }
-    })
-
-    // 인증 상태 변화 구독
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, session) => {
-      if (session?.user) {
-        setUser({
-          id: session.user.id,
-          email: session.user.email!,
-          fullName: (session.user.user_metadata?.['full_name'] as string) ?? null,
-          avatarUrl: (session.user.user_metadata?.['avatar_url'] as string) ?? null,
-          createdAt: session.user.created_at,
+          id: firebaseUser.uid,
+          email: firebaseUser.email!,
+          fullName: firebaseUser.displayName ?? null,
+          avatarUrl: firebaseUser.photoURL ?? null,
+          createdAt: firebaseUser.metadata.creationTime ?? new Date().toISOString(),
         })
       } else {
         setUser(null)
       }
     })
 
-    return () => subscription.unsubscribe()
+    return unsubscribe
   }, [setUser, setLoading])
 
   return { user, isAuthenticated, isLoading }

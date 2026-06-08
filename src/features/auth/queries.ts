@@ -1,16 +1,16 @@
 import { useMutation } from '@tanstack/react-query'
 import { router } from 'expo-router'
-import { supabase } from '@/lib/supabase'
+import { auth } from '@/lib/firebase'
 import { useAuthStore } from './store'
 import type { LoginFormData, RegisterFormData } from './types'
 
-function toAuthUser(user: NonNullable<Awaited<ReturnType<typeof supabase.auth.getUser>>['data']['user']>) {
+function toAuthUser(user: NonNullable<ReturnType<typeof auth>['currentUser']>) {
   return {
-    id: user.id,
+    id: user.uid,
     email: user.email!,
-    fullName: (user.user_metadata?.['full_name'] as string) ?? null,
-    avatarUrl: (user.user_metadata?.['avatar_url'] as string) ?? null,
-    createdAt: user.created_at,
+    fullName: user.displayName ?? null,
+    avatarUrl: user.photoURL ?? null,
+    createdAt: user.metadata.creationTime ?? new Date().toISOString(),
   }
 }
 
@@ -19,32 +19,28 @@ export function useSignIn() {
 
   return useMutation({
     mutationFn: async ({ email, password }: LoginFormData) => {
-      const { data, error } = await supabase.auth.signInWithPassword({ email, password })
-      if (error) throw error
-      return data
+      const { user } = await auth().signInWithEmailAndPassword(email, password)
+      return user
     },
-    onSuccess: (data) => {
-      if (data.user) {
-        setUser(toAuthUser(data.user))
-        router.replace('/(tabs)/')
-      }
+    onSuccess: (user) => {
+      setUser(toAuthUser(user))
+      router.replace('/(tabs)' as never)
     },
   })
 }
 
 export function useSignUp() {
+  const setUser = useAuthStore((state) => state.setUser)
+
   return useMutation({
     mutationFn: async ({ email, password, fullName }: RegisterFormData) => {
-      const { data, error } = await supabase.auth.signUp({
-        email,
-        password,
-        options: { data: { full_name: fullName } },
-      })
-      if (error) throw error
-      return data
+      const { user } = await auth().createUserWithEmailAndPassword(email, password)
+      await user.updateProfile({ displayName: fullName })
+      return user
     },
-    onSuccess: () => {
-      router.replace('/(auth)/login')
+    onSuccess: (user) => {
+      setUser(toAuthUser(user))
+      router.replace('/(tabs)' as never)
     },
   })
 }
@@ -53,7 +49,7 @@ export function useSignOut() {
   const signOut = useAuthStore((state) => state.signOut)
 
   return useMutation({
-    mutationFn: () => supabase.auth.signOut(),
+    mutationFn: () => auth().signOut(),
     onSuccess: () => {
       signOut()
       router.replace('/(auth)/login')

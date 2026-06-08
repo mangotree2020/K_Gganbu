@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { supabase } from '@/lib/supabase'
+import { api } from '@/lib/api'
 import { useAuthStore } from '@/features/auth/store'
 import type { Trip, TripFormData } from './types'
 
@@ -11,14 +11,8 @@ export function useTrips() {
   return useQuery({
     queryKey: [...TRIPS_KEY, userId],
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from('trips')
-        .select('*')
-        .eq('user_id', userId!)
-        .order('start_date', { ascending: true })
-
-      if (error) throw error
-      return data as Trip[]
+      const { data } = await api.get<Trip[]>('/trips')
+      return data
     },
     enabled: !!userId,
   })
@@ -26,18 +20,11 @@ export function useTrips() {
 
 export function useCreateTrip() {
   const queryClient = useQueryClient()
-  const userId = useAuthStore((state) => state.user?.id)
 
   return useMutation({
     mutationFn: async (formData: TripFormData) => {
-      const { data, error } = await supabase
-        .from('trips')
-        .insert({ ...formData, user_id: userId })
-        .select()
-        .single()
-
-      if (error) throw error
-      return data as Trip
+      const { data } = await api.post<Trip>('/trips', formData)
+      return data
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: TRIPS_KEY })
@@ -50,8 +37,7 @@ export function useDeleteTrip() {
 
   return useMutation({
     mutationFn: async (id: string) => {
-      const { error } = await supabase.from('trips').delete().eq('id', id)
-      if (error) throw error
+      await api.delete(`/trips/${id}`)
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: TRIPS_KEY })

@@ -8,8 +8,12 @@ module.exports = {
   theme: {
     extend: {
       colors: {
+        brand: {
+          blue: '#0EA5E9',
+          orange: '#F97316',
+        },
         primary: {
-          DEFAULT: '#2563EB',
+          DEFAULT: '#0EA5E9',
           foreground: '#FFFFFF',
         },
         secondary: {
@@ -27,8 +31,14 @@ module.exports = {
           foreground: '#FFFFFF',
         },
         border: '#E2E8F0',
+        input: '#E2E8F0',
+        ring: '#0EA5E9',
         card: {
           DEFAULT: '#FFFFFF',
+          foreground: '#0F172A',
+        },
+        accent: {
+          DEFAULT: '#F1F5F9',
           foreground: '#0F172A',
         },
       },
@@ -36,6 +46,7 @@ module.exports = {
         lg: '12px',
         md: '8px',
         sm: '4px',
+        '4xl': '32px',
       },
     },
   },

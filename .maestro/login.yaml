@@ -1,0 +1,13 @@
+appId: com.yourcompany.travelapp
+---
+- launchApp
+- assertVisible: '로그인'
+- tapOn:
+    id: 'email-input'
+- inputText: 'test@example.com'
+- tapOn:
+    id: 'password-input'
+- inputText: 'password123'
+- tapOn:
+    id: 'login-button'
+- assertVisible: '추천 여행지'
