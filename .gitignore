@@ -38,6 +38,10 @@ yarn-error.*
 # typescript
 *.tsbuildinfo
 
+# Supabase
+supabase/.temp/
+supabase/.branches/
+
 # generated native folders
 /ios
 /android
