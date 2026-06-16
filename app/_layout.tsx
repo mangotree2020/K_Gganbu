@@ -10,6 +10,7 @@ import { QueryClientProvider } from '@tanstack/react-query'
 
 import { queryClient } from '@/lib/queryClient'
 import { useAuth } from '@/hooks/useAuth'
+import { useOnboardingStore } from '@/features/onboarding/store'
 
 LogBox.ignoreAllLogs()
 SplashScreen.preventAutoHideAsync()
@@ -32,6 +33,7 @@ export default function RootLayout() {
 
 function RootLayoutNav() {
   const { isAuthenticated, isLoading } = useAuth()
+  const onboardingDone = useOnboardingStore((s) => s.completed)
 
   useEffect(() => {
     if (!isLoading) {
@@ -43,14 +45,18 @@ function RootLayoutNav() {
     if (isLoading) return
     if (!isAuthenticated) {
       router.replace('/(auth)/landing')
+    } else if (!onboardingDone) {
+      // 인증됐지만 온보딩 미완료 → 언어 선택부터
+      router.replace('/(onboarding)/language')
     }
-  }, [isAuthenticated, isLoading])
+  }, [isAuthenticated, isLoading, onboardingDone])
 
   return (
     <>
       <StatusBar style="auto" />
       <Stack screenOptions={{ headerShown: false }}>
         <Stack.Screen name="(auth)" />
+        <Stack.Screen name="(onboarding)" />
         <Stack.Screen name="(tabs)" />
         <Stack.Screen name="translate" options={{ presentation: 'modal' }} />
         <Stack.Screen name="emergency" options={{ presentation: 'modal' }} />
