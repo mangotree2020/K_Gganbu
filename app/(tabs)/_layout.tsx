@@ -1,53 +1,74 @@
 import { Redirect, Tabs } from 'expo-router'
-import { Compass, Home, Map, User } from 'lucide-react-native'
+import { Bot, Home, Map, Tag, User } from 'lucide-react-native'
+import { useSafeAreaInsets } from 'react-native-safe-area-context'
 
 import { useAuth } from '@/hooks/useAuth'
 
 export default function TabsLayout() {
   const { isAuthenticated, isLoading } = useAuth()
+  const insets = useSafeAreaInsets()
 
   if (!isLoading && !isAuthenticated) {
-    return <Redirect href='/(auth)/login' />
+    return <Redirect href="/(auth)/landing" />
   }
 
   return (
     <Tabs
       screenOptions={{
-        tabBarActiveTintColor: '#2563EB',
-        tabBarInactiveTintColor: '#94A3B8',
+        tabBarActiveTintColor: '#0EA5E9',
+        tabBarInactiveTintColor: '#A1A1AA',
         headerShown: false,
         tabBarStyle: {
-          borderTopColor: '#E2E8F0',
+          borderTopColor: '#E4E4E7',
+          borderTopWidth: 0.5,
+          backgroundColor: '#FFFFFF',
+          height: 56 + insets.bottom,
+          paddingBottom: insets.bottom + 8,
+          paddingTop: 6,
+        },
+        tabBarLabelStyle: {
+          fontSize: 10,
+          fontWeight: '600',
         },
       }}>
       <Tabs.Screen
-        name='index'
+        name="index"
         options={{
-          title: '홈',
+          title: 'Home',
           tabBarIcon: ({ color, size }) => <Home size={size} color={color} />,
         }}
       />
       <Tabs.Screen
-        name='explore'
+        name="map"
         options={{
-          title: '탐색',
-          tabBarIcon: ({ color, size }) => <Compass size={size} color={color} />,
-        }}
-      />
-      <Tabs.Screen
-        name='trips'
-        options={{
-          title: '내 여행',
+          title: 'Map',
           tabBarIcon: ({ color, size }) => <Map size={size} color={color} />,
         }}
       />
       <Tabs.Screen
-        name='profile'
+        name="ai"
         options={{
-          title: '프로필',
+          title: 'AI Mate',
+          tabBarIcon: ({ color, size }) => <Bot size={size} color={color} />,
+        }}
+      />
+      <Tabs.Screen
+        name="coupons"
+        options={{
+          title: 'Coupons',
+          tabBarIcon: ({ color, size }) => <Tag size={size} color={color} />,
+        }}
+      />
+      <Tabs.Screen
+        name="profile"
+        options={{
+          title: 'My',
           tabBarIcon: ({ color, size }) => <User size={size} color={color} />,
         }}
       />
+      {/* 기존 탭 — 하단 네비에서 숨김 */}
+      <Tabs.Screen name="explore" options={{ href: null }} />
+      <Tabs.Screen name="trips" options={{ href: null }} />
     </Tabs>
   )
 }
