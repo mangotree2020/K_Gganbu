@@ -121,7 +121,9 @@ export default function TranslateScreen() {
               return (
                 <Pressable
                   key={m.id}
-                  onPress={() => setMode(m.id)}
+                  onPress={() =>
+                    m.id === 'voice' ? router.push('/voice-interpret') : setMode(m.id)
+                  }
                   style={[ss.modeBtn, on ? ss.modeBtnOn : ss.modeBtnOff]}>
                   <Icon
                     name={m.icon}
@@ -202,23 +204,14 @@ export default function TranslateScreen() {
             </View>
           )}
 
-          {mode !== 'text' && (
+          {mode === 'camera' && (
             <View style={ss.placeholder}>
               <View style={ss.placeholderIcon}>
-                <Icon
-                  name={mode === 'camera' ? 'photo_camera' : 'mic'}
-                  size={36}
-                  color={palette.teal[40]}
-                  filled
-                />
+                <Icon name="photo_camera" size={36} color={palette.teal[40]} filled />
               </View>
-              <Text style={ss.placeholderTitle}>
-                {mode === 'camera' ? 'Camera translate' : 'Voice translate'}
-              </Text>
+              <Text style={ss.placeholderTitle}>Camera translate</Text>
               <Text style={ss.placeholderSub}>
-                {mode === 'camera'
-                  ? 'Point at a menu or sign — OCR + live translation coming soon'
-                  : 'Speak and hear instant Korean — Gemini Live coming soon'}
+                Point at a menu or sign — OCR + live translation coming soon
               </Text>
             </View>
           )}

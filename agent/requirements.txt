@@ -1,0 +1,4 @@
+# K-Gganbu 음성 통역 Agent 의존성 (PLANNING §25)
+livekit-agents>=1.0
+livekit-plugins-google>=1.0
+python-dotenv>=1.0
