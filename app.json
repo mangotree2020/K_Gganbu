@@ -42,6 +42,12 @@
           "photosPermission": "메뉴·간판 사진을 번역하기 위해 사진 접근이 필요합니다.",
           "cameraPermission": "메뉴·간판을 촬영해 번역하기 위해 카메라 접근이 필요합니다."
         }
+      ],
+      [
+        "expo-location",
+        {
+          "locationAlwaysAndWhenInUsePermission": "주변 장소와 길찾기를 위해 현재 위치를 사용합니다."
+        }
       ]
     ],
     "experiments": {

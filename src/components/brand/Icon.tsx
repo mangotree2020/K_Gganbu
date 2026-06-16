@@ -87,11 +87,16 @@ import {
   History,
   Users,
   Building2,
+  Info,
+  ExternalLink,
   type LucideIcon,
 } from 'lucide-react-native'
 
 const MAP: Record<string, LucideIcon> = {
   add: Plus,
+  info: Info,
+  open_in_new: ExternalLink,
+  place: MapPin,
   aerial_way: CableCar,
   cable: CableCar,
   apple: Apple,

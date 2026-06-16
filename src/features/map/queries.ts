@@ -106,3 +106,60 @@ export function usePlaces(lang = 'en', rows = 12) {
     },
   })
 }
+
+// 지도 마커용 — 좌표가 있는 POI만 (TourAPI 실데이터, PLANNING §17)
+export function useMapPois(lang = 'en', rows = 20) {
+  return useQuery({
+    queryKey: ['map-pois', lang, rows],
+    staleTime: 24 * 60 * 60 * 1000,
+    queryFn: async (): Promise<Poi[]> => {
+      try {
+        const { data, error } = await supabase.functions.invoke('places', {
+          body: { lang, areaCode: 6, rows },
+        })
+        if (error) throw error
+        const places = (data?.places ?? []) as Record<string, string>[]
+        const mapped = places
+          .map((p) => ({
+            id: p.id,
+            name: p.name,
+            address: p.address ?? null,
+            lat: p.lat ? Number(p.lat) : null,
+            lng: p.lng ? Number(p.lng) : null,
+            imageUrl: p.imageUrl ?? null,
+            tel: p.tel ?? null,
+            cat: toCat(p.contentTypeId),
+          }))
+          .filter((p) => p.lat && p.lng) // 좌표 필수
+        return mapped.length ? mapped : MOCK_POIS
+      } catch {
+        return MOCK_POIS
+      }
+    },
+  })
+}
+
+// Naver 지역 검색 (PLANNING §13) — 키워드 → 장소+좌표
+export type NaverPoi = {
+  id: string
+  name: string
+  category: string
+  address: string
+  lat: number
+  lng: number
+}
+
+export function useNaverSearch(query: string, enabled = true) {
+  return useQuery({
+    queryKey: ['naver-search', query],
+    enabled: enabled && query.trim().length > 0,
+    staleTime: 60 * 60 * 1000,
+    queryFn: async (): Promise<NaverPoi[]> => {
+      const { data, error } = await supabase.functions.invoke('naver-search', {
+        body: { query, display: 5 },
+      })
+      if (error) throw error
+      return (data?.items ?? []) as NaverPoi[]
+    },
+  })
+}
