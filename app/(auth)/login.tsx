@@ -17,7 +17,7 @@ import { SafeAreaView } from 'react-native-safe-area-context'
 
 import { BrandMark } from '@/components/brand'
 import { Input } from '@/components/ui/input'
-import { useSignIn } from '@/features/auth/queries'
+import { useOAuthSignIn, useSignIn } from '@/features/auth/queries'
 import { loginSchema, type LoginFormData } from '@/features/auth/types'
 
 function GoogleIcon() {
@@ -89,6 +89,7 @@ function SocialBtn({ bg, textColor, borderColor, icon, label, onPress }: SocialB
 
 export default function LoginScreen() {
   const { mutate: signIn, isPending, error } = useSignIn()
+  const { mutate: oauthSignIn, error: oauthError } = useOAuthSignIn()
   const [showPassword, setShowPassword] = useState(false)
   const [showEmailForm, setShowEmailForm] = useState(false)
   const scrollRef = useRef<ScrollView>(null)
@@ -156,18 +157,21 @@ export default function LoginScreen() {
               borderColor="#E4E4E7"
               icon={<GoogleIcon />}
               label="Continue with Google"
+              onPress={() => oauthSignIn('google')}
             />
             <SocialBtn
               bg="#000"
               textColor="#fff"
               icon={<AppleIcon color="#fff" />}
               label="Continue with Apple"
+              onPress={() => oauthSignIn('apple')}
             />
             <SocialBtn
               bg="#0EA5E9"
               textColor="#fff"
               icon={<MessageSquare size={18} color="#fff" />}
               label="Continue with phone (OTP)"
+              onPress={() => router.push('/(auth)/phone')}
             />
             <SocialBtn
               bg="#06C755"
@@ -200,6 +204,13 @@ export default function LoginScreen() {
               Phone OTP works with your home number — no Korean SIM needed
             </RNText>
           </View>
+
+          {oauthError && (
+            <RNText
+              style={{ fontSize: 12, color: '#EF4444', textAlign: 'center', marginBottom: 12 }}>
+              {oauthError.message}
+            </RNText>
+          )}
 
           {/* Use email instead 토글 */}
           <TouchableOpacity

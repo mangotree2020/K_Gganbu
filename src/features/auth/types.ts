@@ -20,8 +20,19 @@ export type RegisterFormData = z.infer<typeof registerSchema>
 
 export interface AuthUser {
   id: string
-  email: string
+  email: string | null
   fullName: string | null
   avatarUrl: string | null
   createdAt: string
+  isGuest: boolean
 }
+
+export const phoneSchema = z.object({
+  phone: z.string().min(8, '전화번호를 입력해주세요'),
+})
+export type PhoneFormData = z.infer<typeof phoneSchema>
+
+export const otpSchema = z.object({
+  token: z.string().length(6, '6자리 인증번호를 입력해주세요'),
+})
+export type OtpFormData = z.infer<typeof otpSchema>

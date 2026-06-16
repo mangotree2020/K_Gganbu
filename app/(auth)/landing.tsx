@@ -6,6 +6,7 @@ import { SafeAreaView } from 'react-native-safe-area-context'
 import Svg, { Circle, G, Path, Rect } from 'react-native-svg'
 
 import { BrandMark, Icon } from '@/components/brand'
+import { useSignInAnonymous } from '@/features/auth/queries'
 import { palette, shadows } from '@/theme/tokens'
 
 type Tone = 'teal' | 'blue' | 'coral'
@@ -74,6 +75,11 @@ function CitySilhouette() {
 export default function LandingScreen() {
   const [feature, setFeature] = useState(0)
   const timer = useRef<ReturnType<typeof setInterval> | null>(null)
+  const {
+    mutate: signInAnonymous,
+    isPending: guestPending,
+    error: guestError,
+  } = useSignInAnonymous()
 
   useEffect(() => {
     timer.current = setInterval(() => setFeature((f) => (f + 1) % FEATURES.length), 2800)
@@ -240,13 +246,26 @@ export default function LandingScreen() {
           </TouchableOpacity>
 
           <TouchableOpacity
-            onPress={() => router.replace('/(tabs)')}
+            onPress={() => signInAnonymous()}
+            disabled={guestPending}
             activeOpacity={0.7}
-            style={{ alignItems: 'center', marginTop: 10, paddingVertical: 8 }}>
+            style={{
+              alignItems: 'center',
+              justifyContent: 'center',
+              marginTop: 10,
+              height: 36,
+              flexShrink: 0,
+            }}>
             <Text style={{ fontSize: 13, color: palette.zinc[600], fontWeight: '600' }}>
-              Explore as guest
+              {guestPending ? 'Entering…' : 'Explore as guest'}
             </Text>
           </TouchableOpacity>
+          {guestError && (
+            <Text
+              style={{ fontSize: 11, color: palette.error[50], textAlign: 'center', marginTop: 4 }}>
+              {guestError.message}
+            </Text>
+          )}
 
           <View
             style={{

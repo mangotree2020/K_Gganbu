@@ -1,27 +1,27 @@
 import { useEffect } from 'react'
-import { onAuthStateChanged } from '@react-native-firebase/auth'
-import { firebaseAuth } from '@/lib/firebase'
-import { useAuthStore } from '@/features/auth/store'
 
+import { toAuthUser } from '@/features/auth/mapper'
+import { useAuthStore } from '@/features/auth/store'
+import { supabase } from '@/lib/supabase'
+
+// Supabase Auth 세션 구독 — 세션 변화 시 Zustand 스토어 동기화
 export function useAuth() {
   const { user, isAuthenticated, isLoading, setUser, setLoading } = useAuthStore()
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(firebaseAuth, (firebaseUser) => {
-      if (firebaseUser) {
-        setUser({
-          id: firebaseUser.uid,
-          email: firebaseUser.email!,
-          fullName: firebaseUser.displayName ?? null,
-          avatarUrl: firebaseUser.photoURL ?? null,
-          createdAt: firebaseUser.metadata.creationTime ?? new Date().toISOString(),
-        })
-      } else {
-        setUser(null)
-      }
+    // 초기 세션 로드
+    supabase.auth.getSession().then(({ data }) => {
+      setUser(data.session ? toAuthUser(data.session.user) : null)
     })
 
-    return unsubscribe
+    // 세션 변화 구독 (로그인/로그아웃/토큰 갱신)
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, session) => {
+      setUser(session ? toAuthUser(session.user) : null)
+    })
+
+    return () => subscription.unsubscribe()
   }, [setUser, setLoading])
 
   return { user, isAuthenticated, isLoading }
