@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native'
 import MapView, { Marker, PROVIDER_GOOGLE, type Region } from 'react-native-maps'
 import { SafeAreaView } from 'react-native-safe-area-context'
@@ -286,6 +286,13 @@ export default function MapScreen() {
   const [selected, setSelected] = useState('mipo')
   const place = PLACES.find((p) => p.id === selected)!
   const mapRef = useRef<MapView>(null)
+  // Android 커스텀 마커는 초기 1회 redraw 필요 → 잠시 추적 후 끔(성능)
+  const [trackMarkers, setTrackMarkers] = useState(true)
+
+  useEffect(() => {
+    const t = setTimeout(() => setTrackMarkers(false), 1500)
+    return () => clearTimeout(t)
+  }, [])
 
   // 핀 선택 시 해당 위치로 부드럽게 이동
   const selectPlace = (p: Place) => {
@@ -313,7 +320,7 @@ export default function MapScreen() {
               key={p.id}
               coordinate={{ latitude: p.lat, longitude: p.lng }}
               anchor={{ x: 0.5, y: 1 }}
-              tracksViewChanges={false}
+              tracksViewChanges={trackMarkers}
               onPress={() => selectPlace(p)}>
               <PinMarker color={p.pinColor} icon={p.pinIcon} selected={p.id === selected} />
             </Marker>
