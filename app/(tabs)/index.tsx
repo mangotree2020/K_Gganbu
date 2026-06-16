@@ -320,12 +320,22 @@ function AiMateCard({ promptIdx }: { promptIdx: number }) {
   )
 }
 
+// 퀵 액세스 타일 → 라우트 매핑
+const TILE_ROUTE: Record<string, string> = {
+  translate: '/translate',
+  coupons: '/(tabs)/coupons',
+  cruise: '/cruise',
+  allergy: '/allergy',
+  payment: '/tips',
+  emergency: '/emergency',
+}
+
 // 퀵 액세스 BigTile
 function BigTile({ tile }: { tile: (typeof QUICK_TILES)[0] }) {
   return (
     <Pressable
       style={({ pressed }) => [ss.bigTile, { opacity: pressed ? 0.88 : 1 }]}
-      onPress={() => tile.id === 'translate' && router.push('/translate')}>
+      onPress={() => router.push(TILE_ROUTE[tile.id] as never)}>
       <LinearGradient
         colors={[tile.from, tile.to]}
         start={{ x: 0, y: 0 }}
@@ -352,6 +362,20 @@ function BigTile({ tile }: { tile: (typeof QUICK_TILES)[0] }) {
 function TodayPickCard() {
   return (
     <Pressable
+      onPress={() =>
+        router.push({
+          pathname: '/place',
+          params: {
+            cat: 'village',
+            name: 'Gamcheon Culture Village',
+            sub: 'Heritage · 8.2km',
+            badge: 'Must-see',
+            rating: '4.9',
+            dist: '8.2km',
+            desc: "Pastel houses climbing the hillside — Busan's open-air color palette. Get the stamp-tour map at the info center.",
+          },
+        })
+      }
       style={({ pressed }) => [ss.pickCard, ss.shadowCard, { opacity: pressed ? 0.92 : 1 }]}>
       <View style={{ height: 180 }}>
         <PlaceThumb category="village" height={180} />
@@ -381,6 +405,18 @@ function TodayPickCard() {
 function PlaceCard({ place }: { place: (typeof PLACES)[0] }) {
   return (
     <Pressable
+      onPress={() =>
+        router.push({
+          pathname: '/place',
+          params: {
+            cat: place.cat,
+            name: place.name,
+            sub: place.sub,
+            badge: place.badge,
+            rating: String(place.rating),
+          },
+        })
+      }
       style={({ pressed }) => [ss.placeCard, ss.shadowCard, { opacity: pressed ? 0.88 : 1 }]}>
       <PlaceThumb category={place.cat} height={92} />
       <View style={ss.placeCardBody}>
