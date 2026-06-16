@@ -238,13 +238,22 @@ export default function TranslateScreen() {
             <Text style={ss.sectionLabel}>SITUATION PHRASES</Text>
             <View style={ss.scenarioGrid}>
               {SCENARIOS.map((s) => (
-                <View
+                <Pressable
                   key={s.k}
-                  style={[ss.scenarioCard, { backgroundColor: s.bg, borderTopColor: s.color }]}>
+                  onPress={() =>
+                    router.push({
+                      pathname: '/phrases',
+                      params: { id: s.k.toLowerCase(), lang: tgt === 'ko' ? 'en' : tgt },
+                    })
+                  }
+                  style={({ pressed }) => [
+                    ss.scenarioCard,
+                    { backgroundColor: s.bg, borderTopColor: s.color, opacity: pressed ? 0.9 : 1 },
+                  ]}>
                   <Icon name={s.icon} size={20} color={s.color} filled />
                   <Text style={ss.scenarioTitle}>{s.k}</Text>
                   <Text style={ss.scenarioEx}>{s.ex}</Text>
-                </View>
+                </Pressable>
               ))}
             </View>
           </View>
