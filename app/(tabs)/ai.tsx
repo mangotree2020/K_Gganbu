@@ -13,6 +13,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context'
 
 import { Icon } from '@/components/brand'
+import { askGganbu } from '@/features/gganbu/services'
 import { palette } from '@/theme/tokens'
 
 type Schedule = { time: string; place: string; icon: string }
@@ -74,21 +75,36 @@ export default function AiMateScreen() {
 
   const scrollEnd = () => setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 80)
 
-  const send = (text: string) => {
+  const send = async (text: string) => {
     if (!text.trim()) return
+    const history: { role: 'user' | 'assistant'; text: string }[] = msgs.map((m) => ({
+      role: m.role === 'user' ? 'user' : 'assistant',
+      text: m.text,
+    }))
     setMsgs((m) => [...m, { role: 'user', text }])
     setInput('')
     setTyping(true)
     scrollEnd()
-    setTimeout(() => {
-      setTyping(false)
-      const r = REPLIES[text] ?? {
-        text: "Got it — I'll keep that in context. Want me to find places, plan time, or translate?",
-        quick: ['Find places', 'Plan time', 'Translate'],
-      }
-      setMsgs((m) => [...m, { role: 'bot', ...r }])
-      scrollEnd()
-    }, 850)
+
+    // 알려진 퀵 리플라이는 카드형 응답(일정/리스트) 유지
+    const canned = REPLIES[text]
+    if (canned) {
+      setTimeout(() => {
+        setTyping(false)
+        setMsgs((m) => [...m, { role: 'bot', ...canned }])
+        scrollEnd()
+      }, 600)
+      return
+    }
+
+    // 그 외 자유 입력 → 실 AI 깐부(Claude+RAG) 호출, 실패 시 mock 폴백
+    const reply = await askGganbu([...history, { role: 'user', text }], {
+      language: 'en',
+      location: 'Haeundae, Busan',
+    })
+    setTyping(false)
+    setMsgs((m) => [...m, { role: 'bot', text: reply }])
+    scrollEnd()
   }
 
   return (
