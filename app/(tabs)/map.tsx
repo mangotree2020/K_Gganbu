@@ -1,15 +1,8 @@
-import { useState } from 'react'
-import {
-  type DimensionValue,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  View,
-} from 'react-native'
+import { useRef, useState } from 'react'
+import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native'
+import MapView, { Marker, PROVIDER_GOOGLE, type Region } from 'react-native-maps'
 import { SafeAreaView } from 'react-native-safe-area-context'
-import Svg, { Circle, Ellipse, G, Path, Rect, Text as SvgText } from 'react-native-svg'
+import Svg, { Circle, Path } from 'react-native-svg'
 
 import { Icon } from '@/components/brand'
 import { PlaceThumb } from '@/components/PlaceThumb'
@@ -27,10 +20,18 @@ type Place = {
   naver: { rating: number; count: number }
   google: { rating: number; count: number }
   reviews: { naver: Review[]; google: Review[] }
-  top: DimensionValue
-  left: DimensionValue
+  lat: number
+  lng: number
   pinIcon: string
   pinColor: string
+}
+
+// 부산 해운대 중심 (PLANNING §17 — 부산 MVP)
+const BUSAN_REGION: Region = {
+  latitude: 35.1568,
+  longitude: 129.13,
+  latitudeDelta: 0.16,
+  longitudeDelta: 0.16,
 }
 
 const PLACES: Place[] = [
@@ -74,8 +75,8 @@ const PLACES: Place[] = [
         },
       ],
     },
-    top: '30%',
-    left: '26%',
+    lat: 35.1592,
+    lng: 129.1747,
     pinIcon: 'set_meal',
     pinColor: palette.coral[50],
   },
@@ -102,8 +103,8 @@ const PLACES: Place[] = [
         },
       ],
     },
-    top: '44%',
-    left: '48%',
+    lat: 35.1561,
+    lng: 129.1627,
     pinIcon: 'local_cafe',
     pinColor: palette.amber[50],
   },
@@ -135,8 +136,8 @@ const PLACES: Place[] = [
         },
       ],
     },
-    top: '62%',
-    left: '32%',
+    lat: 35.0976,
+    lng: 129.0106,
     pinIcon: 'holiday_village',
     pinColor: palette.cruise.base,
   },
@@ -148,43 +149,21 @@ const PROVIDERS = [
   { id: 'google', label: 'Google', sub: 'Foreigners', color: '#4285F4' },
 ]
 
-function MapMock() {
+// 커스텀 마커 핀 (디자인 스마일 핀 — 카테고리 색/아이콘)
+function PinMarker({ color, icon, selected }: { color: string; icon: string; selected: boolean }) {
   return (
-    <Svg
-      width="100%"
-      height="100%"
-      preserveAspectRatio="none"
-      viewBox="0 0 400 600"
-      style={StyleSheet.absoluteFill}>
-      <Rect width="400" height="600" fill="#BAE6FD" />
-      <Path
-        d="M -20 80 Q 80 60, 180 120 Q 280 160, 340 100 L 420 80 L 420 -20 L -20 -20 Z"
-        fill="#E0F2FE"
-      />
-      <Path
-        d="M -20 460 Q 100 480, 200 440 Q 320 400, 420 480 L 420 620 L -20 620 Z"
-        fill="#E0F2FE"
-      />
-      <G stroke="rgba(255,255,255,.85)" strokeWidth="6" fill="none" strokeLinecap="round">
-        <Path d="M -20 300 Q 100 320, 200 300 Q 300 280, 420 320" />
-        <Path d="M 80 -20 Q 120 200, 60 400 Q 50 500, 90 620" />
-        <Path d="M 320 -20 Q 280 180, 340 320 Q 360 480, 320 620" />
-        <Path d="M 200 -20 L 200 620" strokeOpacity="0.6" />
-      </G>
-      <G stroke="rgba(255,255,255,.55)" strokeWidth="2.5" fill="none">
-        <Path d="M -20 200 Q 200 220, 420 200" />
-        <Path d="M -20 380 Q 200 360, 420 380" />
-        <Path d="M 140 -20 L 140 620" />
-        <Path d="M 260 -20 L 260 620" />
-      </G>
-      <Ellipse cx="260" cy="220" rx="60" ry="30" fill="#BBF7D0" opacity="0.7" />
-      <SvgText x="150" y="60" fill="rgba(15,23,42,.6)" fontSize="11" fontWeight="700">
-        해운대 · Haeundae
-      </SvgText>
-      <SvgText x="30" y="540" fill="rgba(15,23,42,.55)" fontSize="11" fontWeight="700">
-        광안리 · Gwangalli
-      </SvgText>
-    </Svg>
+    <View style={[ss.pin, { transform: [{ scale: selected ? 1.15 : 1 }] }]}>
+      <Svg width="36" height="44" viewBox="0 0 36 44">
+        <Path
+          d="M18 0 C8 0 0 8 0 18 C0 32 18 44 18 44 C18 44 36 32 36 18 C36 8 28 0 18 0 Z"
+          fill={color}
+        />
+        <Circle cx="18" cy="17" r="11" fill="#fff" />
+      </Svg>
+      <View style={ss.pinIcon}>
+        <Icon name={icon} size={14} color={color} filled />
+      </View>
+    </View>
   )
 }
 
@@ -306,12 +285,40 @@ export default function MapScreen() {
   const [provider, setProvider] = useState('blend')
   const [selected, setSelected] = useState('mipo')
   const place = PLACES.find((p) => p.id === selected)!
+  const mapRef = useRef<MapView>(null)
+
+  // 핀 선택 시 해당 위치로 부드럽게 이동
+  const selectPlace = (p: Place) => {
+    setSelected(p.id)
+    mapRef.current?.animateToRegion(
+      { latitude: p.lat, longitude: p.lng, latitudeDelta: 0.02, longitudeDelta: 0.02 },
+      450,
+    )
+  }
 
   return (
     <View style={ss.container}>
       {/* 지도 */}
       <View style={ss.mapArea}>
-        <MapMock />
+        <MapView
+          ref={mapRef}
+          provider={PROVIDER_GOOGLE}
+          style={StyleSheet.absoluteFill}
+          initialRegion={BUSAN_REGION}
+          showsUserLocation
+          showsMyLocationButton={false}
+          toolbarEnabled={false}>
+          {PLACES.map((p) => (
+            <Marker
+              key={p.id}
+              coordinate={{ latitude: p.lat, longitude: p.lng }}
+              anchor={{ x: 0.5, y: 1 }}
+              tracksViewChanges={false}
+              onPress={() => selectPlace(p)}>
+              <PinMarker color={p.pinColor} icon={p.pinIcon} selected={p.id === selected} />
+            </Marker>
+          ))}
+        </MapView>
 
         {/* 상단: 검색 + 토글 */}
         <SafeAreaView edges={['top']} style={ss.topControls}>
@@ -353,31 +360,6 @@ export default function MapScreen() {
             })}
           </View>
         </SafeAreaView>
-
-        {/* 핀 */}
-        {PLACES.map((p) => {
-          const on = p.id === selected
-          return (
-            <Pressable
-              key={p.id}
-              onPress={() => setSelected(p.id)}
-              style={[ss.pin, { top: p.top, left: p.left, transform: [{ scale: on ? 1.15 : 1 }] }]}>
-              <Svg width="36" height="44" viewBox="0 0 36 44">
-                <Path
-                  d="M18 0 C8 0 0 8 0 18 C0 32 18 44 18 44 C18 44 36 32 36 18 C36 8 28 0 18 0 Z"
-                  fill={p.pinColor}
-                />
-                <Circle cx="18" cy="17" r="11" fill="#fff" />
-              </Svg>
-              <View style={ss.pinIcon}>
-                <Icon name={p.pinIcon} size={14} color={p.pinColor} filled />
-              </View>
-            </Pressable>
-          )
-        })}
-
-        {/* 현재 위치 */}
-        <View style={ss.youHere} />
       </View>
 
       {/* 하단 시트 */}
@@ -458,19 +440,8 @@ const ss = StyleSheet.create({
   },
   toggleLabel: { fontSize: 11, fontWeight: '700' },
   toggleSub: { fontSize: 9, fontWeight: '600', borderRadius: 999, lineHeight: 14 },
-  pin: { position: 'absolute', width: 36, height: 44, marginLeft: -18, marginTop: -44 },
+  pin: { width: 36, height: 44, alignItems: 'center' },
   pinIcon: { position: 'absolute', top: 10, left: 11 },
-  youHere: {
-    position: 'absolute',
-    top: '50%',
-    left: '62%',
-    width: 16,
-    height: 16,
-    borderRadius: 999,
-    backgroundColor: palette.blue[50],
-    borderWidth: 3,
-    borderColor: '#fff',
-  },
 
   sheet: {
     backgroundColor: '#fff',
