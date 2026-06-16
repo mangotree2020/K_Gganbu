@@ -1,10 +1,20 @@
 import { LinearGradient } from 'expo-linear-gradient'
-import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native'
+import { useState } from 'react'
+import {
+  Modal,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
+} from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 
 import { Icon } from '@/components/brand'
 import { useSignOut } from '@/features/auth/queries'
 import { useAuthStore } from '@/features/auth/store'
+import { APP_LANGS, useLocaleStore, useT, type AppLang } from '@/lib/i18n'
 import { palette, shadows } from '@/theme/tokens'
 
 const STATS = [
@@ -13,22 +23,39 @@ const STATS = [
   { n: 8, l: 'Reviews', e: '⭐' },
 ]
 
-const ROWS: { label: string; emoji: string; badge?: string; detail?: string }[] = [
-  { label: 'Customize home', emoji: '🧩', detail: 'Reorder' },
-  { label: 'My itineraries', emoji: '🗓', badge: '3' },
-  { label: 'Saved places', emoji: '📍', badge: '12' },
-  { label: 'Saved coupons', emoji: '🎟', badge: '5' },
-  { label: 'My reviews', emoji: '⭐', badge: '8' },
-  { label: 'Phrasebook', emoji: '🗣' },
-  { label: 'Allergy card', emoji: '🥜' },
-  { label: 'Payment tips', emoji: '💳' },
-  { label: 'Language', emoji: '🌐', detail: 'EN' },
-  { label: 'Settings', emoji: '⚙️' },
+type Row = { id: string; label: string; emoji: string; badge?: string; detail?: string }
+const ROWS: Row[] = [
+  { id: 'customize', label: 'Customize home', emoji: '🧩', detail: 'Reorder' },
+  { id: 'itineraries', label: 'My itineraries', emoji: '🗓', badge: '3' },
+  { id: 'saved-places', label: 'Saved places', emoji: '📍', badge: '12' },
+  { id: 'saved-coupons', label: 'Saved coupons', emoji: '🎟', badge: '5' },
+  { id: 'reviews', label: 'My reviews', emoji: '⭐', badge: '8' },
+  { id: 'phrasebook', label: 'Phrasebook', emoji: '🗣' },
+  { id: 'allergy', label: 'Allergy card', emoji: '🥜' },
+  { id: 'payment', label: 'Payment tips', emoji: '💳' },
+  { id: 'language', label: 'Language', emoji: '🌐' },
+  { id: 'settings', label: 'Settings', emoji: '⚙️' },
 ]
 
 export default function ProfileScreen() {
   const user = useAuthStore((state) => state.user)
   const { mutate: signOut, isPending } = useSignOut()
+  const t = useT()
+  const lang = useLocaleStore((s) => s.lang)
+  const setLang = useLocaleStore((s) => s.setLang)
+  const [langOpen, setLangOpen] = useState(false)
+  const currentLang = APP_LANGS.find((l) => l.code === lang) ?? APP_LANGS[0]
+
+  // 행별 라벨/디테일/동작 (언어 행은 i18n + 현재 언어 표시)
+  const labelFor = (r: Row) => {
+    if (r.id === 'language') return t('common.language')
+    if (r.id === 'settings') return t('common.settings')
+    return r.label
+  }
+  const detailFor = (r: Row) => (r.id === 'language' ? currentLang.label : r.detail)
+  const onRowPress = (r: Row) => {
+    if (r.id === 'language') setLangOpen(true)
+  }
 
   return (
     <View style={ss.container}>
@@ -105,22 +132,26 @@ export default function ProfileScreen() {
         {/* 메뉴 행 */}
         <View style={{ paddingHorizontal: 16, paddingTop: 12 }}>
           <View style={ss.rowsCard}>
-            {ROWS.map((r, i) => (
-              <TouchableOpacity
-                key={r.label}
-                activeOpacity={0.6}
-                style={[ss.row, i < ROWS.length - 1 && ss.rowBorder]}>
-                <Text style={ss.rowEmoji}>{r.emoji}</Text>
-                <Text style={ss.rowLabel}>{r.label}</Text>
-                {r.badge && (
-                  <View style={ss.rowBadge}>
-                    <Text style={ss.rowBadgeText}>{r.badge}</Text>
-                  </View>
-                )}
-                {r.detail && <Text style={ss.rowDetail}>{r.detail}</Text>}
-                <Icon name="chevron_right" size={18} color={palette.zinc[500]} />
-              </TouchableOpacity>
-            ))}
+            {ROWS.map((r, i) => {
+              const detail = detailFor(r)
+              return (
+                <TouchableOpacity
+                  key={r.id}
+                  activeOpacity={0.6}
+                  onPress={() => onRowPress(r)}
+                  style={[ss.row, i < ROWS.length - 1 && ss.rowBorder]}>
+                  <Text style={ss.rowEmoji}>{r.emoji}</Text>
+                  <Text style={ss.rowLabel}>{labelFor(r)}</Text>
+                  {r.badge && (
+                    <View style={ss.rowBadge}>
+                      <Text style={ss.rowBadgeText}>{r.badge}</Text>
+                    </View>
+                  )}
+                  {detail && <Text style={ss.rowDetail}>{detail}</Text>}
+                  <Icon name="chevron_right" size={18} color={palette.zinc[500]} />
+                </TouchableOpacity>
+              )
+            })}
           </View>
         </View>
 
@@ -132,10 +163,41 @@ export default function ProfileScreen() {
             activeOpacity={0.8}
             style={ss.logout}>
             <Icon name="block" size={18} color={palette.error[50]} />
-            <Text style={ss.logoutText}>{isPending ? '로그아웃 중...' : '로그아웃'}</Text>
+            <Text style={ss.logoutText}>{isPending ? '...' : t('common.logout')}</Text>
           </TouchableOpacity>
         </View>
       </ScrollView>
+
+      {/* 언어 선택 모달 */}
+      <Modal
+        visible={langOpen}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setLangOpen(false)}>
+        <Pressable style={ss.langBackdrop} onPress={() => setLangOpen(false)}>
+          <Pressable style={ss.langSheet} onPress={(e) => e.stopPropagation()}>
+            <View style={ss.langHandle} />
+            <Text style={ss.langTitle}>{t('common.language')}</Text>
+            {APP_LANGS.map((l) => {
+              const active = l.code === lang
+              return (
+                <TouchableOpacity
+                  key={l.code}
+                  activeOpacity={0.7}
+                  onPress={() => {
+                    setLang(l.code as AppLang)
+                    setLangOpen(false)
+                  }}
+                  style={[ss.langRow, active && ss.langRowActive]}>
+                  <Text style={{ fontSize: 22 }}>{l.flag}</Text>
+                  <Text style={[ss.langLabel, active && ss.langLabelActive]}>{l.label}</Text>
+                  {active && <Icon name="check_circle" size={20} color={palette.blue[50]} filled />}
+                </TouchableOpacity>
+              )
+            })}
+          </Pressable>
+        </Pressable>
+      </Modal>
     </View>
   )
 }
@@ -249,4 +311,35 @@ const ss = StyleSheet.create({
     backgroundColor: '#FEF2F2',
   },
   logoutText: { color: palette.error[50], fontWeight: '600', fontSize: 14 },
+
+  // 언어 선택 모달
+  langBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,.4)', justifyContent: 'flex-end' },
+  langSheet: {
+    backgroundColor: '#fff',
+    borderTopLeftRadius: 22,
+    borderTopRightRadius: 22,
+    paddingHorizontal: 16,
+    paddingTop: 10,
+    paddingBottom: 32,
+  },
+  langHandle: {
+    alignSelf: 'center',
+    width: 40,
+    height: 4,
+    borderRadius: 999,
+    backgroundColor: palette.zinc[300],
+    marginBottom: 14,
+  },
+  langTitle: { fontSize: 16, fontWeight: '800', color: palette.zinc[900], marginBottom: 8 },
+  langRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingVertical: 14,
+    paddingHorizontal: 12,
+    borderRadius: 14,
+  },
+  langRowActive: { backgroundColor: palette.blue[90] },
+  langLabel: { flex: 1, fontSize: 15, fontWeight: '600', color: palette.zinc[800] },
+  langLabelActive: { color: palette.blue[30], fontWeight: '800' },
 })

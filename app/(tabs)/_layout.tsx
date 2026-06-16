@@ -3,10 +3,12 @@ import { Bot, Home, Map, Tag, User } from 'lucide-react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 
 import { useAuth } from '@/hooks/useAuth'
+import { useT } from '@/lib/i18n'
 
 export default function TabsLayout() {
   const { isAuthenticated, isLoading } = useAuth()
   const insets = useSafeAreaInsets()
+  const t = useT()
 
   if (!isLoading && !isAuthenticated) {
     return <Redirect href="/(auth)/landing" />
@@ -34,35 +36,35 @@ export default function TabsLayout() {
       <Tabs.Screen
         name="index"
         options={{
-          title: 'Home',
+          title: t('tab.home'),
           tabBarIcon: ({ color, size }) => <Home size={size} color={color} />,
         }}
       />
       <Tabs.Screen
         name="map"
         options={{
-          title: 'Map',
+          title: t('tab.map'),
           tabBarIcon: ({ color, size }) => <Map size={size} color={color} />,
         }}
       />
       <Tabs.Screen
         name="ai"
         options={{
-          title: 'AI Mate',
+          title: t('tab.ai'),
           tabBarIcon: ({ color, size }) => <Bot size={size} color={color} />,
         }}
       />
       <Tabs.Screen
         name="coupons"
         options={{
-          title: 'Coupons',
+          title: t('tab.coupons'),
           tabBarIcon: ({ color, size }) => <Tag size={size} color={color} />,
         }}
       />
       <Tabs.Screen
         name="profile"
         options={{
-          title: 'My',
+          title: t('tab.my'),
           tabBarIcon: ({ color, size }) => <User size={size} color={color} />,
         }}
       />

@@ -26,6 +26,7 @@ import {
 import { Icon } from '@/components/brand'
 import { useAuthStore } from '@/features/auth/store'
 import { usePlaces, type Poi } from '@/features/map/queries'
+import { useT } from '@/lib/i18n'
 
 // 색상 토큰
 const C = {
@@ -187,22 +188,22 @@ const QUICK_TILES = [
 const CORE_ACTIONS = [
   {
     key: 'translate',
-    label: 'Translate',
-    sub: 'Now',
+    labelKey: 'home.translateNow',
+    subKey: 'home.translateNowSub',
     route: '/translate',
     icon: <Languages size={22} color="#0284C7" />,
   },
   {
     key: 'ai',
-    label: 'Ask AI',
-    sub: 'Gganbu',
+    labelKey: 'home.askAi',
+    subKey: 'home.askAiSub',
     route: '/(tabs)/ai',
     icon: <Bot size={22} color="#0284C7" />,
   },
   {
     key: 'map',
-    label: 'Find',
-    sub: 'Places',
+    labelKey: 'home.findPlaces',
+    subKey: 'home.findPlacesSub',
     route: '/(tabs)/map',
     icon: <Compass size={22} color="#0284C7" />,
   },
@@ -569,6 +570,7 @@ function CommunityCard() {
 
 export default function HomeScreen() {
   useAuthStore((state) => state.user)
+  const t = useT()
   const [promptIdx, setPromptIdx] = useState(0)
   const { data: pois } = usePlaces('en', 12)
 
@@ -641,8 +643,8 @@ export default function HomeScreen() {
                   style={({ pressed }) => [ss.coreAction, { opacity: pressed ? 0.85 : 1 }]}
                   onPress={() => a.route && router.push(a.route as never)}>
                   <View style={ss.coreActionIcon}>{a.icon}</View>
-                  <Text style={ss.coreActionLabel}>{a.label}</Text>
-                  <Text style={ss.coreActionSub}>{a.sub}</Text>
+                  <Text style={ss.coreActionLabel}>{t(a.labelKey)}</Text>
+                  <Text style={ss.coreActionSub}>{t(a.subKey)}</Text>
                 </Pressable>
               ))}
             </View>
