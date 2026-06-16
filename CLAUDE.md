@@ -1,4 +1,9 @@
-# Travel App — React Native 여행 앱 스타터킷
+# Travel App — React Native 여행 앱 k-gganbu
+
+## 프로젝트 기획
+
+이 프로젝트의 전체 기획·아키텍처·결정사항은 @docs/PLANNING.md 를 따른다.
+작업 전 반드시 해당 문서를 우선 참조할 것.
 
 ## 프로젝트 개요
 
@@ -40,11 +45,11 @@ EXPO_PUBLIC_SUPABASE_ANON_KEY=your-anon-key
 
 ### 상태관리 분리
 
-| 상태 유형 | 도구 | 위치 |
-|-----------|------|------|
-| 서버 데이터 (API) | TanStack Query | `src/features/{domain}/queries.ts` |
-| UI 상태 (필터, 선택) | Zustand | `src/features/{domain}/store.ts` |
-| 인증 상태 | Zustand + Supabase 구독 | `src/features/auth/store.ts` + `src/hooks/useAuth.ts` |
+| 상태 유형            | 도구                    | 위치                                                  |
+| -------------------- | ----------------------- | ----------------------------------------------------- |
+| 서버 데이터 (API)    | TanStack Query          | `src/features/{domain}/queries.ts`                    |
+| UI 상태 (필터, 선택) | Zustand                 | `src/features/{domain}/store.ts`                      |
+| 인증 상태            | Zustand + Supabase 구독 | `src/features/auth/store.ts` + `src/hooks/useAuth.ts` |
 
 ### 파일 구조 패턴
 
@@ -65,7 +70,26 @@ src/features/{domain}/
 @/lib/*        → src/lib/*
 @/hooks/*      → src/hooks/*
 @/utils/*      → src/utils/*
+@/theme/*      → src/theme/*              (디자인 토큰)
 ```
+
+### 디자인 시스템 (docs/K-Gganbu (standalone).html 기준)
+
+화면 구현 시 색상/그라데이션을 직접 하드코딩하지 말고 아래를 재사용한다.
+
+- `@/theme/tokens` — `palette`(bm 팔레트: blue/coral/teal/zinc/amber/cruise/error/success), `gradients`, `shadows`(card/pop/fab/blue), `radius`, `pillTones`
+- `@/components/brand` — `AppIcon`(스마일 맵핀), `BrandMark`(워드마크), `Icon`(디자인의 Material Symbols 이름 → lucide 매핑), `Pill`(톤별 배지)
+- `@/components/PlaceThumb` — 카테고리별 그라데이션 썸네일
+- `@/components/SheetHeader` — 모달 시트 공용 헤더
+- 그라데이션은 `expo-linear-gradient`의 `LinearGradient` 사용
+- 컬러 의미: Sky Blue=네비/검색, Coral=쿠폰/FAB/알림, Teal=번역 전용
+
+**라우팅**: 4탭 `app/(tabs)/{index,map,ai,coupons,profile}` + 모달 라우트
+`app/{translate,emergency,place,cruise,tips,allergy}.tsx` (`presentation: 'modal'`).
+모달은 루트 `app/_layout.tsx`의 Stack에 등록.
+
+> 주의: `<Pressable>`에 함수형 style(`({pressed}) => [...]`)이 간헐적으로 적용 안 되는
+> 사례가 있었음. 카드형 Pressable은 plain 배열 style(`[ss.card, shadows.card]`) 권장.
 
 ### Supabase 쿼리 패턴
 
