@@ -112,13 +112,10 @@ function SocialBtn({ bg, textColor, borderColor, icon, label, onPress }: SocialB
         alignItems: 'center',
         paddingHorizontal: 16,
       }}>
-      {/* 아이콘 고정 왼쪽 — LINE 배지 수용을 위해 36px */}
       <View style={{ width: 36, alignItems: 'flex-start', justifyContent: 'center' }}>{icon}</View>
-      {/* 텍스트 중앙 */}
       <View style={{ flex: 1, alignItems: 'center' }}>
         <RNText style={{ fontSize: 15, fontWeight: '600', color: textColor }}>{label}</RNText>
       </View>
-      {/* 우측 여백 (아이콘 너비 상쇄) */}
       <View style={{ width: 36 }} />
     </TouchableOpacity>
   )
@@ -127,6 +124,7 @@ function SocialBtn({ bg, textColor, borderColor, icon, label, onPress }: SocialB
 export default function LoginScreen() {
   const { mutate: signIn, isPending, error } = useSignIn()
   const [showPassword, setShowPassword] = useState(false)
+  const [showEmailForm, setShowEmailForm] = useState(false)
   const scrollRef = useRef<ScrollView>(null)
 
   const scrollToBottom = () => {
@@ -145,8 +143,9 @@ export default function LoginScreen() {
     <SafeAreaView className="flex-1" style={{ backgroundColor: '#fff' }}>
       <KeyboardAvoidingView
         className="flex-1"
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-        {/* 헤더: 뒤로가기 + 컴팩트 로고 */}
+        behavior="padding"
+        keyboardVerticalOffset={Platform.OS === 'android' ? 0 : 0}>
+        {/* 헤더 */}
         <View style={{ paddingHorizontal: 20, paddingTop: 4, paddingBottom: 2 }}>
           <Pressable
             onPress={() => router.back()}
@@ -173,7 +172,7 @@ export default function LoginScreen() {
               </RNText>
               <RNText
                 style={{ fontSize: 10, color: '#0EA5E9', fontWeight: '600', letterSpacing: 0.5 }}>
-                TRAVEL · TRANSLATE · GUIDE
+                TRAVEL · TRANSLATE · 간부
               </RNText>
             </View>
           </View>
@@ -183,9 +182,9 @@ export default function LoginScreen() {
           ref={scrollRef}
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
-          contentContainerStyle={{ paddingHorizontal: 20, paddingTop: 12, paddingBottom: 24 }}>
+          contentContainerStyle={{ paddingHorizontal: 20, paddingTop: 12, paddingBottom: 32 }}>
           {/* 웰컴 텍스트 */}
-          <View style={{ gap: 4, marginBottom: 16 }}>
+          <View style={{ gap: 4, marginBottom: 24 }}>
             <RNText
               style={{ fontSize: 26, fontWeight: '700', color: '#18181B', letterSpacing: -0.5 }}>
               Welcome back 👋
@@ -196,7 +195,7 @@ export default function LoginScreen() {
           </View>
 
           {/* 소셜 로그인 버튼 */}
-          <View style={{ gap: 8, marginBottom: 14 }}>
+          <View style={{ gap: 10, marginBottom: 16 }}>
             <SocialBtn
               bg="#fff"
               textColor="#18181B"
@@ -239,162 +238,189 @@ export default function LoginScreen() {
             />
           </View>
 
-          {/* 구분선 */}
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 14 }}>
-            <View style={{ flex: 1, height: 1, backgroundColor: '#E4E4E7' }} />
-            <RNText style={{ fontSize: 13, color: '#A1A1AA' }}>or with email</RNText>
-            <View style={{ flex: 1, height: 1, backgroundColor: '#E4E4E7' }} />
-          </View>
-
-          {/* 이메일 입력 — 아이콘 인박스 */}
-          <View style={{ marginBottom: 12 }}>
-            <View
-              style={{
-                flexDirection: 'row',
-                alignItems: 'center',
-                height: 52,
-                borderRadius: 12,
-                borderWidth: 1,
-                borderColor: '#E4E4E7',
-                backgroundColor: '#F4F4F5',
-                paddingHorizontal: 14,
-                gap: 10,
-              }}>
-              <Mail size={18} color="#71717A" />
-              <Controller
-                control={control}
-                name="email"
-                render={({ field: { onChange, onBlur, value } }) => (
-                  <Input
-                    testID="email-input"
-                    placeholder="Email Address"
-                    keyboardType="email-address"
-                    autoCapitalize="none"
-                    autoComplete="off"
-                    autoCorrect={false}
-                    importantForAutofill="no"
-                    returnKeyType="next"
-                    onFocus={scrollToBottom}
-                    onBlur={onBlur}
-                    onChangeText={onChange}
-                    value={value}
-                    style={{
-                      flex: 1,
-                      height: 50,
-                      fontSize: 15,
-                      borderWidth: 0,
-                      backgroundColor: 'transparent',
-                      paddingHorizontal: 0,
-                      shadowOpacity: 0,
-                    }}
-                  />
-                )}
-              />
-            </View>
-            {errors.email && (
-              <RNText style={{ fontSize: 12, color: '#EF4444', marginTop: 4 }}>
-                {errors.email.message}
-              </RNText>
-            )}
-          </View>
-
-          {/* 비밀번호 입력 — 아이콘 인박스 */}
-          <View style={{ marginBottom: 8 }}>
-            <View
-              style={{
-                flexDirection: 'row',
-                alignItems: 'center',
-                height: 52,
-                borderRadius: 12,
-                borderWidth: 1,
-                borderColor: '#E4E4E7',
-                backgroundColor: '#F4F4F5',
-                paddingHorizontal: 14,
-                gap: 10,
-              }}>
-              <Lock size={18} color="#71717A" />
-              <Controller
-                control={control}
-                name="password"
-                render={({ field: { onChange, onBlur, value } }) => (
-                  <Input
-                    testID="password-input"
-                    secureTextEntry={!showPassword}
-                    placeholder="Password"
-                    autoComplete="off"
-                    importantForAutofill="no"
-                    returnKeyType="send"
-                    onFocus={scrollToBottom}
-                    onBlur={onBlur}
-                    onChangeText={onChange}
-                    value={value}
-                    onSubmitEditing={handleSubmit((data) => signIn(data))}
-                    style={{
-                      flex: 1,
-                      height: 50,
-                      fontSize: 15,
-                      borderWidth: 0,
-                      backgroundColor: 'transparent',
-                      paddingHorizontal: 0,
-                      shadowOpacity: 0,
-                      color: '#3F3F46',
-                    }}
-                  />
-                )}
-              />
-              <Pressable onPress={() => setShowPassword((v) => !v)} style={{ padding: 4 }}>
-                {showPassword ? (
-                  <Eye size={18} color="#71717A" />
-                ) : (
-                  <EyeOff size={18} color="#71717A" />
-                )}
-              </Pressable>
-            </View>
-            {errors.password && (
-              <RNText style={{ fontSize: 12, color: '#EF4444', marginTop: 4 }}>
-                {errors.password.message}
-              </RNText>
-            )}
-          </View>
-
-          {/* Forgot password */}
-          <View style={{ alignItems: 'flex-end', marginBottom: 20 }}>
-            <Pressable>
-              <RNText style={{ fontSize: 13, color: '#0EA5E9', fontWeight: '500' }}>
-                Forgot password?
-              </RNText>
-            </Pressable>
-          </View>
-
-          {error && (
-            <RNText
-              style={{ fontSize: 13, color: '#EF4444', textAlign: 'center', marginBottom: 12 }}>
-              {error.message}
+          {/* Phone OTP 안내 */}
+          <View
+            style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 6, marginBottom: 20 }}>
+            <RNText style={{ fontSize: 11, color: '#71717A' }}>🛡</RNText>
+            <RNText style={{ fontSize: 11, color: '#71717A', flex: 1, lineHeight: 16 }}>
+              Phone OTP works with your home number — no Korean SIM needed
             </RNText>
-          )}
+          </View>
 
-          {/* 로그인 버튼 */}
+          {/* Use email instead 토글 */}
           <TouchableOpacity
-            testID="login-button"
-            onPress={handleSubmit((data) => signIn(data))}
-            disabled={isPending}
-            activeOpacity={0.82}
-            style={{
-              height: 52,
-              borderRadius: 14,
-              backgroundColor: isPending ? '#0284C7' : '#0EA5E9',
-              alignItems: 'center',
-              justifyContent: 'center',
-              marginBottom: 20,
-            }}>
-            <RNText style={{ color: '#fff', fontWeight: '700', fontSize: 16 }}>
-              {isPending ? 'Logging in...' : 'Log in'}
+            testID="email-toggle"
+            onPress={() => {
+              setShowEmailForm((v) => !v)
+              if (!showEmailForm) scrollToBottom()
+            }}
+            activeOpacity={0.7}
+            style={{ alignItems: 'center', marginBottom: showEmailForm ? 16 : 0 }}>
+            <RNText style={{ fontSize: 14, color: '#3F3F46', fontWeight: '500' }}>
+              Use email instead {showEmailForm ? '↑' : '↓'}
             </RNText>
           </TouchableOpacity>
 
+          {/* 이메일 폼 (토글) */}
+          {showEmailForm && (
+            <View>
+              {/* 이메일 입력 */}
+              <View style={{ marginBottom: 12 }}>
+                <View
+                  style={{
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    height: 52,
+                    borderRadius: 12,
+                    borderWidth: 1,
+                    borderColor: '#E4E4E7',
+                    backgroundColor: '#F4F4F5',
+                    paddingHorizontal: 14,
+                    gap: 10,
+                  }}>
+                  <Mail size={18} color="#71717A" />
+                  <Controller
+                    control={control}
+                    name="email"
+                    render={({ field: { onChange, onBlur, value } }) => (
+                      <Input
+                        testID="email-input"
+                        placeholder="Email Address"
+                        keyboardType="email-address"
+                        autoCapitalize="none"
+                        autoComplete="off"
+                        autoCorrect={false}
+                        importantForAutofill="no"
+                        returnKeyType="next"
+                        onFocus={scrollToBottom}
+                        onBlur={onBlur}
+                        onChangeText={onChange}
+                        value={value}
+                        style={{
+                          flex: 1,
+                          height: 50,
+                          fontSize: 15,
+                          borderWidth: 0,
+                          backgroundColor: 'transparent',
+                          paddingHorizontal: 0,
+                          shadowOpacity: 0,
+                        }}
+                      />
+                    )}
+                  />
+                </View>
+                {errors.email && (
+                  <RNText style={{ fontSize: 12, color: '#EF4444', marginTop: 4 }}>
+                    {errors.email.message}
+                  </RNText>
+                )}
+              </View>
+
+              {/* 비밀번호 입력 */}
+              <View style={{ marginBottom: 8 }}>
+                <View
+                  style={{
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    height: 52,
+                    borderRadius: 12,
+                    borderWidth: 1,
+                    borderColor: '#E4E4E7',
+                    backgroundColor: '#F4F4F5',
+                    paddingHorizontal: 14,
+                    gap: 10,
+                  }}>
+                  <Lock size={18} color="#71717A" />
+                  <Controller
+                    control={control}
+                    name="password"
+                    render={({ field: { onChange, onBlur, value } }) => (
+                      <Input
+                        testID="password-input"
+                        secureTextEntry={!showPassword}
+                        placeholder="Password"
+                        autoComplete="off"
+                        importantForAutofill="no"
+                        returnKeyType="send"
+                        onFocus={scrollToBottom}
+                        onBlur={onBlur}
+                        onChangeText={onChange}
+                        value={value}
+                        onSubmitEditing={handleSubmit((data) => signIn(data))}
+                        style={{
+                          flex: 1,
+                          height: 50,
+                          fontSize: 15,
+                          borderWidth: 0,
+                          backgroundColor: 'transparent',
+                          paddingHorizontal: 0,
+                          shadowOpacity: 0,
+                          color: '#3F3F46',
+                        }}
+                      />
+                    )}
+                  />
+                  <Pressable onPress={() => setShowPassword((v) => !v)} style={{ padding: 4 }}>
+                    {showPassword ? (
+                      <Eye size={18} color="#71717A" />
+                    ) : (
+                      <EyeOff size={18} color="#71717A" />
+                    )}
+                  </Pressable>
+                </View>
+                {errors.password && (
+                  <RNText style={{ fontSize: 12, color: '#EF4444', marginTop: 4 }}>
+                    {errors.password.message}
+                  </RNText>
+                )}
+              </View>
+
+              {/* Forgot password */}
+              <View style={{ alignItems: 'flex-end', marginBottom: 20 }}>
+                <Pressable>
+                  <RNText style={{ fontSize: 13, color: '#0EA5E9', fontWeight: '500' }}>
+                    Forgot password?
+                  </RNText>
+                </Pressable>
+              </View>
+
+              {error && (
+                <RNText
+                  style={{ fontSize: 13, color: '#EF4444', textAlign: 'center', marginBottom: 12 }}>
+                  {error.message}
+                </RNText>
+              )}
+
+              {/* 로그인 버튼 */}
+              <TouchableOpacity
+                testID="login-button"
+                onPress={handleSubmit((data) => signIn(data))}
+                disabled={isPending}
+                activeOpacity={0.82}
+                style={{
+                  height: 52,
+                  borderRadius: 14,
+                  backgroundColor: isPending ? '#0284C7' : '#0EA5E9',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  marginBottom: 20,
+                }}>
+                <RNText style={{ color: '#fff', fontWeight: '700', fontSize: 16 }}>
+                  {isPending ? 'Logging in...' : 'Log in'}
+                </RNText>
+              </TouchableOpacity>
+            </View>
+          )}
+
           {/* 회원가입 링크 */}
           <View
-            style={{ flexDirection: 'row', justifyContent: 'center', gap: 4, marginBottom: 16 }}>
+            style={{
+              flexDirection: 'row',
+              justifyContent: 'center',
+              gap: 4,
+              marginTop: showEmailForm ? 0 : 20,
+              marginBottom: 16,
+            }}>
             <RNText style={{ fontSize: 14, color: '#71717A' }}>New to K-Gganbu?</RNText>
             <Link href="/(auth)/register" asChild>
               <Pressable>

@@ -42,7 +42,7 @@ function RootLayoutNav() {
   useEffect(() => {
     if (isLoading) return
     if (!isAuthenticated) {
-      router.replace('/(auth)/login')
+      router.replace('/(auth)/landing')
     }
   }, [isAuthenticated, isLoading])
 

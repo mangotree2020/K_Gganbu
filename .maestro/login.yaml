@@ -1,13 +1,23 @@
-appId: com.yourcompany.travelapp
+appId: com.mangonw.gganbu
 ---
-- launchApp
-- assertVisible: '로그인'
+- extendedWaitUntil:
+    visible:
+      id: 'get-started-button'
+    timeout: 30000
+- tapOn:
+    id: 'get-started-button'
+- waitForAnimationToEnd
+- tapOn:
+    id: 'email-toggle'
 - tapOn:
     id: 'email-input'
-- inputText: 'test@example.com'
+- inputText: 'winddew71@gmail.com'
 - tapOn:
     id: 'password-input'
-- inputText: 'password123'
+- inputText: 'pa20040803^^'
 - tapOn:
     id: 'login-button'
-- assertVisible: '추천 여행지'
+- extendedWaitUntil:
+    visible:
+      text: 'Good morning'
+    timeout: 15000
