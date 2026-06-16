@@ -46,16 +46,16 @@
 
 ## 6. 필수 기능 (MVP)
 
-| 기능                    | 설명                                                                                                                                                                                                                                  |
-| ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **실시간 통역**         | 음성↔음성 = **Gemini 3.5 Live Translate**(Live API, 스트리밍 speech-to-speech, 70+ 언어, 화자 톤·pitch 유지), 텍스트 번역 = Papago/Google, 카메라 OCR(메뉴판/간판), 상황별 회화(식당/택시/호텔/쇼핑/병원), "상대방에게 보여주기" 모드 |
-| **K-Map (통합 지도)**   | Google Maps 렌더링 + Naver API 데이터 하이브리드 (→ §17)                                                                                                                                                                              |
-| **AI 깐부 (AI 가이드)** | Claude API 챗봇. 위치·시간 컨텍스트 추천, 일정 생성, 문화 팁, 추천 장소 카드→지도/쿠폰 연결                                                                                                                                           |
-| **티켓/쿠폰 지갑**      | 외국인 전용 쿠폰함, QR 사용 처리, 오프라인에서도 QR 표시. 티켓 판매는 초기 아웃링크 → 2차 인앱 결제                                                                                                                                   |
-| **긴급 도움 (SOS)**     | 경찰(112)/병원/대사관/관광통역(1330) 안내, "Help Me" 긴급 문장 생성, 현재 위치 공유, 가까운 병원 찾기                                                                                                                                 |
-| **여행 일정 추천**      | 3시간/반나절/1일 코스, 크루즈 기항지 당일 코스, 테마별(가족/커플/K-POP)                                                                                                                                                               |
-| **인증**                | Supabase Auth — Google + Apple + Phone OTP(NHN Cloud SMS). **비회원(Guest) 우선**, WeChat/LINE은 Phase 2                                                                                                                              |
-| **다국어 UI**           | 1차: en / zh-CN / zh-TW / ja / ko → 2차: vi / th / id 확장                                                                                                                                                                            |
+| 기능                    | 설명                                                                                                                                                                                                                                             |
+| ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| **실시간 통역**         | 음성↔음성 = **Gemini 3.5 Live Translate**(Live API, 스트리밍 speech-to-speech, 70+ 언어, 화자 톤·pitch 유지), 텍스트 번역 = Google Cloud Translation, 카메라 OCR(메뉴판/간판), 상황별 회화(식당/택시/호텔/쇼핑/병원), "상대방에게 보여주기" 모드 |
+| **K-Map (통합 지도)**   | Google Maps 렌더링 + Naver API 데이터 하이브리드 (→ §17)                                                                                                                                                                                         |
+| **AI 깐부 (AI 가이드)** | Claude API 챗봇. 위치·시간 컨텍스트 추천, 일정 생성, 문화 팁, 추천 장소 카드→지도/쿠폰 연결                                                                                                                                                      |
+| **티켓/쿠폰 지갑**      | 외국인 전용 쿠폰함, QR 사용 처리, 오프라인에서도 QR 표시. 티켓 판매는 초기 아웃링크 → 2차 인앱 결제                                                                                                                                              |
+| **긴급 도움 (SOS)**     | 경찰(112)/병원/대사관/관광통역(1330) 안내, "Help Me" 긴급 문장 생성, 현재 위치 공유, 가까운 병원 찾기                                                                                                                                            |
+| **여행 일정 추천**      | 3시간/반나절/1일 코스, 크루즈 기항지 당일 코스, 테마별(가족/커플/K-POP)                                                                                                                                                                          |
+| **인증**                | Supabase Auth — Google + Apple + Phone OTP(NHN Cloud SMS). **비회원(Guest) 우선**, WeChat/LINE은 Phase 2                                                                                                                                         |
+| **다국어 UI**           | 1차: en / zh-CN / zh-TW / ja / ko → 2차: vi / th / id 확장                                                                                                                                                                                       |
 
 Phase 2+: 택시 호출 연동, T-money 안내, 환율 계산기, 리뷰, 로컬 가이드 매칭, WeChat/LINE 로그인
 **MVP 제외**: 유저 커뮤니티(게시판), 자체 결제 시스템(초기엔 외부 예매 아웃링크), 실시간 가이드 매칭
@@ -107,7 +107,7 @@ Backend  : Supabase (PostgreSQL + RLS + Edge Functions)
            서버 로직은 Edge Functions(Deno) 우선, 복잡 업무 발생 시 별도 API 서버 검토
 DB       : Supabase PostgreSQL (관리형) → 향후 트래픽/요건 증가 시
            self-hosted PostgreSQL 확장·이관 고려 (표준 PG라 이관 용이)
-AI       : Claude API (AI 깐부 챗봇 — 페르소나 §18), 텍스트 번역: Papago API 우선 + Google Translation 보조
+AI       : Claude API (AI 깐부 챗봇 — 페르소나 §18), 텍스트 번역: Google Cloud Translation 단독
 Voice    : Gemini 3.5 Live Translate (Live API, gemini-3.5-live-translate-preview)
            — 음성↔음성 실시간 통역. 16kHz PCM in / 24kHz audio out, targetLanguageCode 설정
            OCR 번역은 Google Cloud Vision + 텍스트 번역 API 연계
@@ -136,7 +136,7 @@ Dev      : Claude Code, CLAUDE.md 기반 컨텍스트, feature-folder 구조, mo
 | Firebase                                                             | **FCM 푸시 + Analytics 한정** (Auth/DB 미사용)                            |
 | Google Maps Platform                                                 | 지도 렌더링, Places(글로벌), Geocoding                                    |
 | Naver Cloud                                                          | Maps/Search/Directions/Geocoding — 국내 POI·대중교통·경로                 |
-| Papago / Google Translation                                          | 텍스트 번역 (Papago 우선)                                                 |
+| Google Cloud Translation                                             | 텍스트 번역 (단독 사용)                                                   |
 | **Gemini 3.5 Live Translate**                                        | 음성↔음성 실시간 통역 (Live API, 70+ 언어) — §25                          |
 | Google Cloud Vision                                                  | 카메라 OCR (메뉴판/간판 텍스트 추출)                                      |
 | Claude API                                                           | AI 깐부                                                                   |

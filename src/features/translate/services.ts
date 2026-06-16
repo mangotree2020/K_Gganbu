@@ -1,4 +1,4 @@
-// 번역 서비스 — Edge Function(Papago/Google) 호출 + mock 폴백 (mock-first)
+// 번역 서비스 — Edge Function(Google Cloud Translation) 호출 + mock 폴백 (mock-first)
 import { supabase } from '@/lib/supabase'
 
 export type TranslateInput = { source?: string; target: string; text: string }

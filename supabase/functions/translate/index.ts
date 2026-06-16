@@ -1,5 +1,5 @@
-// translate — 텍스트 번역 Edge Function
-// Papago(NCP) 우선 → 실패 시 Google Translation v2(키 있으면) → 둘 다 없으면 502
+// translate — 텍스트 번역 Edge Function (PLANNING §13: Google Cloud Translation 단독)
+// Google Cloud Translation v2 사용. 키 미설정 시 502 → 클라이언트 mock 폴백.
 // 클라이언트는 source/target/text 만 전달. API 키는 서버 시크릿으로 보호.
 import 'jsr:@supabase/functions-js/edge-runtime.d.ts'
 
@@ -10,31 +10,16 @@ const cors = {
 
 type Body = { source?: string; target: string; text: string }
 
-async function papago(source: string, target: string, text: string) {
-  const id = Deno.env.get('NAVER_CLIENT_ID')
-  const secret = Deno.env.get('NAVER_CLIENT_SECRET')
-  if (!id || !secret) return null
-  const res = await fetch('https://naveropenapi.apigw.ntruss.com/nmt/v1/translation', {
-    method: 'POST',
-    headers: {
-      'X-NCP-APIGW-API-KEY-ID': id,
-      'X-NCP-APIGW-API-KEY': secret,
-      'Content-Type': 'application/x-www-form-urlencoded',
-    },
-    body: new URLSearchParams({ source, target, text }).toString(),
-  })
-  if (!res.ok) return null
-  const json = await res.json()
-  return json?.message?.result?.translatedText ?? null
-}
-
-async function google(source: string, target: string, text: string) {
+// Google Cloud Translation v2 (단독 사용). source 'auto'는 생략하면 자동 감지.
+async function googleTranslate(source: string, target: string, text: string) {
   const key = Deno.env.get('GOOGLE_TRANSLATE_KEY')
   if (!key) return null
+  const payload: Record<string, string> = { q: text, target, format: 'text' }
+  if (source && source !== 'auto') payload.source = source
   const res = await fetch(`https://translation.googleapis.com/language/translate/v2?key=${key}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ q: text, source, target, format: 'text' }),
+    body: JSON.stringify(payload),
   })
   if (!res.ok) return null
   const json = await res.json()
@@ -52,28 +37,20 @@ Deno.serve(async (req) => {
       })
     }
 
-    // Papago는 'auto' 미지원 → ko/en 추정
-    const src = source === 'auto' ? (/[가-힣]/.test(text) ? 'ko' : 'en') : source
-
-    let translated = await papago(src, target, text)
-    let provider = 'papago'
-    if (!translated) {
-      translated = await google(src, target, text)
-      provider = 'google'
-    }
+    const translated = await googleTranslate(source, target, text)
 
     if (!translated) {
       return new Response(
         JSON.stringify({
           error: 'no_provider',
-          message: '번역 provider 미설정(Papago/Google 키 필요)',
+          message: '번역 provider 미설정(GOOGLE_TRANSLATE_KEY 필요)',
         }),
         { status: 502, headers: { ...cors, 'Content-Type': 'application/json' } },
       )
     }
 
     return new Response(
-      JSON.stringify({ translatedText: translated, provider, source: src, target }),
+      JSON.stringify({ translatedText: translated, provider: 'google', source, target }),
       {
         headers: { ...cors, 'Content-Type': 'application/json' },
       },
