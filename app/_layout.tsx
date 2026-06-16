@@ -52,6 +52,7 @@ function RootLayoutNav() {
       <Stack screenOptions={{ headerShown: false }}>
         <Stack.Screen name="(auth)" />
         <Stack.Screen name="(tabs)" />
+        <Stack.Screen name="translate" options={{ presentation: 'modal' }} />
       </Stack>
     </>
   )

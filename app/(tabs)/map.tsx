@@ -1,5 +1,13 @@
 import { useState } from 'react'
-import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native'
+import {
+  type DimensionValue,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+} from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import Svg, { Circle, Ellipse, G, Path, Rect, Text as SvgText } from 'react-native-svg'
 
@@ -19,8 +27,8 @@ type Place = {
   naver: { rating: number; count: number }
   google: { rating: number; count: number }
   reviews: { naver: Review[]; google: Review[] }
-  top: string
-  left: string
+  top: DimensionValue
+  left: DimensionValue
   pinIcon: string
   pinColor: string
 }

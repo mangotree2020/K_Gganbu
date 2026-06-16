@@ -188,7 +188,7 @@ const CORE_ACTIONS = [
     key: 'translate',
     label: 'Translate',
     sub: 'Now',
-    route: '/(tabs)/ai',
+    route: '/translate',
     icon: <Languages size={22} color="#0284C7" />,
   },
   {
@@ -325,7 +325,7 @@ function BigTile({ tile }: { tile: (typeof QUICK_TILES)[0] }) {
   return (
     <Pressable
       style={({ pressed }) => [ss.bigTile, { opacity: pressed ? 0.88 : 1 }]}
-      onPress={() => tile.id === 'translate' && router.push('/(tabs)/ai')}>
+      onPress={() => tile.id === 'translate' && router.push('/translate')}>
       <LinearGradient
         colors={[tile.from, tile.to]}
         start={{ x: 0, y: 0 }}
@@ -557,7 +557,7 @@ export default function HomeScreen() {
                 placeholderTextColor={C.z500}
                 style={ss.searchInput}
               />
-              <Pressable style={ss.translateBtn}>
+              <Pressable style={ss.translateBtn} onPress={() => router.push('/translate')}>
                 <Languages size={14} color="#fff" />
                 <Text style={ss.translateBtnText}> KO</Text>
               </Pressable>
