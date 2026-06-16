@@ -1,4 +1,5 @@
 import { LinearGradient } from 'expo-linear-gradient'
+import { router } from 'expo-router'
 import { useState } from 'react'
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
@@ -152,6 +153,12 @@ export default function CouponsScreen() {
         {shown.map((c) => (
           <Pressable
             key={c.id}
+            onPress={() =>
+              router.push({
+                pathname: '/coupon-qr',
+                params: { id: String(c.id), name: c.name, disc: c.disc },
+              })
+            }
             style={({ pressed }) => [ss.card, shadows.card, { opacity: pressed ? 0.9 : 1 }]}>
             <View style={ss.cardThumb}>
               <PlaceThumb category={c.icon} height={56} />
