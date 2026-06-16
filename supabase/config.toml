@@ -1,0 +1,11 @@
+project_id = "ltdajglszqkgneegjryb"
+
+[auth]
+enable_signup = true
+# Guest-first (PLANNING §6) — 가입 없이 핵심 기능 사용
+enable_anonymous_sign_ins = true
+
+[auth.email]
+enable_signup = true
+# 개발 단계: 이메일 확인 비활성 (실제 SMTP 연동 전까지 즉시 가입)
+enable_confirmations = false

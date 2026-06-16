@@ -1,7 +1,7 @@
 import { LinearGradient } from 'expo-linear-gradient'
 import { router } from 'expo-router'
 import { useEffect, useState } from 'react'
-import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native'
+import { Image, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import Svg, { Circle, G, Path, Rect } from 'react-native-svg'
 import {
@@ -25,6 +25,7 @@ import {
 
 import { Icon } from '@/components/brand'
 import { useAuthStore } from '@/features/auth/store'
+import { usePlaces, type Poi } from '@/features/map/queries'
 
 // 색상 토큰
 const C = {
@@ -440,6 +441,38 @@ function PlaceCard({ place }: { place: (typeof PLACES)[0] }) {
   )
 }
 
+// 실데이터 POI 카드 (TourAPI)
+function PoiCard({ poi }: { poi: Poi }) {
+  return (
+    <Pressable
+      onPress={() =>
+        router.push({
+          pathname: '/place',
+          params: { cat: poi.cat, name: poi.name, sub: poi.address ?? 'Busan', dist: '' },
+        })
+      }
+      style={({ pressed }) => [ss.placeCard, ss.shadowCard, { opacity: pressed ? 0.88 : 1 }]}>
+      {poi.imageUrl ? (
+        <Image
+          source={{ uri: poi.imageUrl }}
+          style={{ height: 92, width: '100%' }}
+          resizeMode="cover"
+        />
+      ) : (
+        <PlaceThumb category={poi.cat} height={92} />
+      )}
+      <View style={ss.placeCardBody}>
+        <Text style={ss.placeCardName} numberOfLines={1}>
+          {poi.name}
+        </Text>
+        <Text style={ss.placeCardSub} numberOfLines={1}>
+          {poi.address ?? 'Busan'}
+        </Text>
+      </View>
+    </Pressable>
+  )
+}
+
 // 딜 배너 (티켓 스타일)
 function DealsBanner() {
   return (
@@ -537,6 +570,7 @@ function CommunityCard() {
 export default function HomeScreen() {
   useAuthStore((state) => state.user)
   const [promptIdx, setPromptIdx] = useState(0)
+  const { data: pois } = usePlaces('en', 12)
 
   useEffect(() => {
     const t = setInterval(() => setPromptIdx((i) => (i + 1) % AI_PROMPTS.length), 3500)
@@ -638,16 +672,16 @@ export default function HomeScreen() {
           <TodayPickCard />
         </View>
 
-        {/* ─── Nearby now ─── */}
+        {/* ─── Nearby now (TourAPI 실데이터) ─── */}
         <View style={{ paddingTop: 22 }}>
           <SectionHeader title="Nearby now" action="See all" />
           <ScrollView
             horizontal
             showsHorizontalScrollIndicator={false}
             contentContainerStyle={{ paddingHorizontal: 16, gap: 12, paddingTop: 8 }}>
-            {PLACES.map((p) => (
-              <PlaceCard key={p.id} place={p} />
-            ))}
+            {pois && pois.length > 0
+              ? pois.map((p) => <PoiCard key={p.id} poi={p} />)
+              : PLACES.map((p) => <PlaceCard key={p.id} place={p} />)}
           </ScrollView>
         </View>
 
