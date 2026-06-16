@@ -11,6 +11,6 @@ module.exports = [
     },
   },
   {
-    ignores: ['node_modules/', 'dist/', '.expo/'],
+    ignores: ['node_modules/', 'dist/', '.expo/', 'supabase/functions/'],
   },
 ]

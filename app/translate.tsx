@@ -5,6 +5,7 @@ import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-
 import { SafeAreaView } from 'react-native-safe-area-context'
 
 import { Icon } from '@/components/brand'
+import { translateText } from '@/features/translate/services'
 import { palette } from '@/theme/tokens'
 
 type Mode = 'text' | 'camera' | 'voice'
@@ -79,15 +80,13 @@ export default function TranslateScreen() {
   const [output, setOutput] = useState(MOCK[INITIAL_INPUT])
   const [translating, setTranslating] = useState(false)
 
-  const doTranslate = () => {
+  const doTranslate = async () => {
     if (!input.trim()) return
     setTranslating(true)
     setOutput('')
-    setTimeout(() => {
-      const r = MOCK[input.trim()] ?? (src === 'en' ? '[KO] ' + input : '[EN] ' + input)
-      setOutput(r)
-      setTranslating(false)
-    }, 700)
+    const { translatedText } = await translateText({ source: src, target: tgt, text: input })
+    setOutput(translatedText)
+    setTranslating(false)
   }
 
   const swap = () => {
