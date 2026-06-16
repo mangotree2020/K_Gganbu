@@ -1,3 +1,5 @@
+import { LinearGradient } from 'expo-linear-gradient'
+import { router } from 'expo-router'
 import { useEffect, useState } from 'react'
 import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
@@ -5,7 +7,9 @@ import Svg, { Circle, G, Path, Rect } from 'react-native-svg'
 import {
   AlertTriangle,
   Bell,
+  Bot,
   ChevronRight,
+  Compass,
   CreditCard,
   Languages,
   MapPin,
@@ -19,6 +23,7 @@ import {
   User,
 } from 'lucide-react-native'
 
+import { Icon } from '@/components/brand'
 import { useAuthStore } from '@/features/auth/store'
 
 // 색상 토큰
@@ -104,15 +109,15 @@ const AI_PROMPTS = [
   'Translate this menu for a peanut allergy',
 ]
 
-// 카테고리별 썸네일 색상
-const THUMB_COLORS: Record<string, string> = {
-  seafood: '#0D9488',
-  cafe: '#F97316',
-  sights: '#0EA5E9',
-  village: '#EA580C',
-  beach: '#0284C7',
-  cable: '#8B5CF6',
-  spa: '#EC4899',
+// 카테고리별 썸네일 그라데이션 + 아이콘 (디자인 PlaceThumb)
+const THUMB: Record<string, { from: string; to: string; icon: string; color: string }> = {
+  seafood: { from: '#7DD3FC', to: '#0284C7', icon: 'set_meal', color: '#fff' },
+  cafe: { from: '#FEF3C7', to: '#F59E0B', icon: 'local_cafe', color: '#78350F' },
+  sights: { from: '#CCFBF1', to: '#2DD4BF', icon: 'photo_camera', color: '#115E59' },
+  village: { from: '#FDBA74', to: '#F97316', icon: 'holiday_village', color: '#fff' },
+  beach: { from: '#BAE6FD', to: '#0EA5E9', icon: 'beach_access', color: '#0C4A6E' },
+  cable: { from: '#E0F2FE', to: '#38BDF8', icon: 'aerial_way', color: '#0C4A6E' },
+  spa: { from: '#FCE7F3', to: '#EC4899', icon: 'spa', color: '#831843' },
 }
 
 // 뱃지 색상
@@ -177,6 +182,31 @@ const QUICK_TILES = [
   },
 ]
 
+// 3대 핵심 액션 (Translate Now / Ask AI Gganbu / Find Places)
+const CORE_ACTIONS = [
+  {
+    key: 'translate',
+    label: 'Translate',
+    sub: 'Now',
+    route: '/(tabs)/ai',
+    icon: <Languages size={22} color="#0284C7" />,
+  },
+  {
+    key: 'ai',
+    label: 'Ask AI',
+    sub: 'Gganbu',
+    route: '/(tabs)/ai',
+    icon: <Bot size={22} color="#0284C7" />,
+  },
+  {
+    key: 'map',
+    label: 'Find',
+    sub: 'Places',
+    route: '/(tabs)/map',
+    icon: <Compass size={22} color="#0284C7" />,
+  },
+]
+
 const QUICK_ICON_MAP: Record<string, React.ReactNode> = {
   Languages: <Languages size={18} color="#fff" />,
   Ticket: <Ticket size={18} color="#fff" />,
@@ -223,26 +253,27 @@ function CitySilhouette() {
   )
 }
 
-// 장소 썸네일 (컬러 블록)
+// 장소 썸네일 (그라데이션 + 카테고리 아이콘)
 function PlaceThumb({ category, height = 92 }: { category: string; height?: number }) {
+  const t = THUMB[category] ?? THUMB.sights
   return (
-    <View
-      style={{
-        height,
-        backgroundColor: THUMB_COLORS[category] ?? C.primary,
-        alignItems: 'center',
-        justifyContent: 'center',
-        overflow: 'hidden',
-      }}>
+    <LinearGradient
+      colors={[t.from, t.to]}
+      start={{ x: 0, y: 0 }}
+      end={{ x: 1, y: 1 }}
+      style={{ height, alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
       <View
         style={{
           position: 'absolute',
-          inset: 0,
-          backgroundColor: 'rgba(0,0,0,.15)',
+          bottom: -height * 0.5,
+          width: '140%',
+          height,
+          backgroundColor: 'rgba(255,255,255,.18)',
+          borderRadius: 999,
         }}
       />
-      <MapPin size={28} color="rgba(255,255,255,.7)" />
-    </View>
+      <Icon name={t.icon} size={Math.floor(height * 0.42)} color={t.color} filled />
+    </LinearGradient>
   )
 }
 
@@ -267,10 +298,17 @@ function SectionHeader({ title, sub, action }: { title?: string; sub?: string; a
 // AI 메이트 카드
 function AiMateCard({ promptIdx }: { promptIdx: number }) {
   return (
-    <View style={[ss.aiCard, ss.shadow]}>
-      <View style={ss.aiAvatar}>
+    <Pressable
+      style={({ pressed }) => [ss.aiCard, ss.shadow, { opacity: pressed ? 0.94 : 1 }]}
+      onPress={() => router.push('/(tabs)/ai')}>
+      <LinearGradient
+        colors={['#38BDF8', '#0EA5E9', '#0D9488']}
+        locations={[0, 0.6, 1]}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+        style={ss.aiAvatar}>
         <Sparkles size={24} color="#fff" />
-      </View>
+      </LinearGradient>
       <View style={{ flex: 1 }}>
         <Text style={ss.aiTitle}>Ask AI Mate anything</Text>
         <Text style={ss.aiPrompt}>&quot;{AI_PROMPTS[promptIdx]}&quot;</Text>
@@ -278,7 +316,7 @@ function AiMateCard({ promptIdx }: { promptIdx: number }) {
       <View style={ss.aiArrow}>
         <Navigation size={18} color={C.primaryDeep} />
       </View>
-    </View>
+    </Pressable>
   )
 }
 
@@ -286,22 +324,26 @@ function AiMateCard({ promptIdx }: { promptIdx: number }) {
 function BigTile({ tile }: { tile: (typeof QUICK_TILES)[0] }) {
   return (
     <Pressable
-      style={({ pressed }) => [
-        ss.bigTile,
-        { backgroundColor: tile.to, opacity: pressed ? 0.88 : 1 },
-      ]}>
-      <View style={ss.bigTileTop}>
-        <View style={ss.bigTileIconBox}>{QUICK_ICON_MAP[tile.icon]}</View>
-        {tile.badge && (
-          <View style={ss.bigTileBadge}>
-            <Text style={ss.bigTileBadgeText}>{tile.badge}</Text>
-          </View>
-        )}
-      </View>
-      <View>
-        <Text style={ss.bigTileTitle}>{tile.title}</Text>
-        <Text style={ss.bigTileSub}>{tile.sub}</Text>
-      </View>
+      style={({ pressed }) => [ss.bigTile, { opacity: pressed ? 0.88 : 1 }]}
+      onPress={() => tile.id === 'translate' && router.push('/(tabs)/ai')}>
+      <LinearGradient
+        colors={[tile.from, tile.to]}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+        style={ss.bigTileGrad}>
+        <View style={ss.bigTileTop}>
+          <View style={ss.bigTileIconBox}>{QUICK_ICON_MAP[tile.icon]}</View>
+          {tile.badge && (
+            <View style={ss.bigTileBadge}>
+              <Text style={ss.bigTileBadgeText}>{tile.badge}</Text>
+            </View>
+          )}
+        </View>
+        <View>
+          <Text style={ss.bigTileTitle}>{tile.title}</Text>
+          <Text style={ss.bigTileSub}>{tile.sub}</Text>
+        </View>
+      </LinearGradient>
     </Pressable>
   )
 }
@@ -469,7 +511,12 @@ export default function HomeScreen() {
     <View style={ss.container}>
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={ss.scrollContent}>
         {/* ─── 헤더 ─── */}
-        <View style={ss.header}>
+        <LinearGradient
+          colors={['#FDBA74', '#38BDF8', '#0EA5E9']}
+          locations={[0, 0.6, 1]}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 0.3, y: 1 }}
+          style={ss.header}>
           <CitySilhouette />
           {/* 상단 행: 위치 + 아이콘 */}
           <SafeAreaView edges={['top']}>
@@ -515,8 +562,22 @@ export default function HomeScreen() {
                 <Text style={ss.translateBtnText}> KO</Text>
               </Pressable>
             </View>
+
+            {/* 3대 핵심 액션 (spec §7) */}
+            <View style={ss.coreActions}>
+              {CORE_ACTIONS.map((a) => (
+                <Pressable
+                  key={a.key}
+                  style={({ pressed }) => [ss.coreAction, { opacity: pressed ? 0.85 : 1 }]}
+                  onPress={() => a.route && router.push(a.route as never)}>
+                  <View style={ss.coreActionIcon}>{a.icon}</View>
+                  <Text style={ss.coreActionLabel}>{a.label}</Text>
+                  <Text style={ss.coreActionSub}>{a.sub}</Text>
+                </Pressable>
+              ))}
+            </View>
           </SafeAreaView>
-        </View>
+        </LinearGradient>
 
         {/* ─── AI Mate 카드 ─── */}
         <View style={ss.section}>
@@ -680,6 +741,30 @@ const ss = StyleSheet.create({
   },
   translateBtnText: { color: '#fff', fontSize: 11, fontWeight: '700' },
 
+  // 3대 핵심 액션
+  coreActions: { flexDirection: 'row', gap: 8, marginTop: 12 },
+  coreAction: {
+    flex: 1,
+    backgroundColor: 'rgba(255,255,255,.16)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,.28)',
+    borderRadius: 16,
+    paddingTop: 11,
+    paddingBottom: 9,
+    alignItems: 'center',
+    gap: 5,
+  },
+  coreActionIcon: {
+    width: 38,
+    height: 38,
+    borderRadius: 12,
+    backgroundColor: 'rgba(255,255,255,.9)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  coreActionLabel: { fontSize: 12.5, fontWeight: '800', color: '#fff', letterSpacing: -0.1 },
+  coreActionSub: { fontSize: 10, color: 'rgba(255,255,255,.92)', marginTop: -3 },
+
   // 섹션
   section: { paddingHorizontal: 16 },
   sectionHeader: {
@@ -755,15 +840,19 @@ const ss = StyleSheet.create({
   bigTile: {
     width: 148,
     borderRadius: 18,
-    padding: 12,
-    paddingBottom: 14,
-    minHeight: 88,
-    justifyContent: 'space-between',
+    overflow: 'hidden',
     shadowColor: '#0F172A',
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.12,
     shadowRadius: 12,
     elevation: 4,
+  },
+  bigTileGrad: {
+    flex: 1,
+    padding: 12,
+    paddingBottom: 14,
+    minHeight: 88,
+    justifyContent: 'space-between',
   },
   bigTileTop: {
     flexDirection: 'row',

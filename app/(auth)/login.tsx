@@ -15,44 +15,10 @@ import { Link, router } from 'expo-router'
 import Svg, { Path } from 'react-native-svg'
 import { SafeAreaView } from 'react-native-safe-area-context'
 
+import { BrandMark } from '@/components/brand'
 import { Input } from '@/components/ui/input'
 import { useSignIn } from '@/features/auth/queries'
 import { loginSchema, type LoginFormData } from '@/features/auth/types'
-
-function KambuLogoIcon({ size = 44 }: { size?: number }) {
-  return (
-    <View
-      style={{
-        width: size,
-        height: size,
-        borderRadius: size * 0.28,
-        backgroundColor: '#0EA5E9',
-        alignItems: 'center',
-        justifyContent: 'center',
-      }}>
-      <View
-        style={{
-          width: size * 0.44,
-          height: size * 0.44,
-          borderRadius: size * 0.1,
-          backgroundColor: '#fff',
-          opacity: 0.92,
-          transform: [{ rotate: '45deg' }],
-          position: 'absolute',
-        }}
-      />
-      <View
-        style={{
-          width: size * 0.18,
-          height: size * 0.18,
-          borderRadius: size * 0.09,
-          backgroundColor: '#0EA5E9',
-          zIndex: 1,
-        }}
-      />
-    </View>
-  )
-}
 
 function GoogleIcon() {
   return (
@@ -104,7 +70,7 @@ function SocialBtn({ bg, textColor, borderColor, icon, label, onPress }: SocialB
       activeOpacity={0.82}
       style={{
         height: 48,
-        borderRadius: 12,
+        borderRadius: 14,
         backgroundColor: bg,
         borderWidth: borderColor ? 1 : 0,
         borderColor: borderColor,
@@ -163,19 +129,7 @@ export default function LoginScreen() {
             <RNText style={{ fontSize: 18, color: '#18181B', lineHeight: 22 }}>←</RNText>
           </Pressable>
 
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-            <KambuLogoIcon size={44} />
-            <View>
-              <RNText
-                style={{ fontSize: 18, fontWeight: '700', color: '#18181B', letterSpacing: -0.3 }}>
-                K-Gganbu
-              </RNText>
-              <RNText
-                style={{ fontSize: 10, color: '#0EA5E9', fontWeight: '600', letterSpacing: 0.5 }}>
-                TRAVEL · TRANSLATE · 간부
-              </RNText>
-            </View>
-          </View>
+          <BrandMark size={42} />
         </View>
 
         <ScrollView

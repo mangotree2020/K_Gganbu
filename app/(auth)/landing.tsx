@@ -1,226 +1,277 @@
 import { router } from 'expo-router'
-import { Camera, Languages } from 'lucide-react-native'
-import { Text, TouchableOpacity, View } from 'react-native'
+import { LinearGradient } from 'expo-linear-gradient'
+import { useEffect, useRef, useState } from 'react'
+import { Pressable, Text, TouchableOpacity, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
+import Svg, { Circle, G, Path, Rect } from 'react-native-svg'
 
-function KambuLogoIcon({ size = 32 }: { size?: number }) {
-  return (
-    <View
-      style={{
-        width: size,
-        height: size,
-        borderRadius: size * 0.28,
-        backgroundColor: '#0EA5E9',
-        alignItems: 'center',
-        justifyContent: 'center',
-      }}>
-      <View
-        style={{
-          width: size * 0.44,
-          height: size * 0.44,
-          borderRadius: size * 0.1,
-          backgroundColor: '#fff',
-          opacity: 0.92,
-          transform: [{ rotate: '45deg' }],
-          position: 'absolute',
-        }}
-      />
-      <View
-        style={{
-          width: size * 0.18,
-          height: size * 0.18,
-          borderRadius: size * 0.09,
-          backgroundColor: '#0EA5E9',
-          zIndex: 1,
-        }}
-      />
-    </View>
-  )
-}
+import { BrandMark, Icon } from '@/components/brand'
+import { palette, shadows } from '@/theme/tokens'
 
-const FEATURES = [
+type Tone = 'teal' | 'blue' | 'coral'
+
+const FEATURES: { icon: string; emoji: string; title: string; sub: string; tone: Tone }[] = [
   {
-    icon: <Languages size={20} color="#fff" />,
+    icon: 'translate',
+    emoji: '🗣️',
     title: 'Translate anything',
-    desc: 'Point your camera at a menu or speak — instant Korean, 5 languages.',
+    sub: 'Point your camera at a menu or speak — instant Korean, 5 languages.',
+    tone: 'teal',
+  },
+  {
+    icon: 'compare_arrows',
+    emoji: '🗺️',
+    title: 'Two map views',
+    sub: 'Compare local (Naver) vs traveler (Google) reviews side by side.',
+    tone: 'blue',
+  },
+  {
+    icon: 'smart_toy',
+    emoji: '🤖',
+    title: 'Your AI travel Gganbu',
+    sub: 'Plans, budgets, and rescues you in real time — built on Claude.',
+    tone: 'coral',
   },
 ]
 
-const BADGES = ['Works offline', 'No Korean SIM needed', 'Free to start']
+const TONE_COLOR: Record<Tone, string> = {
+  teal: palette.teal[40],
+  blue: palette.blue[50],
+  coral: palette.coral[50],
+}
+const TONE_TINT: Record<Tone, string> = {
+  teal: palette.teal[95],
+  blue: palette.blue[95],
+  coral: palette.coral[95],
+}
+
+// 부산 도심 실루엣 — 히어로 폴백 오버레이
+function CitySilhouette() {
+  return (
+    <Svg
+      viewBox="0 0 392 440"
+      preserveAspectRatio="none"
+      style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', opacity: 0.3 }}>
+      <Circle cx="310" cy="90" r="44" fill="rgba(255,255,255,0.4)" />
+      <Path
+        d="M0 360 L60 300 L120 340 L180 270 L250 320 L320 250 L392 310 L392 440 L0 440 Z"
+        fill="rgba(15,23,42,0.22)"
+      />
+      <G fill="rgba(15,23,42,0.34)">
+        <Rect x="40" y="330" width="16" height="80" />
+        <Rect x="64" y="350" width="24" height="60" />
+        <Rect x="150" y="320" width="14" height="90" />
+        <Rect x="172" y="345" width="20" height="65" />
+        <Rect x="250" y="310" width="13" height="100" />
+        <Rect x="270" y="340" width="22" height="70" />
+        <Rect x="320" y="330" width="15" height="80" />
+        <Rect x="342" y="350" width="24" height="60" />
+      </G>
+    </Svg>
+  )
+}
 
 export default function LandingScreen() {
-  return (
-    <View style={{ flex: 1, backgroundColor: '#60A5FA' }}>
-      {/* 상단 배경 영역 */}
-      <SafeAreaView edges={['top']} style={{ flex: 1 }}>
-        {/* 상단 바 */}
-        <View
-          style={{
-            flexDirection: 'row',
-            justifyContent: 'space-between',
-            alignItems: 'center',
-            paddingHorizontal: 20,
-            paddingTop: 8,
-            paddingBottom: 12,
-          }}>
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-            <KambuLogoIcon size={32} />
-            <View>
-              <Text style={{ fontSize: 15, fontWeight: '700', color: '#fff' }}>K-Gganbu</Text>
-              <Text style={{ fontSize: 8, color: '#BAE6FD', letterSpacing: 0.5 }}>
-                TRAVEL · TRANSLATE · 친구
-              </Text>
-            </View>
-          </View>
-          <TouchableOpacity
-            activeOpacity={0.8}
-            style={{
-              flexDirection: 'row',
-              alignItems: 'center',
-              gap: 4,
-              backgroundColor: 'rgba(255,255,255,0.2)',
-              borderRadius: 20,
-              paddingHorizontal: 12,
-              paddingVertical: 6,
-            }}>
-            <Text style={{ color: '#fff', fontSize: 13, fontWeight: '600' }}>EN</Text>
-            <Text style={{ color: '#fff', fontSize: 10 }}>▾</Text>
-          </TouchableOpacity>
-        </View>
+  const [feature, setFeature] = useState(0)
+  const timer = useRef<ReturnType<typeof setInterval> | null>(null)
 
-        {/* 이미지 placeholder */}
-        <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24 }}>
+  useEffect(() => {
+    timer.current = setInterval(() => setFeature((f) => (f + 1) % FEATURES.length), 2800)
+    return () => {
+      if (timer.current) clearInterval(timer.current)
+    }
+  }, [])
+
+  const f = FEATURES[feature]
+
+  return (
+    <View style={{ flex: 1, backgroundColor: palette.zinc[50] }}>
+      {/* 히어로 영역 (화면 52%) */}
+      <View style={{ height: '52%', overflow: 'hidden' }}>
+        <LinearGradient
+          colors={['#FDBA74', '#38BDF8', '#0EA5E9', '#1D4ED8']}
+          locations={[0, 0.45, 0.7, 1]}
+          start={{ x: 0.15, y: 0 }}
+          end={{ x: 0.4, y: 1 }}
+          style={{ position: 'absolute', inset: 0 }}
+        />
+        <CitySilhouette />
+        {/* 하단 페이드 (콘텐츠로 자연스럽게 연결) */}
+        <LinearGradient
+          colors={['rgba(0,0,0,0.28)', 'transparent', 'transparent', palette.zinc[50]]}
+          locations={[0, 0.3, 0.6, 1]}
+          style={{ position: 'absolute', inset: 0 }}
+        />
+        {/* 상단 바 */}
+        <SafeAreaView edges={['top']}>
           <View
             style={{
-              borderWidth: 1.5,
-              borderColor: 'rgba(255,255,255,0.55)',
-              borderStyle: 'dashed',
-              borderRadius: 16,
-              paddingVertical: 28,
-              paddingHorizontal: 32,
+              flexDirection: 'row',
+              justifyContent: 'space-between',
               alignItems: 'center',
-              gap: 10,
-              backgroundColor: 'rgba(255,255,255,0.12)',
-              width: '100%',
+              paddingHorizontal: 18,
+              paddingTop: 8,
             }}>
-            <Camera size={32} color="rgba(255,255,255,0.85)" />
-            <Text
+            <BrandMark size={36} light />
+            <TouchableOpacity
+              activeOpacity={0.8}
               style={{
-                color: 'rgba(255,255,255,0.9)',
-                fontSize: 13,
-                textAlign: 'center',
-                lineHeight: 18,
+                flexDirection: 'row',
+                alignItems: 'center',
+                gap: 4,
+                backgroundColor: 'rgba(0,0,0,0.32)',
+                borderWidth: 1,
+                borderColor: 'rgba(255,255,255,0.28)',
+                borderRadius: 999,
+                paddingHorizontal: 11,
+                paddingVertical: 6,
               }}>
-              Drop a Busan skyline / Gwangan Bridge photo
-            </Text>
-            <Text style={{ color: 'rgba(255,255,255,0.65)', fontSize: 12 }}>or browse files</Text>
+              <Text style={{ color: '#fff', fontSize: 12, fontWeight: '700' }}>🌐 EN</Text>
+              <Icon name="expand_more" size={14} color="#fff" />
+            </TouchableOpacity>
           </View>
-        </View>
-      </SafeAreaView>
+        </SafeAreaView>
+      </View>
 
-      {/* 하단 카드 */}
-      <SafeAreaView
-        edges={['bottom']}
-        style={{
-          backgroundColor: '#fff',
-          borderTopLeftRadius: 28,
-          borderTopRightRadius: 28,
-          paddingHorizontal: 24,
-          paddingTop: 28,
-          paddingBottom: 8,
-        }}>
+      {/* 콘텐츠 영역 */}
+      <View style={{ flex: 1, paddingHorizontal: 24, paddingTop: 8 }}>
         <Text
           style={{
-            fontSize: 26,
+            fontSize: 27,
             fontWeight: '800',
-            color: '#18181B',
-            letterSpacing: -0.5,
-            marginBottom: 8,
+            letterSpacing: -0.6,
+            lineHeight: 30,
+            color: palette.zinc[900],
           }}>
           Busan, without the{'\n'}language barrier.
         </Text>
-        <Text style={{ fontSize: 14, color: '#71717A', lineHeight: 20, marginBottom: 20 }}>
-          Your pocket guide, interpreter, and local friend — from the cruise port to the last
-          pojangmacha.
+        <Text style={{ fontSize: 13.5, color: palette.zinc[500], marginTop: 8, lineHeight: 20 }}>
+          Your Korean best friend on the trip — interpreter, map, and local guide from the cruise
+          port to the last pojangmacha.
         </Text>
 
-        {/* 기능 카드 */}
-        {FEATURES.map((f, i) => (
+        {/* 회전 피처 카드 */}
+        <View
+          style={[
+            {
+              marginTop: 18,
+              backgroundColor: '#fff',
+              borderWidth: 0.5,
+              borderColor: palette.zinc[200],
+              borderRadius: 18,
+              paddingVertical: 14,
+              paddingHorizontal: 16,
+              flexDirection: 'row',
+              alignItems: 'center',
+              gap: 14,
+              minHeight: 78,
+            },
+            shadows.card,
+          ]}>
           <View
-            key={i}
+            style={{
+              width: 46,
+              height: 46,
+              borderRadius: 14,
+              backgroundColor: TONE_TINT[f.tone],
+              alignItems: 'center',
+              justifyContent: 'center',
+            }}>
+            <Icon name={f.icon} size={24} color={TONE_COLOR[f.tone]} filled />
+            <Text style={{ position: 'absolute', top: -8, right: -8, fontSize: 18 }}>
+              {f.emoji}
+            </Text>
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text
+              style={{
+                fontSize: 14,
+                fontWeight: '800',
+                color: palette.zinc[900],
+                letterSpacing: -0.2,
+              }}>
+              {f.title}
+            </Text>
+            <Text
+              style={{ fontSize: 11.5, color: palette.zinc[500], marginTop: 2, lineHeight: 16 }}>
+              {f.sub}
+            </Text>
+          </View>
+        </View>
+
+        {/* 인디케이터 점 */}
+        <View style={{ flexDirection: 'row', gap: 6, justifyContent: 'center', marginTop: 14 }}>
+          {FEATURES.map((_, i) => (
+            <Pressable
+              key={i}
+              onPress={() => setFeature(i)}
+              style={{
+                width: i === feature ? 22 : 7,
+                height: 7,
+                borderRadius: 999,
+                backgroundColor: i === feature ? palette.blue[50] : palette.zinc[300],
+              }}
+            />
+          ))}
+        </View>
+
+        {/* CTA */}
+        <View style={{ marginTop: 'auto', paddingBottom: 26 }}>
+          <TouchableOpacity
+            testID="get-started-button"
+            onPress={() => router.push('/(auth)/login')}
+            activeOpacity={0.85}
+            style={[
+              {
+                flexDirection: 'row',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: 8,
+                backgroundColor: palette.blue[50],
+                borderRadius: 16,
+                paddingVertical: 15,
+              },
+              shadows.blue,
+            ]}>
+            <Text style={{ color: '#fff', fontSize: 15, fontWeight: '700', letterSpacing: 0.2 }}>
+              Get started
+            </Text>
+            <Icon name="arrow_forward" size={18} color="#fff" />
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            onPress={() => router.replace('/(tabs)')}
+            activeOpacity={0.7}
+            style={{ alignItems: 'center', marginTop: 10, paddingVertical: 8 }}>
+            <Text style={{ fontSize: 13, color: palette.zinc[600], fontWeight: '600' }}>
+              Explore as guest
+            </Text>
+          </TouchableOpacity>
+
+          <View
             style={{
               flexDirection: 'row',
               alignItems: 'center',
-              gap: 12,
-              backgroundColor: '#F4F4F5',
-              borderRadius: 14,
-              padding: 14,
-              marginBottom: 24,
+              justifyContent: 'center',
+              gap: 6,
+              marginTop: 6,
             }}>
-            <View
-              style={{
-                width: 44,
-                height: 44,
-                borderRadius: 12,
-                backgroundColor: '#0EA5E9',
-                alignItems: 'center',
-                justifyContent: 'center',
-              }}>
-              {f.icon}
-            </View>
-            <View style={{ flex: 1 }}>
-              <Text style={{ fontSize: 14, fontWeight: '700', color: '#18181B', marginBottom: 2 }}>
-                {f.title}
-              </Text>
-              <Text style={{ fontSize: 12, color: '#71717A', lineHeight: 17 }}>{f.desc}</Text>
-            </View>
+            <Icon name="wifi_off" size={12} color={palette.zinc[400]} />
+            <Text style={{ fontSize: 10.5, color: palette.zinc[400], fontWeight: '600' }}>
+              Works offline
+            </Text>
+            <Text style={{ color: palette.zinc[300] }}>·</Text>
+            <Icon name="sim_card" size={12} color={palette.zinc[400]} />
+            <Text style={{ fontSize: 10.5, color: palette.zinc[400], fontWeight: '600' }}>
+              No Korean SIM
+            </Text>
+            <Text style={{ color: palette.zinc[300] }}>·</Text>
+            <Text style={{ fontSize: 10.5, color: palette.zinc[400], fontWeight: '600' }}>
+              Free to start
+            </Text>
           </View>
-        ))}
-
-        {/* Get started 버튼 */}
-        <TouchableOpacity
-          testID="get-started-button"
-          onPress={() => router.push('/(auth)/login')}
-          activeOpacity={0.85}
-          style={{
-            height: 52,
-            borderRadius: 14,
-            backgroundColor: '#0EA5E9',
-            flexDirection: 'row',
-            alignItems: 'center',
-            justifyContent: 'center',
-            gap: 8,
-            marginBottom: 14,
-          }}>
-          <Text style={{ color: '#fff', fontWeight: '700', fontSize: 16 }}>Get started</Text>
-          <Text style={{ color: '#fff', fontSize: 18 }}>→</Text>
-        </TouchableOpacity>
-
-        {/* Guest 탐색 */}
-        <TouchableOpacity
-          onPress={() => router.replace('/(tabs)')}
-          activeOpacity={0.7}
-          style={{ alignItems: 'center', marginBottom: 16 }}>
-          <Text style={{ fontSize: 14, color: '#71717A' }}>Explore as guest</Text>
-        </TouchableOpacity>
-
-        {/* 배지 */}
-        <View
-          style={{
-            flexDirection: 'row',
-            justifyContent: 'center',
-            alignItems: 'center',
-            flexWrap: 'wrap',
-            gap: 4,
-          }}>
-          {BADGES.map((badge, i) => (
-            <View key={i} style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-              {i > 0 && <Text style={{ color: '#D4D4D8', fontSize: 12 }}>·</Text>}
-              <Text style={{ fontSize: 12, color: '#71717A' }}>{badge}</Text>
-            </View>
-          ))}
         </View>
-      </SafeAreaView>
+      </View>
     </View>
   )
 }
