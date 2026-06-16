@@ -1,7 +1,7 @@
 import { LinearGradient } from 'expo-linear-gradient'
 import { router } from 'expo-router'
 import { useState } from 'react'
-import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native'
+import { Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 
 import { Icon } from '@/components/brand'
@@ -10,13 +10,17 @@ import { palette } from '@/theme/tokens'
 
 type Mode = 'text' | 'camera' | 'voice'
 
-const LANGS: Record<string, string> = {
-  en: 'English',
-  ko: '한국어',
-  ja: '日本語',
-  zh: '中文',
-  th: 'ภาษาไทย',
-}
+// PLANNING §6 1차 언어 (Google Translation 코드)
+type LangOpt = { code: string; label: string; flag: string }
+const LANG_LIST: LangOpt[] = [
+  { code: 'en', label: 'English', flag: '🇺🇸' },
+  { code: 'ko', label: '한국어', flag: '🇰🇷' },
+  { code: 'ja', label: '日本語', flag: '🇯🇵' },
+  { code: 'zh-CN', label: '中文(简体)', flag: '🇨🇳' },
+  { code: 'zh-TW', label: '中文(繁體)', flag: '🇹🇼' },
+]
+const LANGS: Record<string, string> = Object.fromEntries(LANG_LIST.map((l) => [l.code, l.label]))
+const langLabel = (code: string) => (code === 'auto' ? 'Auto detect' : (LANGS[code] ?? code))
 
 const MOCK: Record<string, string> = {
   'Does this dish contain pork?': '이 음식에 돼지고기가 들어가나요?',
@@ -79,6 +83,13 @@ export default function TranslateScreen() {
   const [input, setInput] = useState(INITIAL_INPUT)
   const [output, setOutput] = useState(MOCK[INITIAL_INPUT])
   const [translating, setTranslating] = useState(false)
+  const [picker, setPicker] = useState<'src' | 'tgt' | null>(null)
+
+  const pickLang = (code: string) => {
+    if (picker === 'src') setSrc(code)
+    else if (picker === 'tgt') setTgt(code)
+    setPicker(null)
+  }
 
   const doTranslate = async () => {
     if (!input.trim()) return
@@ -142,13 +153,19 @@ export default function TranslateScreen() {
 
           {mode === 'text' && (
             <View style={{ paddingHorizontal: 16 }}>
-              {/* 언어 행 */}
+              {/* 언어 행 (탭하여 선택) */}
               <View style={ss.langRow}>
-                <Text style={ss.langText}>{LANGS[src]}</Text>
+                <Pressable onPress={() => setPicker('src')} style={ss.langPick}>
+                  <Text style={ss.langText}>{langLabel(src)}</Text>
+                  <Icon name="expand_more" size={16} color={palette.zinc[500]} />
+                </Pressable>
                 <Pressable onPress={swap} style={ss.swapBtn}>
                   <Icon name="swap_horiz" size={18} color={palette.teal[30]} />
                 </Pressable>
-                <Text style={ss.langText}>{LANGS[tgt]}</Text>
+                <Pressable onPress={() => setPicker('tgt')} style={ss.langPick}>
+                  <Text style={ss.langText}>{langLabel(tgt)}</Text>
+                  <Icon name="expand_more" size={16} color={palette.zinc[500]} />
+                </Pressable>
               </View>
 
               {/* 입력 */}
@@ -177,7 +194,7 @@ export default function TranslateScreen() {
                 end={{ x: 1, y: 1 }}
                 style={ss.outputCard}>
                 <Text style={[ss.fieldLabel, { color: palette.teal[30] }]}>
-                  {LANGS[tgt]} · Claude
+                  {langLabel(tgt)} · Google
                 </Text>
                 {translating ? (
                   <View style={{ flexDirection: 'row', gap: 4, marginTop: 6 }}>
@@ -233,12 +250,81 @@ export default function TranslateScreen() {
           </View>
           <View style={{ height: 24 }} />
         </ScrollView>
+
+        {/* 언어 선택 모달 */}
+        <Modal
+          visible={picker !== null}
+          transparent
+          animationType="fade"
+          onRequestClose={() => setPicker(null)}>
+          <Pressable style={ss.modalBg} onPress={() => setPicker(null)}>
+            <View style={ss.sheet}>
+              <Text style={ss.sheetTitle}>
+                {picker === 'src' ? 'Translate from' : 'Translate to'}
+              </Text>
+              {picker === 'src' && (
+                <Pressable
+                  onPress={() => pickLang('auto')}
+                  style={[ss.langOpt, src === 'auto' && ss.langOptOn]}>
+                  <Text style={{ fontSize: 20 }}>🌐</Text>
+                  <Text style={ss.langOptText}>Auto detect</Text>
+                  {src === 'auto' && (
+                    <Icon name="check_circle" size={18} color={palette.teal[40]} filled />
+                  )}
+                </Pressable>
+              )}
+              {LANG_LIST.map((l) => {
+                const cur = picker === 'src' ? src : tgt
+                return (
+                  <Pressable
+                    key={l.code}
+                    onPress={() => pickLang(l.code)}
+                    style={[ss.langOpt, cur === l.code && ss.langOptOn]}>
+                    <Text style={{ fontSize: 20 }}>{l.flag}</Text>
+                    <Text style={ss.langOptText}>{l.label}</Text>
+                    {cur === l.code && (
+                      <Icon name="check_circle" size={18} color={palette.teal[40]} filled />
+                    )}
+                  </Pressable>
+                )
+              })}
+            </View>
+          </Pressable>
+        </Modal>
       </SafeAreaView>
     </View>
   )
 }
 
 const ss = StyleSheet.create({
+  langPick: { flexDirection: 'row', alignItems: 'center', gap: 2 },
+  modalBg: { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'flex-end' },
+  sheet: {
+    backgroundColor: '#fff',
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    padding: 16,
+    paddingBottom: 32,
+    gap: 4,
+  },
+  sheetTitle: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#71717A',
+    letterSpacing: 0.3,
+    marginBottom: 8,
+    paddingHorizontal: 4,
+  },
+  langOpt: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingVertical: 12,
+    paddingHorizontal: 12,
+    borderRadius: 14,
+  },
+  langOptOn: { backgroundColor: '#F0FDFA' },
+  langOptText: { flex: 1, fontSize: 15, fontWeight: '600', color: '#18181B' },
   container: { flex: 1, backgroundColor: '#fff' },
   header: {
     flexDirection: 'row',
