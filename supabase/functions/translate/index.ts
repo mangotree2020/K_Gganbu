@@ -11,9 +11,10 @@ const cors = {
 type Body = { source?: string; target: string; text: string }
 
 // Google Cloud Translation v2 (단독 사용). source 'auto'는 생략하면 자동 감지.
+// 반환: { text } 성공 | { error } 실패(진단용)
 async function googleTranslate(source: string, target: string, text: string) {
-  const key = Deno.env.get('GOOGLE_TRANSLATE_KEY')
-  if (!key) return null
+  const key = Deno.env.get('GOOGLE_TRANSLATION_API_KEY')
+  if (!key) return { error: 'no_key' }
   const payload: Record<string, string> = { q: text, target, format: 'text' }
   if (source && source !== 'auto') payload.source = source
   const res = await fetch(`https://translation.googleapis.com/language/translate/v2?key=${key}`, {
@@ -21,9 +22,12 @@ async function googleTranslate(source: string, target: string, text: string) {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),
   })
-  if (!res.ok) return null
-  const json = await res.json()
-  return json?.data?.translations?.[0]?.translatedText ?? null
+  const json = await res.json().catch(() => ({}))
+  if (!res.ok) {
+    return { error: json?.error?.message ?? `http_${res.status}` }
+  }
+  const t = json?.data?.translations?.[0]?.translatedText
+  return t ? { text: t } : { error: 'empty_result' }
 }
 
 Deno.serve(async (req) => {
@@ -37,20 +41,17 @@ Deno.serve(async (req) => {
       })
     }
 
-    const translated = await googleTranslate(source, target, text)
+    const result = await googleTranslate(source, target, text)
 
-    if (!translated) {
-      return new Response(
-        JSON.stringify({
-          error: 'no_provider',
-          message: '번역 provider 미설정(GOOGLE_TRANSLATE_KEY 필요)',
-        }),
-        { status: 502, headers: { ...cors, 'Content-Type': 'application/json' } },
-      )
+    if (!result.text) {
+      return new Response(JSON.stringify({ error: 'translate_failed', detail: result.error }), {
+        status: 502,
+        headers: { ...cors, 'Content-Type': 'application/json' },
+      })
     }
 
     return new Response(
-      JSON.stringify({ translatedText: translated, provider: 'google', source, target }),
+      JSON.stringify({ translatedText: result.text, provider: 'google', source, target }),
       {
         headers: { ...cors, 'Content-Type': 'application/json' },
       },
