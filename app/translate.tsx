@@ -1,10 +1,22 @@
 import { LinearGradient } from 'expo-linear-gradient'
+import * as ImagePicker from 'expo-image-picker'
 import { router } from 'expo-router'
 import { useState } from 'react'
-import { Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native'
+import {
+  ActivityIndicator,
+  Image,
+  Modal,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+} from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 
 import { Icon } from '@/components/brand'
+import { detectText } from '@/features/translate/ocr'
 import { translateText } from '@/features/translate/services'
 import { palette } from '@/theme/tokens'
 
@@ -105,6 +117,39 @@ export default function TranslateScreen() {
     setTgt(src)
     setInput(output)
     setOutput(input)
+  }
+
+  // 카메라 OCR 상태
+  const [shotUri, setShotUri] = useState<string | null>(null)
+  const [ocrText, setOcrText] = useState('')
+  const [ocrOut, setOcrOut] = useState('')
+  const [ocrLoading, setOcrLoading] = useState(false)
+
+  // 촬영/갤러리 → OCR → 번역 (메뉴·간판은 한국어 가정 → 사용자 언어)
+  const runOcr = async (from: 'camera' | 'library') => {
+    const perm =
+      from === 'camera'
+        ? await ImagePicker.requestCameraPermissionsAsync()
+        : await ImagePicker.requestMediaLibraryPermissionsAsync()
+    if (!perm.granted) return
+
+    const opts: ImagePicker.ImagePickerOptions = { base64: true, quality: 0.6 }
+    const res =
+      from === 'camera'
+        ? await ImagePicker.launchCameraAsync(opts)
+        : await ImagePicker.launchImageLibraryAsync(opts)
+    if (res.canceled || !res.assets?.[0]?.base64) return
+
+    setShotUri(res.assets[0].uri)
+    setOcrText('')
+    setOcrOut('')
+    setOcrLoading(true)
+    const { text } = await detectText(res.assets[0].base64)
+    setOcrText(text)
+    const outTgt = tgt === 'ko' ? 'en' : tgt
+    const { translatedText } = await translateText({ source: 'ko', target: outTgt, text })
+    setOcrOut(translatedText)
+    setOcrLoading(false)
   }
 
   return (
@@ -222,14 +267,55 @@ export default function TranslateScreen() {
           )}
 
           {mode === 'camera' && (
-            <View style={ss.placeholder}>
-              <View style={ss.placeholderIcon}>
-                <Icon name="photo_camera" size={36} color={palette.teal[40]} filled />
+            <View style={{ paddingHorizontal: 16, paddingTop: 8 }}>
+              {/* 미리보기 / 안내 */}
+              {shotUri ? (
+                <Image source={{ uri: shotUri }} style={ss.ocrPreview} resizeMode="cover" />
+              ) : (
+                <View style={ss.ocrHint}>
+                  <View style={ss.placeholderIcon}>
+                    <Icon name="photo_camera" size={32} color={palette.teal[40]} filled />
+                  </View>
+                  <Text style={ss.placeholderTitle}>Point at a menu or sign</Text>
+                  <Text style={ss.placeholderSub}>OCR로 글자를 읽어 바로 번역해요</Text>
+                </View>
+              )}
+
+              {/* 촬영 / 갤러리 버튼 */}
+              <View style={{ flexDirection: 'row', gap: 10, marginTop: 12 }}>
+                <Pressable style={ss.ocrBtn} onPress={() => runOcr('camera')}>
+                  <Icon name="photo_camera" size={18} color="#fff" filled />
+                  <Text style={ss.ocrBtnText}>Take photo</Text>
+                </Pressable>
+                <Pressable style={ss.ocrBtnAlt} onPress={() => runOcr('library')}>
+                  <Icon name="photo_library" size={18} color={palette.teal[30]} />
+                  <Text style={ss.ocrBtnAltText}>Gallery</Text>
+                </Pressable>
               </View>
-              <Text style={ss.placeholderTitle}>Camera translate</Text>
-              <Text style={ss.placeholderSub}>
-                Point at a menu or sign — OCR + live translation coming soon
-              </Text>
+
+              {/* 결과 */}
+              {ocrLoading && (
+                <View style={ss.ocrLoading}>
+                  <ActivityIndicator color={palette.teal[40]} />
+                  <Text style={ss.ocrLoadingText}>Reading text…</Text>
+                </View>
+              )}
+              {!ocrLoading && !!ocrText && (
+                <View style={{ marginTop: 12, gap: 10 }}>
+                  <View style={ss.ocrCard}>
+                    <Text style={ss.ocrCardLabel}>DETECTED · 한국어</Text>
+                    <Text style={ss.ocrDetected}>{ocrText}</Text>
+                  </View>
+                  <LinearGradient
+                    colors={[palette.teal[95], '#fff']}
+                    style={[ss.ocrCard, { borderColor: palette.teal[80] }]}>
+                    <Text style={[ss.ocrCardLabel, { color: palette.teal[30] }]}>
+                      {langLabel(tgt === 'ko' ? 'en' : tgt).toUpperCase()}
+                    </Text>
+                    <Text style={ss.ocrTranslated}>{ocrOut}</Text>
+                  </LinearGradient>
+                </View>
+              )}
             </View>
           )}
 
@@ -467,6 +553,66 @@ const ss = StyleSheet.create({
   outputActionText: { fontSize: 11, fontWeight: '600', color: palette.teal[30] },
 
   placeholder: { alignItems: 'center', paddingVertical: 36, paddingHorizontal: 32, gap: 10 },
+  // 카메라 OCR
+  ocrPreview: { width: '100%', height: 200, borderRadius: 16, backgroundColor: palette.zinc[100] },
+  ocrHint: {
+    alignItems: 'center',
+    gap: 8,
+    paddingVertical: 28,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: palette.zinc[200],
+    borderStyle: 'dashed',
+    backgroundColor: '#fff',
+  },
+  ocrBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    backgroundColor: palette.teal[40],
+    borderRadius: 14,
+    paddingVertical: 13,
+  },
+  ocrBtnText: { color: '#fff', fontSize: 14, fontWeight: '700' },
+  ocrBtnAlt: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    backgroundColor: palette.teal[95],
+    borderWidth: 1,
+    borderColor: palette.teal[80],
+    borderRadius: 14,
+    paddingVertical: 13,
+  },
+  ocrBtnAltText: { color: palette.teal[30], fontSize: 14, fontWeight: '700' },
+  ocrLoading: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    justifyContent: 'center',
+    paddingVertical: 20,
+  },
+  ocrLoadingText: { fontSize: 13, color: palette.zinc[500], fontWeight: '600' },
+  ocrCard: {
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: palette.zinc[200],
+    backgroundColor: '#fff',
+    padding: 14,
+  },
+  ocrCardLabel: {
+    fontSize: 10,
+    fontWeight: '800',
+    color: palette.zinc[400],
+    letterSpacing: 0.6,
+    marginBottom: 6,
+  },
+  ocrDetected: { fontSize: 15, color: palette.zinc[800], lineHeight: 24 },
+  ocrTranslated: { fontSize: 17, fontWeight: '700', color: palette.zinc[900], lineHeight: 26 },
   placeholderIcon: {
     width: 72,
     height: 72,
