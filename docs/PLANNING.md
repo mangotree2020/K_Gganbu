@@ -286,7 +286,8 @@ emergency_phrases id, category, source_text, translations(jsonb), priority
 카메라 OCR 번역 · AI 일정 생성 고도화 · 쿠폰/티켓 상세·카테고리 · 티켓 아웃링크→**결제 라우팅 플랫폼(§24: Eximbay/Toss 1차)** · 추천 코스(크루즈 기항지 포함) · 푸시(FCM) · Admin 기본형(파트너 쿠폰 등록) · 콘텐츠 자동 번역 파이프라인
 
 > **구현 현황 (2026-06-17)**: ✅ 카메라 OCR 번역(mock-first) · ✅ 추천 코스(`app/itinerary.tsx`, §6 "여행 일정 추천" 겸함) · ✅ AI 일정 생성(§18 "일정 만들어줘" — gganbu RAG, mock-first) · ✅ 티켓 카테고리·아웃링크(`app/tickets.tsx`).
-> 미착수(외부 설정·인프라 의존): 결제 라우팅(§24) · 푸시(FCM) · Admin(별도 앱) · 콘텐츠 자동 번역 파이프라인(백엔드).
+> ✅ 결제 라우팅 추상화(§24 — `features/payment/`: selectProvider 규칙·어댑터·payment-router 계약, mock-first + 단위테스트). 실 PG(Eximbay/Toss/Stripe/코나) 키·webhook은 외부 설정 대기.
+> 미착수(외부 설정·인프라 의존): 푸시(FCM) · Admin(별도 앱) · 콘텐츠 자동 번역 파이프라인(백엔드).
 
 ## Phase 3 — 플랫폼화
 
