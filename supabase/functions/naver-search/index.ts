@@ -65,8 +65,10 @@ Deno.serve(async (req) => {
     const query: string = body.query ?? '부산 관광지'
     const display: number = Math.min(body.display ?? 5, 5)
 
-    const clientId = Deno.env.get('NAVER_SEARCH_CLIENT_ID')
-    const clientSecret = Deno.env.get('NAVER_SEARCH_CLIENT_SECRET')
+    // Naver Developers Search 자격증명: SEARCH 전용 이름 우선, 없으면 NAVER_CLIENT_* 폴백
+    const clientId = Deno.env.get('NAVER_SEARCH_CLIENT_ID') ?? Deno.env.get('NAVER_CLIENT_ID')
+    const clientSecret =
+      Deno.env.get('NAVER_SEARCH_CLIENT_SECRET') ?? Deno.env.get('NAVER_CLIENT_SECRET')
 
     // 키 미설정 → mock 폴백 (mock-first)
     if (!clientId || !clientSecret) {

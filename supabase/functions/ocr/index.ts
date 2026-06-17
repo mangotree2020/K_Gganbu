@@ -11,7 +11,9 @@ const cors = {
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: cors })
   try {
-    const apiKey = Deno.env.get('GOOGLE_VISION_API_KEY')
+    // Vision 전용 키 우선, 없으면 동일 GCP 프로젝트의 Translation 키로 폴백
+    const apiKey =
+      Deno.env.get('GOOGLE_VISION_API_KEY') ?? Deno.env.get('GOOGLE_TRANSLATION_API_KEY')
     if (!apiKey) {
       return new Response(
         JSON.stringify({ error: 'no_key', message: 'GOOGLE_VISION_API_KEY 미설정' }),

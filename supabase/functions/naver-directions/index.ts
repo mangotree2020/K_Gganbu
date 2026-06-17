@@ -53,8 +53,10 @@ Deno.serve(async (req) => {
       })
     }
 
-    const clientId = Deno.env.get('NAVER_MAPS_CLIENT_ID')
-    const clientSecret = Deno.env.get('NAVER_MAPS_CLIENT_SECRET')
+    // NCP 자격증명: MAPS 전용 이름 우선, 없으면 정식 NAVER_CLIENT_* 로 폴백
+    const clientId = Deno.env.get('NAVER_MAPS_CLIENT_ID') ?? Deno.env.get('NAVER_CLIENT_ID')
+    const clientSecret =
+      Deno.env.get('NAVER_MAPS_CLIENT_SECRET') ?? Deno.env.get('NAVER_CLIENT_SECRET')
 
     // 키 미설정 → mock 폴백 (mock-first)
     if (!clientId || !clientSecret) {
