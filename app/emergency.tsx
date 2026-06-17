@@ -5,40 +5,43 @@ import { SafeAreaView } from 'react-native-safe-area-context'
 
 import { Icon } from '@/components/brand'
 import { useCurrentLocation } from '@/hooks/useCurrentLocation'
+import { useT } from '@/lib/i18n'
 import { palette, shadows } from '@/theme/tokens'
 
 const CALLS = [
   {
     num: '112',
-    label: 'Police',
-    sub: 'Crime · theft · lost',
+    labelKey: 'emergency.police',
+    subKey: 'emergency.policeSub',
     icon: 'local_police',
     tone: palette.blue[50],
   },
   {
     num: '119',
-    label: 'Fire / Ambulance',
-    sub: 'Medical · fire emergency',
+    labelKey: 'emergency.fire',
+    subKey: 'emergency.fireSub',
     icon: 'emergency',
     tone: palette.error[50],
   },
   {
     num: '1330',
-    label: 'Tourist Hotline',
-    sub: '24/7 free interpreter (EN/JA/ZH)',
+    labelKey: 'emergency.hotline',
+    subKey: 'emergency.hotlineSub',
     icon: 'support_agent',
     tone: palette.teal[40],
   },
 ]
 
+// ko(상대에게 보여줄 한국어) 고정 + key(사용자 언어 설명)
 const PHRASES = [
-  { en: 'I need help, please.', ko: '도와주세요.' },
-  { en: 'Please call an ambulance.', ko: '구급차를 불러주세요.' },
-  { en: "I'm lost. Where am I?", ko: '길을 잃었어요. 여기가 어디예요?' },
-  { en: 'I lost my passport / wallet.', ko: '여권/지갑을 잃어버렸어요.' },
+  { ko: '도와주세요.', key: 'ephrase.help' },
+  { ko: '구급차를 불러주세요.', key: 'ephrase.ambulance' },
+  { ko: '길을 잃었어요. 여기가 어디예요?', key: 'ephrase.lost' },
+  { ko: '여권/지갑을 잃어버렸어요.', key: 'ephrase.lostItem' },
 ]
 
 export default function EmergencyScreen() {
+  const t = useT()
   const { coords, loading: locLoading } = useCurrentLocation()
   const hasGps = !locLoading && !!coords?.latitude
 
@@ -76,13 +79,13 @@ export default function EmergencyScreen() {
               <Icon name="sos" size={20} color="#fff" filled />
             </View>
             <View style={{ flex: 1 }}>
-              <Text style={ss.headerTitle}>Emergency help</Text>
+              <Text style={ss.headerTitle}>{t('emergency.title')}</Text>
               <View style={ss.headerLoc}>
                 <Icon name="location_on" size={12} color="#fff" filled />
                 <Text style={ss.headerLocText}>
                   {hasGps
-                    ? `${coords.latitude.toFixed(4)}, ${coords.longitude.toFixed(4)} · GPS ready`
-                    : 'Locating… · GPS shared on call'}
+                    ? `${coords.latitude.toFixed(4)}, ${coords.longitude.toFixed(4)} · ${t('emergency.gpsReady')}`
+                    : t('emergency.locating')}
                 </Text>
               </View>
             </View>
@@ -104,21 +107,21 @@ export default function EmergencyScreen() {
               </View>
               <View style={{ flex: 1 }}>
                 <Text style={ss.callTitle}>
-                  {c.num} · {c.label}
+                  {c.num} · {t(c.labelKey)}
                 </Text>
-                <Text style={ss.callSub}>{c.sub}</Text>
+                <Text style={ss.callSub}>{t(c.subKey)}</Text>
               </View>
               <Icon name="call" size={20} color={c.tone} filled />
             </Pressable>
           ))}
         </View>
 
-        <Text style={ss.sectionLabel}>SHOW THIS TO SOMEONE</Text>
+        <Text style={ss.sectionLabel}>{t('emergency.showToSomeone')}</Text>
         <View style={{ gap: 8 }}>
           {PHRASES.map((p) => (
-            <View key={p.en} style={ss.phraseCard}>
+            <View key={p.key} style={ss.phraseCard}>
               <Text style={ss.phraseKo}>{p.ko}</Text>
-              <Text style={ss.phraseEn}>{p.en}</Text>
+              <Text style={ss.phraseEn}>{t(p.key)}</Text>
             </View>
           ))}
         </View>
@@ -128,14 +131,16 @@ export default function EmergencyScreen() {
           disabled={!hasGps}
           style={({ pressed }) => [ss.shareBtn, { opacity: pressed || !hasGps ? 0.6 : 1 }]}>
           <Icon name="share" size={18} color={palette.zinc[900]} />
-          <Text style={ss.shareText}>{hasGps ? 'Share my location' : 'Locating…'}</Text>
+          <Text style={ss.shareText}>
+            {hasGps ? t('emergency.shareLocation') : t('emergency.locating')}
+          </Text>
         </Pressable>
 
         <Pressable
           onPress={findHospital}
           style={({ pressed }) => [ss.hospitalBtn, { opacity: pressed ? 0.9 : 1 }]}>
           <Icon name="local_hospital" size={18} color="#fff" filled />
-          <Text style={ss.hospitalText}>Find nearest hospital</Text>
+          <Text style={ss.hospitalText}>{t('emergency.findHospital')}</Text>
         </Pressable>
       </ScrollView>
     </View>
