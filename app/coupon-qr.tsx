@@ -5,6 +5,7 @@ import { SafeAreaView } from 'react-native-safe-area-context'
 import QRCode from 'react-native-qrcode-svg'
 
 import { Icon } from '@/components/brand'
+import { FallbackBadge } from '@/components/FallbackBadge'
 import { issueCoupon, type CouponIssue } from '@/features/coupon/services'
 import { palette, shadows } from '@/theme/tokens'
 
@@ -95,6 +96,12 @@ export default function CouponQrScreen() {
                 Expires in {mm}:{secs}
               </Text>
             </View>
+          )}
+          {!loading && issue?.id === 'offline' && (
+            <FallbackBadge
+              label="Offline QR · not verified"
+              style={{ alignSelf: 'center', marginTop: 8 }}
+            />
           )}
           <Text style={ss.offline}>Works offline · valid for 5 minutes after issue</Text>
         </View>

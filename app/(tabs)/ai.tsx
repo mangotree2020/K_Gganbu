@@ -13,6 +13,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context'
 
 import { Icon } from '@/components/brand'
+import { FallbackBadge } from '@/components/FallbackBadge'
 import { askGganbu } from '@/features/gganbu/services'
 import { palette } from '@/theme/tokens'
 
@@ -24,6 +25,7 @@ type Msg = {
   quick?: string[]
   schedule?: Schedule[]
   list?: ListItem[]
+  fallback?: boolean // 실 AI 대신 mock 응답일 때 배지 표시
 }
 
 const REPLIES: Record<string, Omit<Msg, 'role'>> = {
@@ -98,12 +100,12 @@ export default function AiMateScreen() {
     }
 
     // 그 외 자유 입력 → 실 AI 깐부(Claude+RAG) 호출, 실패 시 mock 폴백
-    const reply = await askGganbu([...history, { role: 'user', text }], {
+    const { reply, provider } = await askGganbu([...history, { role: 'user', text }], {
       language: 'en',
       location: 'Haeundae, Busan',
     })
     setTyping(false)
-    setMsgs((m) => [...m, { role: 'bot', text: reply }])
+    setMsgs((m) => [...m, { role: 'bot', text: reply, fallback: provider === 'mock' }])
     scrollEnd()
   }
 
@@ -152,6 +154,7 @@ export default function AiMateScreen() {
                 <View style={ss.botBubble}>
                   <Text style={ss.botText}>{m.text}</Text>
                 </View>
+                {m.fallback && <FallbackBadge label="Offline reply" style={{ marginTop: 6 }} />}
                 {m.schedule && (
                   <View style={ss.attachCard}>
                     {m.schedule.map((s, j) => (

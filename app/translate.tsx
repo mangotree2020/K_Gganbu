@@ -16,6 +16,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context'
 
 import { Icon } from '@/components/brand'
+import { FallbackBadge } from '@/components/FallbackBadge'
 import { detectText } from '@/features/translate/ocr'
 import { translateText } from '@/features/translate/services'
 import { palette } from '@/theme/tokens'
@@ -94,6 +95,7 @@ export default function TranslateScreen() {
   const INITIAL_INPUT = 'Does this dish contain pork?'
   const [input, setInput] = useState(INITIAL_INPUT)
   const [output, setOutput] = useState(MOCK[INITIAL_INPUT])
+  const [outputMock, setOutputMock] = useState(false)
   const [translating, setTranslating] = useState(false)
   const [picker, setPicker] = useState<'src' | 'tgt' | null>(null)
 
@@ -107,8 +109,13 @@ export default function TranslateScreen() {
     if (!input.trim()) return
     setTranslating(true)
     setOutput('')
-    const { translatedText } = await translateText({ source: src, target: tgt, text: input })
+    const { translatedText, provider } = await translateText({
+      source: src,
+      target: tgt,
+      text: input,
+    })
     setOutput(translatedText)
+    setOutputMock(provider === 'mock')
     setTranslating(false)
   }
 
@@ -123,6 +130,7 @@ export default function TranslateScreen() {
   const [shotUri, setShotUri] = useState<string | null>(null)
   const [ocrText, setOcrText] = useState('')
   const [ocrOut, setOcrOut] = useState('')
+  const [ocrMock, setOcrMock] = useState(false)
   const [ocrLoading, setOcrLoading] = useState(false)
 
   // 촬영/갤러리 → OCR → 번역 (메뉴·간판은 한국어 가정 → 사용자 언어)
@@ -144,11 +152,17 @@ export default function TranslateScreen() {
     setOcrText('')
     setOcrOut('')
     setOcrLoading(true)
-    const { text } = await detectText(res.assets[0].base64)
+    const { text, provider: ocrProvider } = await detectText(res.assets[0].base64)
     setOcrText(text)
     const outTgt = tgt === 'ko' ? 'en' : tgt
-    const { translatedText } = await translateText({ source: 'ko', target: outTgt, text })
+    const { translatedText, provider: trProvider } = await translateText({
+      source: 'ko',
+      target: outTgt,
+      text,
+    })
     setOcrOut(translatedText)
+    // OCR 또는 번역 중 하나라도 폴백이면 샘플 표시
+    setOcrMock(ocrProvider === 'mock' || trProvider === 'mock')
     setOcrLoading(false)
   }
 
@@ -250,6 +264,9 @@ export default function TranslateScreen() {
                 ) : (
                   <Text style={ss.outputText}>{output}</Text>
                 )}
+                {!translating && outputMock && (
+                  <FallbackBadge label="Sample translation" style={{ marginTop: 8 }} />
+                )}
                 <View style={{ flexDirection: 'row', gap: 6, marginTop: 10 }}>
                   {[
                     { icon: 'content_copy', label: 'Copy' },
@@ -314,6 +331,7 @@ export default function TranslateScreen() {
                     </Text>
                     <Text style={ss.ocrTranslated}>{ocrOut}</Text>
                   </LinearGradient>
+                  {ocrMock && <FallbackBadge label="Sample OCR" />}
                 </View>
               )}
             </View>

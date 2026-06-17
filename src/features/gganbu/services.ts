@@ -23,18 +23,20 @@ function mockReply(messages: ChatMsg[]): string {
   )
 }
 
+export type GganbuReply = { reply: string; provider: 'claude' | 'mock' }
+
 export async function askGganbu(
   messages: ChatMsg[],
   opts: { language?: string; location?: string } = {},
-): Promise<string> {
+): Promise<GganbuReply> {
   try {
     const { data, error } = await supabase.functions.invoke('gganbu', {
       body: { messages, language: opts.language ?? 'en', location: opts.location },
     })
     if (error) throw error
-    if (data?.reply) return data.reply as string
-    return mockReply(messages)
+    if (data?.reply) return { reply: data.reply as string, provider: 'claude' }
+    return { reply: mockReply(messages), provider: 'mock' }
   } catch {
-    return mockReply(messages)
+    return { reply: mockReply(messages), provider: 'mock' }
   }
 }

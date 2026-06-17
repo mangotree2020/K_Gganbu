@@ -16,6 +16,7 @@ import { SafeAreaView } from 'react-native-safe-area-context'
 import Svg, { Circle, Path } from 'react-native-svg'
 
 import { Icon } from '@/components/brand'
+import { FallbackBadge } from '@/components/FallbackBadge'
 import { PlaceThumb } from '@/components/PlaceThumb'
 import { fetchRoute, useMapPois, type LatLng, type Poi } from '@/features/map/queries'
 import { NaverMap, type NaverMapHandle, type NaverMarker } from '@/features/map/NaverMap'
@@ -73,7 +74,11 @@ export default function MapScreen() {
   const [trackMarkers, setTrackMarkers] = useState(true)
   const [naverError, setNaverError] = useState<string | null>(null)
   const [route, setRoute] = useState<LatLng[] | null>(null)
-  const [routeInfo, setRouteInfo] = useState<{ distance: number; duration: number } | null>(null)
+  const [routeInfo, setRouteInfo] = useState<{
+    distance: number
+    duration: number
+    mock: boolean
+  } | null>(null)
   const [routing, setRouting] = useState(false)
 
   const { coords, loading: locLoading } = useCurrentLocation()
@@ -145,7 +150,7 @@ export default function MapScreen() {
     const goal: LatLng = { latitude: place.lat, longitude: place.lng }
     const res = await fetchRoute(start, goal)
     setRoute(res.path)
-    setRouteInfo({ distance: res.distance, duration: res.duration })
+    setRouteInfo({ distance: res.distance, duration: res.duration, mock: res.provider === 'mock' })
     naverRef.current?.drawRoute(res.path)
     // Google 지도: 경로 전체가 보이도록 맞춤
     if (res.path.length > 1) {
@@ -355,6 +360,7 @@ export default function MapScreen() {
                     ? `${(routeInfo.distance / 1000).toFixed(1)}km · 약 ${Math.max(1, Math.round(routeInfo.duration / 60000))}분`
                     : '경로 표시'}
                 </Text>
+                {routeInfo.mock && <FallbackBadge label="Sample route" />}
                 <Pressable onPress={clearRoute} hitSlop={8}>
                   <Icon name="close" size={16} color={palette.zinc[500]} />
                 </Pressable>
