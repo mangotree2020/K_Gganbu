@@ -14,6 +14,8 @@ import { SafeAreaView } from 'react-native-safe-area-context'
 
 import { Icon } from '@/components/brand'
 import { useSignOut } from '@/features/auth/queries'
+import { enablePush } from '@/features/notifications/services'
+import { usePushStore } from '@/features/notifications/store'
 import { useUserCoupons } from '@/features/coupon/queries'
 import { useFavorites } from '@/features/favorites/queries'
 import { useAuthStore } from '@/features/auth/store'
@@ -37,6 +39,7 @@ const ROWS: Row[] = [
   { id: 'phrasebook', label: 'Phrasebook', emoji: '🗣' },
   { id: 'allergy', label: 'Allergy card', emoji: '🥜' },
   { id: 'payment', label: 'Payment tips', emoji: '💳' },
+  { id: 'notifications', label: 'Notifications', emoji: '🔔' },
   { id: 'language', label: 'Language', emoji: '🌐' },
   { id: 'settings', label: 'Settings', emoji: '⚙️' },
 ]
@@ -52,6 +55,7 @@ const ROW_KEY: Record<string, string> = {
   phrasebook: 'profile.phrasebook',
   allergy: 'profile.allergy',
   payment: 'profile.payment',
+  notifications: 'profile.notifications',
   language: 'common.language',
   settings: 'common.settings',
 }
@@ -66,6 +70,18 @@ export default function ProfileScreen() {
   const currentLang = APP_LANGS.find((l) => l.code === lang) ?? APP_LANGS[0]
   const { data: favorites } = useFavorites()
   const { data: savedCoupons } = useUserCoupons()
+  const pushEnabled = usePushStore((s) => s.enabled)
+  const setPushEnabled = usePushStore((s) => s.setEnabled)
+
+  // 알림 opt-in 토글 — 켤 때만 권한·토큰 등록(just-in-time)
+  const toggleNotifications = async () => {
+    if (pushEnabled) {
+      setPushEnabled(false)
+      return
+    }
+    const ok = await enablePush()
+    setPushEnabled(ok)
+  }
 
   // 저장 항목 개수는 실데이터로 표시
   const badgeFor = (r: Row) => {
@@ -77,9 +93,14 @@ export default function ProfileScreen() {
 
   // 행별 라벨/디테일/동작 (언어 행은 i18n + 현재 언어 표시)
   const labelFor = (r: Row) => (ROW_KEY[r.id] ? t(ROW_KEY[r.id]) : r.label)
-  const detailFor = (r: Row) => (r.id === 'language' ? currentLang.label : r.detail)
+  const detailFor = (r: Row) => {
+    if (r.id === 'language') return currentLang.label
+    if (r.id === 'notifications') return pushEnabled ? t('common.on') : t('common.off')
+    return r.detail
+  }
   const onRowPress = (r: Row) => {
     if (r.id === 'language') setLangOpen(true)
+    else if (r.id === 'notifications') toggleNotifications()
     else if (r.id === 'itineraries') router.push('/itinerary' as never)
     else if (r.id === 'tickets') router.push('/tickets' as never)
     else if (r.id === 'saved-places') router.push('/favorites')
