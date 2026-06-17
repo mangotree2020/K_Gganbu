@@ -5,7 +5,18 @@ import { SafeAreaView } from 'react-native-safe-area-context'
 
 import { Icon } from '@/components/brand'
 import { findScenario, type Lang, type Phrase } from '@/features/translate/phrases'
+import { storage } from '@/lib/mmkv'
 import { palette } from '@/theme/tokens'
+
+// 즐겨 쓰는 문장 로컬 저장 (MMKV) — ko 문장을 키로 보관
+const FAV_KEY = 'fav_phrases'
+const loadFavs = (): string[] => {
+  try {
+    return JSON.parse(storage.getString(FAV_KEY) ?? '[]') as string[]
+  } catch {
+    return []
+  }
+}
 
 const UI_LANGS: { code: Lang; label: string }[] = [
   { code: 'en', label: 'EN' },
@@ -19,6 +30,15 @@ export default function PhrasesScreen() {
   const scenario = findScenario(p.id)
   const [lang, setLang] = useState<Lang>((p.lang as Lang) || 'en')
   const [show, setShow] = useState<Phrase | null>(null)
+  const [favs, setFavs] = useState<string[]>(loadFavs)
+
+  const toggleFav = (ko: string) => {
+    setFavs((prev) => {
+      const next = prev.includes(ko) ? prev.filter((k) => k !== ko) : [...prev, ko]
+      storage.set(FAV_KEY, JSON.stringify(next))
+      return next
+    })
+  }
 
   return (
     <View style={ss.container}>
@@ -62,6 +82,14 @@ export default function PhrasesScreen() {
                 <Text style={ss.cardLang}>{ph[lang]}</Text>
                 <Text style={ss.cardKo}>{ph.ko}</Text>
               </View>
+              <Pressable onPress={() => toggleFav(ph.ko)} hitSlop={8} style={ss.starBtn}>
+                <Icon
+                  name="bookmark"
+                  size={20}
+                  color={favs.includes(ph.ko) ? palette.amber[50] : palette.zinc[300]}
+                  filled={favs.includes(ph.ko)}
+                />
+              </Pressable>
               <View style={[ss.showBtn, { backgroundColor: scenario.color }]}>
                 <Icon name="present_to_all" size={18} color="#fff" filled />
               </View>
@@ -149,6 +177,12 @@ const ss = StyleSheet.create({
   },
   cardLang: { fontSize: 15, fontWeight: '700', color: palette.zinc[900], letterSpacing: -0.2 },
   cardKo: { fontSize: 13, color: palette.zinc[500], marginTop: 3 },
+  starBtn: {
+    width: 36,
+    height: 36,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   showBtn: {
     width: 40,
     height: 40,
