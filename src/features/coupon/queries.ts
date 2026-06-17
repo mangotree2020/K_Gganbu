@@ -2,6 +2,7 @@
 import { useQuery } from '@tanstack/react-query'
 import { supabase } from '@/lib/supabase'
 import { useLocaleStore } from '@/lib/i18n'
+import { discountLabel } from '@/utils/coupon'
 
 // 화면(coupons.tsx) 카드 표시 모델
 export type CouponCard = {
@@ -27,13 +28,6 @@ const CAT_LABEL: Record<string, string> = {
   cafe: 'Cafe',
   beauty: 'Beauty',
   activity: 'Activity',
-}
-
-// 할인 표시 문자열 (discount_type/value → 라벨)
-function discLabel(type: string, value: number | null): string {
-  if (type === 'percentage') return `${value ?? 0}% OFF`
-  if (type === 'fixed') return `₩${Number(value ?? 0).toLocaleString()}`
-  return 'FREE GIFT'
 }
 
 type Row = {
@@ -91,7 +85,10 @@ export function useUserCoupons() {
         expiresAt: r.expires_at,
         status: r.status,
         name: r.coupons?.title_i18n?.[lang] ?? r.coupons?.title_i18n?.en ?? 'Coupon',
-        disc: discLabel(r.coupons?.discount_type ?? 'freebie', r.coupons?.discount_value ?? null),
+        disc: discountLabel(
+          r.coupons?.discount_type ?? 'freebie',
+          r.coupons?.discount_value ?? null,
+        ),
         category: r.coupons?.category ?? 'food',
       }))
     },
@@ -123,7 +120,7 @@ export function useCoupons() {
           icon: CAT_ICON[cat] ?? 'sell',
           detail: c.partners?.name ?? '',
           dist: '',
-          disc: discLabel(c.discount_type, c.discount_value),
+          disc: discountLabel(c.discount_type, c.discount_value),
           note,
           filter: cat,
         }

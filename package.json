@@ -55,14 +55,17 @@
     "zustand": "^5.0.14"
   },
   "devDependencies": {
+    "@types/jest": "^30.0.0",
     "@types/react": "~19.2.2",
     "@types/react-native": "^0.72.8",
     "babel-preset-expo": "^56.0.14",
     "eslint-config-expo": "^56.0.4",
     "eslint-config-prettier": "^10.1.8",
     "husky": "^9.1.7",
+    "jest": "^30.4.2",
     "lint-staged": "^17.0.5",
     "prettier": "^3.8.3",
+    "ts-jest": "^29.4.11",
     "typescript": "~6.0.3"
   },
   "scripts": {
@@ -73,6 +76,7 @@
     "prebuild": "expo prebuild --clean",
     "lint": "eslint . --ext .ts,.tsx",
     "type-check": "tsc --noEmit",
+    "test": "jest",
     "prepare": "husky",
     "test:e2e": "maestro test .maestro/",
     "test:e2e:login": "maestro test .maestro/login.yaml"

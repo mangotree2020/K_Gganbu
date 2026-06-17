@@ -3,6 +3,7 @@
 import { create } from 'zustand'
 import { persist, createJSONStorage } from 'zustand/middleware'
 import { zustandStorage } from '@/lib/mmkv'
+import { lookupString } from '@/lib/i18n-lookup'
 
 export type AppLang = 'en' | 'ko' | 'ja' | 'zh-CN' | 'zh-TW'
 export const APP_LANGS: { code: AppLang; label: string; flag: string }[] = [
@@ -841,5 +842,5 @@ export const useLocaleStore = create<LocaleState>()(
 // 화면에서 사용: const t = useT()  →  t('tab.home')
 export function useT() {
   const lang = useLocaleStore((s) => s.lang)
-  return (key: string) => STRINGS[lang]?.[key] ?? STRINGS.en[key] ?? key
+  return (key: string) => lookupString(STRINGS, lang, key)
 }
