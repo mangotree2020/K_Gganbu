@@ -11,13 +11,13 @@ import {
   TextInput,
   View,
 } from 'react-native'
-import MapView, { Marker, PROVIDER_GOOGLE, type Region } from 'react-native-maps'
+import MapView, { Marker, Polyline, PROVIDER_GOOGLE, type Region } from 'react-native-maps'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import Svg, { Circle, Path } from 'react-native-svg'
 
 import { Icon } from '@/components/brand'
 import { PlaceThumb } from '@/components/PlaceThumb'
-import { useMapPois, type Poi } from '@/features/map/queries'
+import { fetchRoute, useMapPois, type LatLng, type Poi } from '@/features/map/queries'
 import { NaverMap, type NaverMapHandle, type NaverMarker } from '@/features/map/NaverMap'
 import { useCurrentLocation } from '@/hooks/useCurrentLocation'
 import { palette, shadows } from '@/theme/tokens'
@@ -72,6 +72,9 @@ export default function MapScreen() {
   const [selected, setSelected] = useState<string | null>(null)
   const [trackMarkers, setTrackMarkers] = useState(true)
   const [naverError, setNaverError] = useState<string | null>(null)
+  const [route, setRoute] = useState<LatLng[] | null>(null)
+  const [routeInfo, setRouteInfo] = useState<{ distance: number; duration: number } | null>(null)
+  const [routing, setRouting] = useState(false)
 
   const { coords, loading: locLoading } = useCurrentLocation()
   const { data: pois } = useMapPois('en', 20)
@@ -119,6 +122,12 @@ export default function MapScreen() {
 
   const selectPlace = (p: Poi) => {
     setSelected(p.id)
+    // 다른 장소 선택 시 기존 경로 제거
+    if (p.id !== selectedId) {
+      setRoute(null)
+      setRouteInfo(null)
+      naverRef.current?.clearRoute()
+    }
     if (p.lat && p.lng) {
       googleRef.current?.animateToRegion(
         { latitude: p.lat, longitude: p.lng, latitudeDelta: 0.02, longitudeDelta: 0.02 },
@@ -126,6 +135,32 @@ export default function MapScreen() {
       )
       naverRef.current?.moveTo(p.lat, p.lng, 15)
     }
+  }
+
+  // 길찾기 — 현재 위치 → 선택 장소 (Naver Directions, 양 지도에 Polyline)
+  const startNavigation = async () => {
+    if (!place?.lat || !place?.lng) return
+    setRouting(true)
+    const start: LatLng = { latitude: coords.latitude, longitude: coords.longitude }
+    const goal: LatLng = { latitude: place.lat, longitude: place.lng }
+    const res = await fetchRoute(start, goal)
+    setRoute(res.path)
+    setRouteInfo({ distance: res.distance, duration: res.duration })
+    naverRef.current?.drawRoute(res.path)
+    // Google 지도: 경로 전체가 보이도록 맞춤
+    if (res.path.length > 1) {
+      googleRef.current?.fitToCoordinates(res.path, {
+        edgePadding: { top: 80, right: 50, bottom: 260, left: 50 },
+        animated: true,
+      })
+    }
+    setRouting(false)
+  }
+
+  const clearRoute = () => {
+    setRoute(null)
+    setRouteInfo(null)
+    naverRef.current?.clearRoute()
   }
 
   const showGoogle = provider === 'google' || provider === 'blend'
@@ -172,6 +207,10 @@ export default function MapScreen() {
                   />
                 </Marker>
               ))}
+            {/* Naver Directions 경로 오버레이 (PLANNING §17) */}
+            {route && route.length > 1 && (
+              <Polyline coordinates={route} strokeColor="#0EA5E9" strokeWidth={6} />
+            )}
           </MapView>
         )}
 
@@ -297,7 +336,30 @@ export default function MapScreen() {
                   {place.address ?? 'Busan'}
                 </Text>
               </View>
+              {/* 길찾기 버튼 (현재 위치 → 이 장소) */}
+              <Pressable style={ss.dirBtn} onPress={startNavigation} disabled={routing}>
+                {routing ? (
+                  <ActivityIndicator color="#fff" size="small" />
+                ) : (
+                  <Icon name="navigation" size={20} color="#fff" filled />
+                )}
+              </Pressable>
             </View>
+
+            {/* 경로 요약 (Naver Directions) */}
+            {routeInfo && (
+              <View style={ss.routeBar}>
+                <Icon name="route" size={15} color={palette.blue[40]} />
+                <Text style={ss.routeText}>
+                  {routeInfo.distance > 0
+                    ? `${(routeInfo.distance / 1000).toFixed(1)}km · 약 ${Math.max(1, Math.round(routeInfo.duration / 60000))}분`
+                    : '경로 표시'}
+                </Text>
+                <Pressable onPress={clearRoute} hitSlop={8}>
+                  <Icon name="close" size={16} color={palette.zinc[500]} />
+                </Pressable>
+              </View>
+            )}
 
             {/* 두 관점 — 외부 지도 앱으로 열기 */}
             <View style={ss.compareRow}>
@@ -463,6 +525,26 @@ const ss = StyleSheet.create({
   placeName: { fontSize: 15, fontWeight: '800', color: palette.zinc[900], letterSpacing: -0.2 },
   placeSub: { fontSize: 11, color: palette.zinc[500], marginTop: 2, lineHeight: 15 },
   loadingText: { fontSize: 12, color: palette.zinc[500], marginTop: 8 },
+  dirBtn: {
+    width: 42,
+    height: 42,
+    borderRadius: 999,
+    backgroundColor: palette.blue[50],
+    alignItems: 'center',
+    justifyContent: 'center',
+    ...shadows.blue,
+  },
+  routeBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: palette.blue[95],
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    marginBottom: 8,
+  },
+  routeText: { flex: 1, fontSize: 12.5, fontWeight: '700', color: palette.blue[30] },
 
   compareRow: { flexDirection: 'row', gap: 10, marginTop: 4 },
   compareBtn: {

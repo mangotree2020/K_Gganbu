@@ -24,6 +24,8 @@ type Props = {
 
 export type NaverMapHandle = {
   moveTo: (lat: number, lng: number, zoom?: number) => void
+  drawRoute: (path: { latitude: number; longitude: number }[]) => void
+  clearRoute: () => void
 }
 
 const CLIENT_ID = process.env.EXPO_PUBLIC_NAVER_MAPS_CLIENT_ID ?? ''
@@ -81,6 +83,20 @@ function buildHtml(lat: number, lng: number, markers: NaverMarker[], legacy: boo
       if(!map) return;
       map.morph(new naver.maps.LatLng(lat, lng), zoom || map.getZoom());
     }
+    var routeLine = null;
+    function drawRoute(coords){
+      clearRoute();
+      if(!map || !coords || !coords.length) return;
+      var pts = coords.map(function(c){ return new naver.maps.LatLng(c.latitude, c.longitude); });
+      routeLine = new naver.maps.Polyline({
+        map: map, path: pts, strokeColor: '#0EA5E9', strokeWeight: 6, strokeOpacity: 0.9,
+      });
+      // 경로 전체가 보이도록 영역 맞춤
+      var bounds = new naver.maps.LatLngBounds(pts[0], pts[0]);
+      pts.forEach(function(p){ bounds.extend(p); });
+      map.fitBounds(bounds, { top: 60, right: 40, bottom: 220, left: 40 });
+    }
+    function clearRoute(){ if(routeLine){ routeLine.setMap(null); routeLine = null; } }
     if(document.readyState === 'complete') init();
     else window.addEventListener('load', init);
   </script>
@@ -105,6 +121,12 @@ export const NaverMap = forwardRef<NaverMapHandle, Props>(function NaverMap(
   useImperativeHandle(ref, () => ({
     moveTo: (lat, lng, zoom) => {
       webRef.current?.injectJavaScript(`moveTo(${lat}, ${lng}, ${zoom ?? 'undefined'}); true;`)
+    },
+    drawRoute: (path) => {
+      webRef.current?.injectJavaScript(`drawRoute(${JSON.stringify(path)}); true;`)
+    },
+    clearRoute: () => {
+      webRef.current?.injectJavaScript(`clearRoute(); true;`)
     },
   }))
 

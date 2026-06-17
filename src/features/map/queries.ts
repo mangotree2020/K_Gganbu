@@ -139,6 +139,36 @@ export function useMapPois(lang = 'en', rows = 20) {
   })
 }
 
+// Naver 길찾기 (PLANNING §17) — 현재위치 → 목적지 경로
+export type LatLng = { latitude: number; longitude: number }
+export type RouteResult = {
+  path: LatLng[]
+  distance: number // meters
+  duration: number // ms
+  provider: 'naver' | 'mock'
+}
+
+export async function fetchRoute(start: LatLng, goal: LatLng): Promise<RouteResult> {
+  try {
+    const { data, error } = await supabase.functions.invoke('naver-directions', {
+      body: { start, goal },
+    })
+    if (error) throw error
+    if (data?.path?.length) {
+      return {
+        path: data.path,
+        distance: data.distance ?? 0,
+        duration: data.duration ?? 0,
+        provider: data.provider ?? 'naver',
+      }
+    }
+    throw new Error('no_path')
+  } catch {
+    // 폴백: 직선 경로
+    return { path: [start, goal], distance: 0, duration: 0, provider: 'mock' }
+  }
+}
+
 // Naver 지역 검색 (PLANNING §13) — 키워드 → 장소+좌표
 export type NaverPoi = {
   id: string
