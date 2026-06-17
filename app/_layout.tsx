@@ -68,6 +68,7 @@ function RootLayoutNav() {
         <Stack.Screen name="voice-interpret" options={{ presentation: 'modal' }} />
         <Stack.Screen name="phrases" options={{ presentation: 'modal' }} />
         <Stack.Screen name="favorites" options={{ presentation: 'modal' }} />
+        <Stack.Screen name="saved-coupons" options={{ presentation: 'modal' }} />
       </Stack>
     </>
   )

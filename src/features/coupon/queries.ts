@@ -46,6 +46,58 @@ type Row = {
   partners: { name: string } | null
 }
 
+// 내가 발급받은 쿠폰 (coupon_issues, BACKLOG #23 My탭) — 본인 데이터만(RLS)
+export type SavedCoupon = {
+  id: string
+  couponId: string
+  name: string
+  disc: string
+  category: string
+  status: string
+  qrToken: string
+  expiresAt: string
+}
+
+type IssueRow = {
+  id: string
+  coupon_id: string
+  qr_token: string
+  expires_at: string
+  status: string
+  coupons: {
+    title_i18n: Record<string, string> | null
+    discount_type: string
+    discount_value: number | null
+    category: string | null
+  } | null
+}
+
+export function useUserCoupons() {
+  const lang = useLocaleStore((s) => s.lang)
+  return useQuery({
+    queryKey: ['user-coupons', lang],
+    queryFn: async (): Promise<SavedCoupon[]> => {
+      const { data, error } = await supabase
+        .from('coupon_issues')
+        .select(
+          'id, coupon_id, qr_token, expires_at, status, issued_at, coupons(title_i18n, discount_type, discount_value, category)',
+        )
+        .order('issued_at', { ascending: false })
+      if (error) throw error
+      return ((data ?? []) as unknown as IssueRow[]).map((r) => ({
+        id: r.id,
+        couponId: r.coupon_id,
+        qrToken: r.qr_token,
+        expiresAt: r.expires_at,
+        status: r.status,
+        name: r.coupons?.title_i18n?.[lang] ?? r.coupons?.title_i18n?.en ?? 'Coupon',
+        disc: discLabel(r.coupons?.discount_type ?? 'freebie', r.coupons?.discount_value ?? null),
+        category: r.coupons?.category ?? 'food',
+      }))
+    },
+  })
+}
+
 export function useCoupons() {
   const lang = useLocaleStore((s) => s.lang)
   return useQuery({

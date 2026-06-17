@@ -14,6 +14,7 @@ import { SafeAreaView } from 'react-native-safe-area-context'
 
 import { Icon } from '@/components/brand'
 import { useSignOut } from '@/features/auth/queries'
+import { useUserCoupons } from '@/features/coupon/queries'
 import { useFavorites } from '@/features/favorites/queries'
 import { useAuthStore } from '@/features/auth/store'
 import { APP_LANGS, useLocaleStore, useT, type AppLang } from '@/lib/i18n'
@@ -62,10 +63,15 @@ export default function ProfileScreen() {
   const [langOpen, setLangOpen] = useState(false)
   const currentLang = APP_LANGS.find((l) => l.code === lang) ?? APP_LANGS[0]
   const { data: favorites } = useFavorites()
+  const { data: savedCoupons } = useUserCoupons()
 
-  // 즐겨찾기 개수는 실데이터로 표시
-  const badgeFor = (r: Row) =>
-    r.id === 'saved-places' ? (favorites?.length ? String(favorites.length) : undefined) : r.badge
+  // 저장 항목 개수는 실데이터로 표시
+  const badgeFor = (r: Row) => {
+    if (r.id === 'saved-places') return favorites?.length ? String(favorites.length) : undefined
+    if (r.id === 'saved-coupons')
+      return savedCoupons?.length ? String(savedCoupons.length) : undefined
+    return r.badge
+  }
 
   // 행별 라벨/디테일/동작 (언어 행은 i18n + 현재 언어 표시)
   const labelFor = (r: Row) => (ROW_KEY[r.id] ? t(ROW_KEY[r.id]) : r.label)
@@ -73,6 +79,9 @@ export default function ProfileScreen() {
   const onRowPress = (r: Row) => {
     if (r.id === 'language') setLangOpen(true)
     else if (r.id === 'saved-places') router.push('/favorites')
+    else if (r.id === 'saved-coupons') router.push('/saved-coupons')
+    else if (r.id === 'allergy') router.push('/allergy')
+    else if (r.id === 'phrasebook') router.push('/phrases')
   }
 
   return (
