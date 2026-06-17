@@ -11,6 +11,13 @@ import type { LoginFormData, PhoneFormData, RegisterFormData } from './types'
 // OAuth 콜백 redirect URI (expo-linking — expo-crypto 의존 없음)
 const redirectTo = createURL('auth-callback')
 
+// 현재 세션이 Guest(익명)인지 확인 — 익명이면 신규 로그인이 아닌 "승격"으로 처리해
+// 동일 user_id를 유지하고 즐겨찾기·쿠폰 등 Guest 데이터를 그대로 승계한다 (BACKLOG #7)
+async function isAnonymousSession() {
+  const { data } = await supabase.auth.getSession()
+  return data.session?.user?.is_anonymous ?? false
+}
+
 // 이메일 로그인
 export function useSignIn() {
   const setUser = useAuthStore((state) => state.setUser)
@@ -67,16 +74,26 @@ export function useSignInAnonymous() {
 export function useOAuthSignIn() {
   return useMutation({
     mutationFn: async (provider: 'google' | 'apple') => {
-      const { data, error } = await supabase.auth.signInWithOAuth({
-        provider,
-        options: { redirectTo, skipBrowserRedirect: true },
-      })
+      // Guest면 linkIdentity로 익명 세션에 소셜 ID를 연결(승격), 아니면 신규 OAuth 로그인
+      const guest = await isAnonymousSession()
+      const options = { redirectTo, skipBrowserRedirect: true }
+      const { data, error } = guest
+        ? await supabase.auth.linkIdentity({ provider, options })
+        : await supabase.auth.signInWithOAuth({ provider, options })
       if (error) throw error
       if (!data.url) throw new Error('OAuth URL 생성 실패')
 
       const result = await WebBrowser.openAuthSessionAsync(data.url, redirectTo)
       if (result.type !== 'success') throw new Error('로그인이 취소되었습니다')
 
+      if (guest) {
+        // 익명 세션에 ID 연결 완료 → 세션 갱신으로 승격된(비-Guest) 유저 반영
+        const { error: refreshError } = await supabase.auth.refreshSession()
+        if (refreshError) throw refreshError
+        return
+      }
+
+      // 신규 로그인 — 콜백 hash 토큰으로 세션 설정
       const url = new URL(result.url)
       const params = new URLSearchParams(url.hash.replace(/^#/, ''))
       const access_token = params.get('access_token')
@@ -97,6 +114,12 @@ export function useOAuthSignIn() {
 export function useSendOtp() {
   return useMutation({
     mutationFn: async ({ phone }: PhoneFormData) => {
+      // Guest면 updateUser로 전화번호를 익명 세션에 연결(승격), 아니면 신규 OTP 로그인
+      if (await isAnonymousSession()) {
+        const { error } = await supabase.auth.updateUser({ phone })
+        if (error) throw error
+        return
+      }
       const { error } = await supabase.auth.signInWithOtp({ phone })
       if (error) throw error
     },
@@ -108,7 +131,13 @@ export function useVerifyOtp() {
   const setUser = useAuthStore((state) => state.setUser)
   return useMutation({
     mutationFn: async ({ phone, token }: { phone: string; token: string }) => {
-      const { data, error } = await supabase.auth.verifyOtp({ phone, token, type: 'sms' })
+      // 발송과 동일하게 Guest는 phone_change 타입으로 검증(동일 user_id 유지)
+      const guest = await isAnonymousSession()
+      const { data, error } = await supabase.auth.verifyOtp({
+        phone,
+        token,
+        type: guest ? 'phone_change' : 'sms',
+      })
       if (error) throw error
       return data.user
     },
