@@ -30,6 +30,7 @@ type Row = { id: string; label: string; emoji: string; badge?: string; detail?: 
 const ROWS: Row[] = [
   { id: 'customize', label: 'Customize home', emoji: '🧩', detail: 'Reorder' },
   { id: 'itineraries', label: 'My itineraries', emoji: '🗓', badge: '3' },
+  { id: 'tickets', label: 'Tickets', emoji: '🎫' },
   { id: 'saved-places', label: 'Saved places', emoji: '📍', badge: '12' },
   { id: 'saved-coupons', label: 'Saved coupons', emoji: '🎟', badge: '5' },
   { id: 'reviews', label: 'My reviews', emoji: '⭐', badge: '8' },
@@ -44,6 +45,7 @@ const ROWS: Row[] = [
 const ROW_KEY: Record<string, string> = {
   customize: 'profile.customize',
   itineraries: 'profile.itineraries',
+  tickets: 'ticket.title',
   'saved-places': 'profile.savedPlaces',
   'saved-coupons': 'profile.savedCoupons',
   reviews: 'profile.reviews',
@@ -79,6 +81,7 @@ export default function ProfileScreen() {
   const onRowPress = (r: Row) => {
     if (r.id === 'language') setLangOpen(true)
     else if (r.id === 'itineraries') router.push('/itinerary' as never)
+    else if (r.id === 'tickets') router.push('/tickets' as never)
     else if (r.id === 'saved-places') router.push('/favorites')
     else if (r.id === 'saved-coupons') router.push('/saved-coupons')
     else if (r.id === 'allergy') router.push('/allergy')
