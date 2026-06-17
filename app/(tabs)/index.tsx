@@ -27,7 +27,7 @@ import { Icon } from '@/components/brand'
 import { FallbackBadge } from '@/components/FallbackBadge'
 import { useAuthStore } from '@/features/auth/store'
 import { usePlaces, type Poi } from '@/features/map/queries'
-import { useT } from '@/lib/i18n'
+import { useLocaleStore, useT } from '@/lib/i18n'
 
 // 색상 토큰
 const C = {
@@ -136,16 +136,16 @@ const BADGE_COLORS: Record<string, string> = {
 const QUICK_TILES = [
   {
     id: 'translate',
-    title: 'Translate',
-    sub: 'Camera · Voice',
+    titleKey: 'translate.title',
+    subKey: 'home.tileTranslateSub',
     from: '#5EEAD4',
     to: '#0D9488',
     icon: 'Languages',
   },
   {
     id: 'coupons',
-    title: 'Coupons',
-    sub: '24 near Haeundae',
+    titleKey: 'tab.coupons',
+    subKey: 'home.tileCouponsSub',
     from: '#FDBA74',
     to: '#F97316',
     icon: 'Ticket',
@@ -153,32 +153,32 @@ const QUICK_TILES = [
   },
   {
     id: 'cruise',
-    title: 'Cruise Mode',
-    sub: 'Tap for itinerary',
+    titleKey: 'cruise.title',
+    subKey: 'home.tileCruiseSub',
     from: '#60A5FA',
     to: '#1D4ED8',
     icon: 'Ship',
   },
   {
     id: 'allergy',
-    title: 'Allergy card',
-    sub: 'Show in 한국어',
+    titleKey: 'profile.allergy',
+    subKey: 'home.tileAllergySub',
     from: '#FDA4AF',
     to: '#E11D48',
     icon: 'Stethoscope',
   },
   {
     id: 'payment',
-    title: 'Payment tips',
-    sub: 'Card · T-Money',
+    titleKey: 'profile.payment',
+    subKey: 'home.tilePaymentSub',
     from: '#7DD3FC',
     to: '#0284C7',
     icon: 'CreditCard',
   },
   {
     id: 'emergency',
-    title: 'Emergency',
-    sub: '119 · 1330',
+    titleKey: 'scenario.emergency',
+    subKey: 'home.tileEmergencySub',
     from: '#F87171',
     to: '#DC2626',
     icon: 'AlertTriangle',
@@ -313,6 +313,7 @@ function SectionHeader({
 
 // AI 메이트 카드
 function AiMateCard({ promptIdx }: { promptIdx: number }) {
+  const t = useT()
   return (
     <Pressable
       style={({ pressed }) => [ss.aiCard, ss.shadow, { opacity: pressed ? 0.94 : 1 }]}
@@ -326,7 +327,7 @@ function AiMateCard({ promptIdx }: { promptIdx: number }) {
         <Sparkles size={24} color="#fff" />
       </LinearGradient>
       <View style={{ flex: 1 }}>
-        <Text style={ss.aiTitle}>Ask AI Mate anything</Text>
+        <Text style={ss.aiTitle}>{t('home.askAiTitle')}</Text>
         <Text style={ss.aiPrompt}>&quot;{AI_PROMPTS[promptIdx]}&quot;</Text>
       </View>
       <View style={ss.aiArrow}>
@@ -348,6 +349,7 @@ const TILE_ROUTE: Record<string, string> = {
 
 // 퀵 액세스 BigTile
 function BigTile({ tile }: { tile: (typeof QUICK_TILES)[0] }) {
+  const t = useT()
   return (
     <Pressable
       style={({ pressed }) => [ss.bigTile, { opacity: pressed ? 0.88 : 1 }]}
@@ -366,8 +368,8 @@ function BigTile({ tile }: { tile: (typeof QUICK_TILES)[0] }) {
           )}
         </View>
         <View>
-          <Text style={ss.bigTileTitle}>{tile.title}</Text>
-          <Text style={ss.bigTileSub}>{tile.sub}</Text>
+          <Text style={ss.bigTileTitle}>{t(tile.titleKey)}</Text>
+          <Text style={ss.bigTileSub}>{t(tile.subKey)}</Text>
         </View>
       </LinearGradient>
     </Pressable>
@@ -585,8 +587,9 @@ function CommunityCard() {
 export default function HomeScreen() {
   useAuthStore((state) => state.user)
   const t = useT()
+  const lang = useLocaleStore((s) => s.lang)
   const [promptIdx, setPromptIdx] = useState(0)
-  const { data: placesData } = usePlaces('en', 12)
+  const { data: placesData } = usePlaces(lang, 12)
   const pois = placesData?.pois
   const poisMock = placesData?.provider === 'mock'
 
@@ -628,20 +631,20 @@ export default function HomeScreen() {
 
             {/* 인사말 */}
             <View style={ss.greetingRow}>
-              <Text style={ss.greetingMain}>Good morning,</Text>
-              <Text style={ss.greetingSub}>{"let's go ☀️"}</Text>
+              <Text style={ss.greetingMain}>{t('home.greeting')},</Text>
+              <Text style={ss.greetingSub}>{t('home.letsGo')}</Text>
             </View>
             <View style={ss.weatherRow}>
-              <Text style={ss.weatherText}>19° clear</Text>
+              <Text style={ss.weatherText}>19° {t('home.weatherClear')}</Text>
               <Text style={ss.weatherDot}>·</Text>
-              <Text style={ss.weatherText}>Wave 0.6m</Text>
+              <Text style={ss.weatherText}>{t('home.wave')} 0.6m</Text>
             </View>
 
             {/* 검색 바 */}
             <View style={ss.searchBar}>
               <Search size={20} color={C.primaryDeep} />
               <TextInput
-                placeholder="Try 'best seafood near me'"
+                placeholder={t('home.searchPlaceholder')}
                 placeholderTextColor={C.z500}
                 style={ss.searchInput}
               />
@@ -686,15 +689,15 @@ export default function HomeScreen() {
 
         {/* ─── Today's pick ─── */}
         <View style={[ss.section, { paddingTop: 22 }]}>
-          <SectionHeader title="Today's pick" sub="Curated by AI Mate" />
+          <SectionHeader title={t('home.todayPick')} sub={t('home.curatedByAi')} />
           <TodayPickCard />
         </View>
 
         {/* ─── Nearby now (TourAPI 실데이터) ─── */}
         <View style={{ paddingTop: 22 }}>
           <SectionHeader
-            title="Nearby now"
-            action="See all"
+            title={t('home.nearby')}
+            action={t('home.seeAll')}
             badge={poisMock ? <FallbackBadge label="Sample" /> : undefined}
           />
           <ScrollView
@@ -709,13 +712,13 @@ export default function HomeScreen() {
 
         {/* ─── Today's deals ─── */}
         <View style={[ss.section, { paddingTop: 22 }]}>
-          <SectionHeader title="Today's deals" action="See all" />
+          <SectionHeader title={t('home.deals')} action={t('home.seeAll')} />
           <DealsBanner />
         </View>
 
         {/* ─── 추천 코스 ─── */}
         <View style={[ss.section, { paddingTop: 22 }]}>
-          <SectionHeader title="Recommended courses" action="See all" />
+          <SectionHeader title={t('home.courses')} action={t('home.seeAll')} />
           <View style={{ gap: 10 }}>
             {COURSES.map((c) => (
               <CourseCard key={c.id} course={c} />
@@ -725,7 +728,7 @@ export default function HomeScreen() {
 
         {/* ─── 여행자 후기 ─── */}
         <View style={[ss.section, { paddingTop: 22, paddingBottom: 32 }]}>
-          <SectionHeader title="From travelers" action="See all" />
+          <SectionHeader title={t('home.travelers')} action={t('home.seeAll')} />
           <CommunityCard />
         </View>
       </ScrollView>
