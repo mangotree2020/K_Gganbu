@@ -46,25 +46,56 @@ function Transcripts({ onLines }: { onLines: (fn: (prev: Line[]) => Line[]) => v
   return null
 }
 
+type VoiceStatus = 'idle' | 'connecting' | 'connected' | 'reconnecting' | 'error' | 'unavailable'
+
+// Room 연결 상태 감시 — 약한 네트워크 재연결/끊김 반영 (PLANNING §25 리스크)
+function ConnectionWatch({
+  onReconnecting,
+  onReconnected,
+  onDisconnected,
+}: {
+  onReconnecting: () => void
+  onReconnected: () => void
+  onDisconnected: () => void
+}) {
+  const room = useRoomContext()
+  useEffect(() => {
+    room.on(RoomEvent.Reconnecting, onReconnecting)
+    room.on(RoomEvent.Reconnected, onReconnected)
+    room.on(RoomEvent.Disconnected, onDisconnected)
+    return () => {
+      room.off(RoomEvent.Reconnecting, onReconnecting)
+      room.off(RoomEvent.Reconnected, onReconnected)
+      room.off(RoomEvent.Disconnected, onDisconnected)
+    }
+  }, [room, onReconnecting, onReconnected, onDisconnected])
+  return null
+}
+
 export default function VoiceInterpretScreen() {
   const t = useT()
-  const [status, setStatus] = useState<
-    'idle' | 'connecting' | 'connected' | 'error' | 'unavailable'
-  >('idle')
+  const [status, setStatus] = useState<VoiceStatus>('idle')
   const [grant, setGrant] = useState<LiveKitGrant | null>(null)
   const [lines, setLines] = useState<Line[]>([])
   const scrollRef = useRef<ScrollView>(null)
 
   const start = async () => {
     setStatus('connecting')
-    await AudioSession.startAudioSession()
-    const g = await getVoiceToken({ sourceLang: 'auto', targetLang: 'ko' })
-    if (!g) {
-      await AudioSession.stopAudioSession()
-      setStatus('unavailable') // 키/Agent 미설정 → 폴백 안내
-      return
+    try {
+      // 마이크 권한 just-in-time — 거부 시 startAudioSession이 throw → 폴백 안내
+      await AudioSession.startAudioSession()
+      const g = await getVoiceToken({ sourceLang: 'auto', targetLang: 'ko' })
+      if (!g) {
+        await AudioSession.stopAudioSession()
+        setStatus('unavailable') // 키/Agent 미설정 → 폴백 안내
+        return
+      }
+      setGrant(g)
+    } catch {
+      // 권한 거부·토큰 발급 실패·네트워크 오류 → 'connecting' 고착 방지, 폴백 노출
+      await AudioSession.stopAudioSession().catch(() => {})
+      setStatus('error')
     }
-    setGrant(g)
   }
 
   const stop = async () => {
@@ -72,6 +103,14 @@ export default function VoiceInterpretScreen() {
     setLines([])
     await AudioSession.stopAudioSession()
     setStatus('idle')
+  }
+
+  // preview 끊김/오류 → 세션 정리 후 텍스트 번역 폴백 안내로 전환
+  const failToFallback = async () => {
+    setGrant(null)
+    setLines([])
+    await AudioSession.stopAudioSession().catch(() => {})
+    setStatus('error')
   }
 
   useEffect(() => {
@@ -105,8 +144,13 @@ export default function VoiceInterpretScreen() {
             audio
             video={false}
             onConnected={() => setStatus('connected')}
-            onError={() => setStatus('error')}>
+            onError={() => failToFallback()}>
             <Transcripts onLines={setLines} />
+            <ConnectionWatch
+              onReconnecting={() => setStatus('reconnecting')}
+              onReconnected={() => setStatus('connected')}
+              onDisconnected={() => failToFallback()}
+            />
             <View style={ss.body}>
               <View style={ss.statusPill}>
                 <Icon
@@ -116,7 +160,11 @@ export default function VoiceInterpretScreen() {
                   filled
                 />
                 <Text style={ss.statusText}>
-                  {status === 'connected' ? t('voice.listening') : t('voice.connecting')}
+                  {status === 'connected'
+                    ? t('voice.listening')
+                    : status === 'reconnecting'
+                      ? t('voice.reconnecting')
+                      : t('voice.connecting')}
                 </Text>
               </View>
 
@@ -175,7 +223,15 @@ export default function VoiceInterpretScreen() {
                     {status === 'connecting' ? t('voice.connecting') : t('voice.start')}
                   </Text>
                 </Pressable>
-                {status === 'error' && <Text style={ss.err}>{t('voice.error')}</Text>}
+                {status === 'error' && (
+                  <>
+                    <Text style={ss.err}>{t('voice.error')}</Text>
+                    <Pressable onPress={() => router.replace('/translate')} style={ss.altBtn}>
+                      <Icon name="translate" size={16} color="#fff" filled />
+                      <Text style={ss.altText}>{t('voice.toText')}</Text>
+                    </Pressable>
+                  </>
+                )}
               </>
             )}
           </View>
