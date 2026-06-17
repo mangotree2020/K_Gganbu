@@ -22,14 +22,15 @@ import { useFavorites, useToggleFavorite } from '@/features/favorites/queries'
 import { fetchRoute, useMapPois, type LatLng, type Poi } from '@/features/map/queries'
 import { NaverMap, type NaverMapHandle, type NaverMarker } from '@/features/map/NaverMap'
 import { useCurrentLocation } from '@/hooks/useCurrentLocation'
+import { useT } from '@/lib/i18n'
 import { palette, shadows } from '@/theme/tokens'
 
 type ProviderId = 'naver' | 'blend' | 'google'
 
-const PROVIDERS: { id: ProviderId; label: string; sub: string; color: string }[] = [
-  { id: 'naver', label: 'Naver', sub: '한국인', color: '#03C75A' },
-  { id: 'blend', label: 'Blend', sub: 'Both', color: palette.blue[50] },
-  { id: 'google', label: 'Google', sub: 'Foreigners', color: '#4285F4' },
+const PROVIDERS: { id: ProviderId; label: string; subKey: string; color: string }[] = [
+  { id: 'naver', label: 'Naver', subKey: 'map.subNaver', color: '#03C75A' },
+  { id: 'blend', label: 'Blend', subKey: 'map.subBlend', color: palette.blue[50] },
+  { id: 'google', label: 'Google', subKey: 'map.subGoogle', color: '#4285F4' },
 ]
 
 // 카테고리 → 마커 색
@@ -69,6 +70,7 @@ function PinMarker({ color, icon, selected }: { color: string; icon: string; sel
 }
 
 export default function MapScreen() {
+  const t = useT()
   const [provider, setProvider] = useState<ProviderId>('blend')
   const [blendOpacity, setBlendOpacity] = useState(0.5)
   const [selected, setSelected] = useState<string | null>(null)
@@ -271,7 +273,7 @@ export default function MapScreen() {
           <View style={ss.searchBar}>
             <Icon name="search" size={18} color={palette.zinc[500]} />
             <TextInput
-              placeholder="Search on map…"
+              placeholder={t('map.search')}
               placeholderTextColor={palette.zinc[500]}
               style={ss.searchInput}
             />
@@ -299,7 +301,7 @@ export default function MapScreen() {
                           }
                         : { color: palette.zinc[500] },
                     ]}>
-                    {o.sub}
+                    {t(o.subKey)}
                   </Text>
                 </Pressable>
               )
@@ -389,8 +391,8 @@ export default function MapScreen() {
                 <Icon name="route" size={15} color={palette.blue[40]} />
                 <Text style={ss.routeText}>
                   {routeInfo.distance > 0
-                    ? `${(routeInfo.distance / 1000).toFixed(1)}km · 약 ${Math.max(1, Math.round(routeInfo.duration / 60000))}분`
-                    : '경로 표시'}
+                    ? `${(routeInfo.distance / 1000).toFixed(1)}km · ${t('map.approx')} ${Math.max(1, Math.round(routeInfo.duration / 60000))}${t('map.min')}`
+                    : t('map.routeShow')}
                 </Text>
                 {routeInfo.mock && <FallbackBadge label="Sample route" />}
                 <Pressable onPress={clearRoute} hitSlop={8}>
