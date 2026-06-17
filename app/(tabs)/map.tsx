@@ -18,6 +18,7 @@ import Svg, { Circle, Path } from 'react-native-svg'
 import { Icon } from '@/components/brand'
 import { FallbackBadge } from '@/components/FallbackBadge'
 import { PlaceThumb } from '@/components/PlaceThumb'
+import { useFavorites, useToggleFavorite } from '@/features/favorites/queries'
 import { fetchRoute, useMapPois, type LatLng, type Poi } from '@/features/map/queries'
 import { NaverMap, type NaverMapHandle, type NaverMarker } from '@/features/map/NaverMap'
 import { useCurrentLocation } from '@/hooks/useCurrentLocation'
@@ -102,6 +103,24 @@ export default function MapScreen() {
     () => places.find((p) => p.id === selectedId) ?? places[0],
     [places, selectedId],
   )
+
+  // 즐겨찾기 (BACKLOG #20)
+  const { data: favorites } = useFavorites()
+  const toggleFav = useToggleFavorite()
+  const favSet = useMemo(() => new Set((favorites ?? []).map((f) => f.place_ext_id)), [favorites])
+  const isFav = !!place && favSet.has(place.id)
+  const onToggleFav = () => {
+    if (!place) return
+    toggleFav.mutate({
+      extId: place.id,
+      name: place.name,
+      address: place.address,
+      lat: place.lat,
+      lng: place.lng,
+      imageUrl: place.imageUrl,
+      cat: place.cat,
+    })
+  }
 
   // 지도 중심 = GPS (로딩 완료 후)
   const region: Region = {
@@ -345,6 +364,15 @@ export default function MapScreen() {
                   {place.address ?? 'Busan'}
                 </Text>
               </View>
+              {/* 즐겨찾기 토글 (BACKLOG #20) */}
+              <Pressable style={ss.favBtn} onPress={onToggleFav} hitSlop={6}>
+                <Icon
+                  name="bookmark"
+                  size={20}
+                  color={isFav ? palette.coral[50] : palette.zinc[400]}
+                  filled={isFav}
+                />
+              </Pressable>
               {/* 길찾기 버튼 (현재 위치 → 이 장소) */}
               <Pressable style={ss.dirBtn} onPress={startNavigation} disabled={routing}>
                 {routing ? (
@@ -543,6 +571,14 @@ const ss = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     ...shadows.blue,
+  },
+  favBtn: {
+    width: 42,
+    height: 42,
+    borderRadius: 999,
+    backgroundColor: palette.zinc[100],
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   routeBar: {
     flexDirection: 'row',

@@ -1,4 +1,5 @@
 import { LinearGradient } from 'expo-linear-gradient'
+import { router } from 'expo-router'
 import { useState } from 'react'
 import {
   Modal,
@@ -13,6 +14,7 @@ import { SafeAreaView } from 'react-native-safe-area-context'
 
 import { Icon } from '@/components/brand'
 import { useSignOut } from '@/features/auth/queries'
+import { useFavorites } from '@/features/favorites/queries'
 import { useAuthStore } from '@/features/auth/store'
 import { APP_LANGS, useLocaleStore, useT, type AppLang } from '@/lib/i18n'
 import { palette, shadows } from '@/theme/tokens'
@@ -45,6 +47,11 @@ export default function ProfileScreen() {
   const setLang = useLocaleStore((s) => s.setLang)
   const [langOpen, setLangOpen] = useState(false)
   const currentLang = APP_LANGS.find((l) => l.code === lang) ?? APP_LANGS[0]
+  const { data: favorites } = useFavorites()
+
+  // 즐겨찾기 개수는 실데이터로 표시
+  const badgeFor = (r: Row) =>
+    r.id === 'saved-places' ? (favorites?.length ? String(favorites.length) : undefined) : r.badge
 
   // 행별 라벨/디테일/동작 (언어 행은 i18n + 현재 언어 표시)
   const labelFor = (r: Row) => {
@@ -55,6 +62,7 @@ export default function ProfileScreen() {
   const detailFor = (r: Row) => (r.id === 'language' ? currentLang.label : r.detail)
   const onRowPress = (r: Row) => {
     if (r.id === 'language') setLangOpen(true)
+    else if (r.id === 'saved-places') router.push('/favorites')
   }
 
   return (
@@ -142,9 +150,9 @@ export default function ProfileScreen() {
                   style={[ss.row, i < ROWS.length - 1 && ss.rowBorder]}>
                   <Text style={ss.rowEmoji}>{r.emoji}</Text>
                   <Text style={ss.rowLabel}>{labelFor(r)}</Text>
-                  {r.badge && (
+                  {badgeFor(r) && (
                     <View style={ss.rowBadge}>
-                      <Text style={ss.rowBadgeText}>{r.badge}</Text>
+                      <Text style={ss.rowBadgeText}>{badgeFor(r)}</Text>
                     </View>
                   )}
                   {detail && <Text style={ss.rowDetail}>{detail}</Text>}
