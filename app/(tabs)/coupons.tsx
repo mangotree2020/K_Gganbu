@@ -8,6 +8,7 @@ import { Icon, Pill } from '@/components/brand'
 import { FallbackBadge } from '@/components/FallbackBadge'
 import { PlaceThumb } from '@/components/PlaceThumb'
 import { useCoupons, type CouponCard } from '@/features/coupon/queries'
+import { useT } from '@/lib/i18n'
 import { palette, shadows } from '@/theme/tokens'
 
 // 실데이터(CouponCard)와 mock(number id)을 함께 수용
@@ -83,14 +84,15 @@ const ITEMS: Coupon[] = [
 ]
 
 const FILTERS = [
-  { id: 'all', label: 'All' },
-  { id: 'food', label: 'Food' },
-  { id: 'cafe', label: 'Cafe' },
-  { id: 'beauty', label: 'Beauty' },
-  { id: 'activity', label: 'Activity' },
+  { id: 'all', key: 'coupon.all' },
+  { id: 'food', key: 'coupon.food' },
+  { id: 'cafe', key: 'coupon.cafe' },
+  { id: 'beauty', key: 'coupon.beauty' },
+  { id: 'activity', key: 'coupon.activity' },
 ]
 
 export default function CouponsScreen() {
+  const t = useT()
   const [filter, setFilter] = useState('all')
   const { data: dbCoupons } = useCoupons()
   // 실데이터 없으면 mock 폴백 (네트워크/빈 DB)
@@ -113,10 +115,12 @@ export default function CouponsScreen() {
               <Text style={{ fontSize: 22 }}>🎟</Text>
             </View>
             <View style={{ flex: 1 }}>
-              <Text style={ss.headerTitle}>Coupons near you</Text>
+              <Text style={ss.headerTitle}>{t('coupon.title')}</Text>
               <View style={ss.headerLoc}>
                 <Icon name="location_on" size={13} color="#fff" filled />
-                <Text style={ss.headerLocText}>Haeundae · {source.length} available</Text>
+                <Text style={ss.headerLocText}>
+                  Haeundae · {source.length} {t('coupon.available')}
+                </Text>
               </View>
             </View>
             {isMock && <FallbackBadge label="Sample" />}
@@ -135,7 +139,7 @@ export default function CouponsScreen() {
                   onPress={() => setFilter(f.id)}
                   style={[ss.filterChip, on && ss.filterChipOn]}>
                   <Text style={[ss.filterText, { color: on ? palette.coral[50] : '#fff' }]}>
-                    {f.label} <Text style={{ opacity: 0.7 }}>{count}</Text>
+                    {t(f.key)} <Text style={{ opacity: 0.7 }}>{count}</Text>
                   </Text>
                 </Pressable>
               )
