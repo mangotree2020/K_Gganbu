@@ -1,7 +1,7 @@
 // Naver 지도 — react-native-webview + Naver Maps JS API v3 (PLANNING §17)
 // Expo 공식 Naver 네이티브 SDK가 없어 WebView로 렌더링한다.
 // 마커 탭은 postMessage로 RN에 전달, 중심 이동은 injectJavaScript로 갱신한다.
-import { forwardRef, useImperativeHandle, useMemo, useRef } from 'react'
+import { forwardRef, useImperativeHandle, useMemo, useRef, useState } from 'react'
 import { StyleSheet, View } from 'react-native'
 import { WebView, type WebViewMessageEvent } from 'react-native-webview'
 
@@ -28,9 +28,11 @@ export type NaverMapHandle = {
 
 const CLIENT_ID = process.env.EXPO_PUBLIC_NAVER_MAPS_CLIENT_ID ?? ''
 
-function buildHtml(lat: number, lng: number, markers: NaverMarker[]) {
-  // 신규 Naver Cloud Maps는 ncpKeyId 파라미터 사용
-  const src = `https://oapi.map.naver.com/openapi/v3/maps.js?ncpKeyId=${CLIENT_ID}`
+// legacy=false: 신형 NCP Maps(oapi + ncpKeyId), legacy=true: 구형(openapi + ncpClientId)
+function buildHtml(lat: number, lng: number, markers: NaverMarker[], legacy: boolean) {
+  const src = legacy
+    ? `https://openapi.map.naver.com/openapi/v3/maps.js?ncpClientId=${CLIENT_ID}`
+    : `https://oapi.map.naver.com/openapi/v3/maps.js?ncpKeyId=${CLIENT_ID}`
   return `<!DOCTYPE html>
 <html>
 <head>
@@ -91,12 +93,13 @@ export const NaverMap = forwardRef<NaverMapHandle, Props>(function NaverMap(
   ref,
 ) {
   const webRef = useRef<WebView>(null)
-  // 초기 HTML은 1회만 생성 (이후 중심/마커는 injectJavaScript로 갱신)
+  // 신형 인증 실패 시 구형 형식으로 1회 자동 폴백
+  const [legacy, setLegacy] = useState(false)
   const html = useMemo(
-    () => buildHtml(latitude, longitude, markers),
-    // 마커 목록 변경 시에만 재생성 (좌표 변경은 moveTo로 처리)
+    () => buildHtml(latitude, longitude, markers, legacy),
+    // 마커/형식 변경 시에만 재생성 (좌표 변경은 moveTo로 처리)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [markers],
+    [markers, legacy],
   )
 
   useImperativeHandle(ref, () => ({
@@ -109,7 +112,14 @@ export const NaverMap = forwardRef<NaverMapHandle, Props>(function NaverMap(
     try {
       const msg = JSON.parse(e.nativeEvent.data)
       if (msg.type === 'marker' && msg.id) onMarkerPress?.(msg.id)
-      else if (msg.type === 'auth_error') onAuthError?.(msg.message ?? 'Naver auth error')
+      else if (msg.type === 'auth_error') {
+        if (!legacy) {
+          // 신형 실패 → 구형 형식으로 재시도
+          setLegacy(true)
+        } else {
+          onAuthError?.(msg.message ?? 'Naver auth error')
+        }
+      }
     } catch {
       // ignore
     }
@@ -118,6 +128,7 @@ export const NaverMap = forwardRef<NaverMapHandle, Props>(function NaverMap(
   return (
     <View style={StyleSheet.absoluteFill}>
       <WebView
+        key={legacy ? 'legacy' : 'new'}
         ref={webRef}
         originWhitelist={['*']}
         source={{ html, baseUrl: 'https://localhost' }}
