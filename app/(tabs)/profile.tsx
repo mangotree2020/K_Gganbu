@@ -78,6 +78,7 @@ export default function ProfileScreen() {
   const detailFor = (r: Row) => (r.id === 'language' ? currentLang.label : r.detail)
   const onRowPress = (r: Row) => {
     if (r.id === 'language') setLangOpen(true)
+    else if (r.id === 'itineraries') router.push('/itinerary' as never)
     else if (r.id === 'saved-places') router.push('/favorites')
     else if (r.id === 'saved-coupons') router.push('/saved-coupons')
     else if (r.id === 'allergy') router.push('/allergy')
