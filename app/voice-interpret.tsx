@@ -1,7 +1,7 @@
 // 음성 통역 화면 (PLANNING §25) — LiveKit Room + Gemini Live Agent
 // 토큰: livekit-token Edge Function. 키/Agent 미설정 시 폴백 안내.
-import { AudioSession, LiveKitRoom, registerGlobals } from '@livekit/react-native'
-import { useRoomContext } from '@livekit/components-react'
+// useRoomContext는 @livekit/react-native가 components-react에서 re-export (직접 의존성으로 통일)
+import { AudioSession, LiveKitRoom, registerGlobals, useRoomContext } from '@livekit/react-native'
 import { router } from 'expo-router'
 import { useEffect, useRef, useState } from 'react'
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
