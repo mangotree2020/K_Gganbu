@@ -8,6 +8,7 @@ import { Icon, Pill } from '@/components/brand'
 import { FallbackBadge } from '@/components/FallbackBadge'
 import { PlaceThumb } from '@/components/PlaceThumb'
 import { useCoupons, type CouponCard } from '@/features/coupon/queries'
+import { useRequireAccount } from '@/features/auth/loginPrompt'
 import { useT } from '@/lib/i18n'
 import { palette, shadows } from '@/theme/tokens'
 
@@ -93,8 +94,18 @@ const FILTERS = [
 
 export default function CouponsScreen() {
   const t = useT()
+  const requireAccount = useRequireAccount()
   const [filter, setFilter] = useState('all')
   const { data: dbCoupons } = useCoupons()
+
+  // 쿠폰 저장(QR 발급)은 계정 귀속 — Guest면 로그인 유도 후 이어서 발급 (BACKLOG #8)
+  const openCoupon = (c: Coupon) =>
+    requireAccount('auth.gateCoupon', () =>
+      router.push({
+        pathname: '/coupon-qr',
+        params: { id: String(c.id), name: c.name, disc: c.disc },
+      }),
+    )
   // 실데이터 없으면 mock 폴백 (네트워크/빈 DB)
   const source: Coupon[] = dbCoupons?.length ? dbCoupons : ITEMS
   const isMock = !dbCoupons?.length
@@ -155,12 +166,7 @@ export default function CouponsScreen() {
         {shown.map((c) => (
           <Pressable
             key={c.id}
-            onPress={() =>
-              router.push({
-                pathname: '/coupon-qr',
-                params: { id: String(c.id), name: c.name, disc: c.disc },
-              })
-            }
+            onPress={() => openCoupon(c)}
             style={({ pressed }) => [ss.card, shadows.card, { opacity: pressed ? 0.9 : 1 }]}>
             <View style={ss.cardThumb}>
               <PlaceThumb category={c.icon} height={56} />

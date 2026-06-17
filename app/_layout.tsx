@@ -11,6 +11,7 @@ import { QueryClientProvider } from '@tanstack/react-query'
 import { queryClient } from '@/lib/queryClient'
 import { useAuth } from '@/hooks/useAuth'
 import { useOnboardingStore } from '@/features/onboarding/store'
+import { LoginPromptSheet } from '@/features/auth/LoginPromptSheet'
 
 LogBox.ignoreAllLogs()
 SplashScreen.preventAutoHideAsync()
@@ -70,6 +71,7 @@ function RootLayoutNav() {
         <Stack.Screen name="favorites" options={{ presentation: 'modal' }} />
         <Stack.Screen name="saved-coupons" options={{ presentation: 'modal' }} />
       </Stack>
+      <LoginPromptSheet />
     </>
   )
 }

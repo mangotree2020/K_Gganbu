@@ -15,6 +15,7 @@ import { SafeAreaView } from 'react-native-safe-area-context'
 import { Icon } from '@/components/brand'
 import { FallbackBadge } from '@/components/FallbackBadge'
 import { askGganbu } from '@/features/gganbu/services'
+import { useRequireAccount } from '@/features/auth/loginPrompt'
 import { useT } from '@/lib/i18n'
 import { palette } from '@/theme/tokens'
 
@@ -72,6 +73,7 @@ const INITIAL: Msg = {
 
 export default function AiMateScreen() {
   const t = useT()
+  const requireAccount = useRequireAccount()
   const [msgs, setMsgs] = useState<Msg[]>([INITIAL])
   const [input, setInput] = useState('')
   const [typing, setTyping] = useState(false)
@@ -131,9 +133,11 @@ export default function AiMateScreen() {
                 <Text style={ss.statusText}>{t('ai.online')} · Claude Sonnet 4</Text>
               </View>
             </View>
-            <View style={ss.historyBtn}>
+            <Pressable
+              onPress={() => requireAccount('auth.gateAi', () => {})}
+              style={({ pressed }) => [ss.historyBtn, { opacity: pressed ? 0.7 : 1 }]}>
               <Icon name="history" size={18} color={palette.zinc[900]} />
-            </View>
+            </Pressable>
           </View>
         </SafeAreaView>
       </View>
