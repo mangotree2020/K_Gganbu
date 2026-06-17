@@ -1,5 +1,5 @@
 import Slider from '@react-native-community/slider'
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useMemo, useRef, useState } from 'react'
 import {
   ActivityIndicator,
   Image,
@@ -11,14 +11,13 @@ import {
   TextInput,
   View,
 } from 'react-native'
-import MapView, { Marker, Polyline, PROVIDER_GOOGLE, type Region } from 'react-native-maps'
 import { SafeAreaView } from 'react-native-safe-area-context'
-import Svg, { Circle, Path } from 'react-native-svg'
 
 import { Icon } from '@/components/brand'
 import { FallbackBadge } from '@/components/FallbackBadge'
 import { PlaceThumb } from '@/components/PlaceThumb'
 import { useFavorites, useToggleFavorite } from '@/features/favorites/queries'
+import { GoogleMap, type GoogleMapHandle } from '@/features/map/GoogleMap'
 import { fetchRoute, useMapPois, type LatLng, type Poi } from '@/features/map/queries'
 import { NaverMap, type NaverMapHandle, type NaverMarker } from '@/features/map/NaverMap'
 import { useCurrentLocation } from '@/hooks/useCurrentLocation'
@@ -42,32 +41,6 @@ const CAT_COLOR: Record<string, string> = {
   beach: palette.blue[50],
 }
 const catColor = (cat: string) => CAT_COLOR[cat] ?? palette.blue[50]
-const CAT_ICON: Record<string, string> = {
-  seafood: 'set_meal',
-  cafe: 'local_cafe',
-  sights: 'photo_camera',
-  village: 'holiday_village',
-  beach: 'beach_access',
-}
-const catIcon = (cat: string) => CAT_ICON[cat] ?? 'place'
-
-// 커스텀 마커 핀 (디자인 스마일 핀)
-function PinMarker({ color, icon, selected }: { color: string; icon: string; selected: boolean }) {
-  return (
-    <View style={[ss.pin, { transform: [{ scale: selected ? 1.18 : 1 }] }]}>
-      <Svg width="36" height="44" viewBox="0 0 36 44">
-        <Path
-          d="M18 0 C8 0 0 8 0 18 C0 32 18 44 18 44 C18 44 36 32 36 18 C36 8 28 0 18 0 Z"
-          fill={color}
-        />
-        <Circle cx="18" cy="17" r="11" fill="#fff" />
-      </Svg>
-      <View style={ss.pinIcon}>
-        <Icon name={icon} size={14} color={color} filled />
-      </View>
-    </View>
-  )
-}
 
 export default function MapScreen() {
   const t = useT()
@@ -75,9 +48,7 @@ export default function MapScreen() {
   const [provider, setProvider] = useState<ProviderId>('blend')
   const [blendOpacity, setBlendOpacity] = useState(0.5)
   const [selected, setSelected] = useState<string | null>(null)
-  const [trackMarkers, setTrackMarkers] = useState(true)
-  const [naverError, setNaverError] = useState<string | null>(null)
-  const [route, setRoute] = useState<LatLng[] | null>(null)
+  const [mapError, setMapError] = useState<string | null>(null)
   const [routeInfo, setRouteInfo] = useState<{
     distance: number
     duration: number
@@ -90,17 +61,11 @@ export default function MapScreen() {
   const places = useMemo(() => poisData?.pois ?? [], [poisData])
   const poisMock = poisData?.provider === 'mock'
 
-  const googleRef = useRef<MapView>(null)
+  const googleRef = useRef<GoogleMapHandle>(null)
   const naverRef = useRef<NaverMapHandle>(null)
 
   // 선택 기본값 = 첫 장소 (effect 없이 파생)
   const selectedId = selected ?? places[0]?.id ?? null
-
-  // Android 커스텀 마커 초기 redraw
-  useEffect(() => {
-    const t = setTimeout(() => setTrackMarkers(false), 1500)
-    return () => clearTimeout(t)
-  }, [])
 
   const place = useMemo(
     () => places.find((p) => p.id === selectedId) ?? places[0],
@@ -125,16 +90,8 @@ export default function MapScreen() {
     })
   }
 
-  // 지도 중심 = GPS (로딩 완료 후)
-  const region: Region = {
-    latitude: coords.latitude,
-    longitude: coords.longitude,
-    latitudeDelta: 0.08,
-    longitudeDelta: 0.08,
-  }
-
-  // Naver 마커 데이터
-  const naverMarkers: NaverMarker[] = useMemo(
+  // 지도 마커 데이터 (Naver/Google WebView 공용 — 구조 동일)
+  const mapMarkers: NaverMarker[] = useMemo(
     () =>
       places
         .filter((p) => p.lat && p.lng)
@@ -152,15 +109,12 @@ export default function MapScreen() {
     setSelected(p.id)
     // 다른 장소 선택 시 기존 경로 제거
     if (p.id !== selectedId) {
-      setRoute(null)
       setRouteInfo(null)
       naverRef.current?.clearRoute()
+      googleRef.current?.clearRoute()
     }
     if (p.lat && p.lng) {
-      googleRef.current?.animateToRegion(
-        { latitude: p.lat, longitude: p.lng, latitudeDelta: 0.02, longitudeDelta: 0.02 },
-        450,
-      )
+      googleRef.current?.moveTo(p.lat, p.lng, 15)
       naverRef.current?.moveTo(p.lat, p.lng, 15)
     }
   }
@@ -172,23 +126,17 @@ export default function MapScreen() {
     const start: LatLng = { latitude: coords.latitude, longitude: coords.longitude }
     const goal: LatLng = { latitude: place.lat, longitude: place.lng }
     const res = await fetchRoute(start, goal)
-    setRoute(res.path)
     setRouteInfo({ distance: res.distance, duration: res.duration, mock: res.provider === 'mock' })
+    // 양 지도에 경로 오버레이 (각 핸들이 전체 경로가 보이도록 영역 맞춤)
     naverRef.current?.drawRoute(res.path)
-    // Google 지도: 경로 전체가 보이도록 맞춤
-    if (res.path.length > 1) {
-      googleRef.current?.fitToCoordinates(res.path, {
-        edgePadding: { top: 80, right: 50, bottom: 260, left: 50 },
-        animated: true,
-      })
-    }
+    googleRef.current?.drawRoute(res.path)
     setRouting(false)
   }
 
   const clearRoute = () => {
-    setRoute(null)
     setRouteInfo(null)
     naverRef.current?.clearRoute()
+    googleRef.current?.clearRoute()
   }
 
   const showGoogle = provider === 'google' || provider === 'blend'
@@ -209,37 +157,21 @@ export default function MapScreen() {
     <View style={ss.container}>
       {/* 지도 영역 */}
       <View style={ss.mapArea}>
-        {/* Google (하단 레이어) */}
+        {/* Google (하단 레이어) — WebView + Maps JS API (라벨 언어 = 앱 설정) */}
         {showGoogle && (
-          <MapView
+          <GoogleMap
             ref={googleRef}
-            provider={PROVIDER_GOOGLE}
-            style={StyleSheet.absoluteFill}
-            region={region}
-            showsUserLocation
-            showsMyLocationButton={false}
-            toolbarEnabled={false}>
-            {places
-              .filter((p) => p.lat && p.lng)
-              .map((p) => (
-                <Marker
-                  key={p.id}
-                  coordinate={{ latitude: p.lat!, longitude: p.lng! }}
-                  anchor={{ x: 0.5, y: 1 }}
-                  tracksViewChanges={trackMarkers}
-                  onPress={() => selectPlace(p)}>
-                  <PinMarker
-                    color={catColor(p.cat)}
-                    icon={catIcon(p.cat)}
-                    selected={p.id === selectedId}
-                  />
-                </Marker>
-              ))}
-            {/* Naver Directions 경로 오버레이 (PLANNING §17) */}
-            {route && route.length > 1 && (
-              <Polyline coordinates={route} strokeColor="#0EA5E9" strokeWidth={6} />
-            )}
-          </MapView>
+            latitude={coords.latitude}
+            longitude={coords.longitude}
+            markers={mapMarkers}
+            language={lang}
+            selectedId={selectedId ?? undefined}
+            onMarkerPress={(id) => {
+              const p = places.find((x) => x.id === id)
+              if (p) selectPlace(p)
+            }}
+            onAuthError={(m) => setMapError(m)}
+          />
         )}
 
         {/* Naver (상단 레이어 — Blend 시 투명도 적용) */}
@@ -251,14 +183,14 @@ export default function MapScreen() {
               ref={naverRef}
               latitude={coords.latitude}
               longitude={coords.longitude}
-              markers={naverMarkers}
+              markers={mapMarkers}
               language={lang}
               selectedId={selectedId ?? undefined}
               onMarkerPress={(id) => {
                 const p = places.find((x) => x.id === id)
                 if (p) selectPlace(p)
               }}
-              onAuthError={(m) => setNaverError(m)}
+              onAuthError={(m) => setMapError(m)}
             />
           </View>
         )}
@@ -287,7 +219,10 @@ export default function MapScreen() {
               return (
                 <Pressable
                   key={o.id}
-                  onPress={() => setProvider(o.id)}
+                  onPress={() => {
+                    setProvider(o.id)
+                    setMapError(null) // 전환 시 이전 지도 오류 초기화 (각 지도가 재마운트되며 다시 보고)
+                  }}
                   style={[ss.toggleBtn, on && { backgroundColor: o.color }]}>
                   <Text style={[ss.toggleLabel, { color: on ? '#fff' : palette.zinc[700] }]}>
                     {o.label}
@@ -310,11 +245,11 @@ export default function MapScreen() {
             })}
           </View>
 
-          {/* Naver 인증 오류 안내 */}
-          {showNaver && naverError && (
+          {/* 지도 인증 오류 안내 (Naver/Google 공용) */}
+          {mapError && (
             <View style={ss.naverErr}>
               <Icon name="info" size={13} color={palette.error[50]} />
-              <Text style={ss.naverErrText}>{naverError}</Text>
+              <Text style={ss.naverErrText}>{mapError}</Text>
             </View>
           )}
 
@@ -539,9 +474,6 @@ const ss = StyleSheet.create({
   },
   blendChip: { borderRadius: 999, paddingHorizontal: 8, paddingVertical: 3 },
   blendChipText: { color: '#fff', fontSize: 10, fontWeight: '800' },
-
-  pin: { width: 36, height: 44, alignItems: 'center' },
-  pinIcon: { position: 'absolute', top: 10, left: 11 },
 
   sheet: {
     backgroundColor: '#fff',
