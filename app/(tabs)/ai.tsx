@@ -15,6 +15,7 @@ import { SafeAreaView } from 'react-native-safe-area-context'
 import { Icon } from '@/components/brand'
 import { FallbackBadge } from '@/components/FallbackBadge'
 import { askGganbu } from '@/features/gganbu/services'
+import { useT } from '@/lib/i18n'
 import { palette } from '@/theme/tokens'
 
 type Schedule = { time: string; place: string; icon: string }
@@ -70,6 +71,7 @@ const INITIAL: Msg = {
 }
 
 export default function AiMateScreen() {
+  const t = useT()
   const [msgs, setMsgs] = useState<Msg[]>([INITIAL])
   const [input, setInput] = useState('')
   const [typing, setTyping] = useState(false)
@@ -126,7 +128,7 @@ export default function AiMateScreen() {
               <Text style={ss.headerTitle}>AI Gganbu</Text>
               <View style={ss.statusRow}>
                 <Icon name="circle" size={6} color={palette.success[50]} filled />
-                <Text style={ss.statusText}>Online · Claude Sonnet 4</Text>
+                <Text style={ss.statusText}>{t('ai.online')} · Claude Sonnet 4</Text>
               </View>
             </View>
             <View style={ss.historyBtn}>
@@ -209,7 +211,7 @@ export default function AiMateScreen() {
               value={input}
               onChangeText={setInput}
               onSubmitEditing={() => send(input)}
-              placeholder="Ask anything about Korea travel…"
+              placeholder={t('ai.placeholder')}
               placeholderTextColor={palette.zinc[400]}
               style={ss.input}
               returnKeyType="send"

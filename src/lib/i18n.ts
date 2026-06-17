@@ -106,6 +106,8 @@ const STRINGS: Record<AppLang, Dict> = {
     'map.routeShow': 'Route',
     'map.approx': '~',
     'map.min': 'min',
+    'ai.placeholder': 'Ask anything about Korea travel…',
+    'ai.online': 'Online',
   },
   ko: {
     'tab.home': '홈',
@@ -180,6 +182,8 @@ const STRINGS: Record<AppLang, Dict> = {
     'map.routeShow': '경로 표시',
     'map.approx': '약',
     'map.min': '분',
+    'ai.placeholder': '한국 여행에 대해 무엇이든 물어보세요…',
+    'ai.online': '온라인',
   },
   ja: {
     'tab.home': 'ホーム',
@@ -254,6 +258,8 @@ const STRINGS: Record<AppLang, Dict> = {
     'map.routeShow': 'ルート表示',
     'map.approx': '約',
     'map.min': '分',
+    'ai.placeholder': '韓国旅行について何でも聞いてください…',
+    'ai.online': 'オンライン',
   },
   'zh-CN': {
     'tab.home': '首页',
@@ -328,6 +334,8 @@ const STRINGS: Record<AppLang, Dict> = {
     'map.routeShow': '显示路线',
     'map.approx': '约',
     'map.min': '分钟',
+    'ai.placeholder': '关于韩国旅行尽管问…',
+    'ai.online': '在线',
   },
   'zh-TW': {
     'tab.home': '首頁',
@@ -402,6 +410,8 @@ const STRINGS: Record<AppLang, Dict> = {
     'map.routeShow': '顯示路線',
     'map.approx': '約',
     'map.min': '分鐘',
+    'ai.placeholder': '關於韓國旅行儘管問…',
+    'ai.online': '在線',
   },
 }
 
