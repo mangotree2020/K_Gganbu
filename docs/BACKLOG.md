@@ -61,7 +61,7 @@
 | #24 | 쿠폰 QR one-time     | ✅   |                                                  |
 | #25 | 긴급 도움(SOS)       | ✅   | 오프라인 동작                                    |
 
-> 🔶 항목의 외부 설정은 `docs/`의 시크릿 메모(Edge Function secrets)와 Supabase 대시보드에서 처리.
+> 🔶 항목 외부 설정 절차는 **`docs/SETUP_EXTERNAL.md`** 참조 (시크릿 이름·발급처·검증 포함).
 > ja 네이티브 검수는 `docs/I18N_JA_REVIEW.md`의 ⚠️ 5건 우선 진행.
 
 ---
