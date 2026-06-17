@@ -129,7 +129,7 @@ export default function VoiceInterpretScreen() {
           </View>
           <View style={{ flex: 1 }}>
             <Text style={ss.title}>{t('voice.title')}</Text>
-            <Text style={ss.sub}>Real-time ko↔ via Gemini Live</Text>
+            <Text style={ss.sub}>{t('voice.headerSub')}</Text>
           </View>
           <Pressable onPress={() => router.back()} style={ss.close}>
             <Icon name="close" size={18} color={palette.zinc[700]} />
