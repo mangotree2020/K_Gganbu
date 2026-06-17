@@ -82,8 +82,9 @@ export default function MapScreen() {
   const [routing, setRouting] = useState(false)
 
   const { coords, loading: locLoading } = useCurrentLocation()
-  const { data: pois } = useMapPois('en', 20)
-  const places = useMemo(() => pois ?? [], [pois])
+  const { data: poisData } = useMapPois('en', 20)
+  const places = useMemo(() => poisData?.pois ?? [], [poisData])
+  const poisMock = poisData?.provider === 'mock'
 
   const googleRef = useRef<MapView>(null)
   const naverRef = useRef<NaverMapHandle>(null)
@@ -293,6 +294,9 @@ export default function MapScreen() {
               <Text style={ss.naverErrText}>{naverError}</Text>
             </View>
           )}
+
+          {/* POI 마커가 샘플 데이터일 때 */}
+          {poisMock && <FallbackBadge label="Sample places" />}
         </SafeAreaView>
 
         {/* Blend 투명도 슬라이더 */}

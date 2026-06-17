@@ -76,19 +76,22 @@ const MOCK_POIS: Poi[] = [
   },
 ]
 
+// POI 결과 — provider로 실데이터(tourapi)/폴백(mock) 구분 (배지 표시용)
+export type PoiResult = { pois: Poi[]; provider: 'tourapi' | 'mock' }
+
 export function usePlaces(lang = 'en', rows = 12) {
   return useQuery({
     queryKey: ['places', lang, rows],
     staleTime: 24 * 60 * 60 * 1000, // 24h 캐시 (PLANNING §17)
-    queryFn: async (): Promise<Poi[]> => {
+    queryFn: async (): Promise<PoiResult> => {
       try {
         const { data, error } = await supabase.functions.invoke('places', {
           body: { lang, areaCode: 6, rows },
         })
         if (error) throw error
         const places = (data?.places ?? []) as Record<string, string>[]
-        if (!places.length) return MOCK_POIS
-        return places
+        if (!places.length) return { pois: MOCK_POIS, provider: 'mock' }
+        const pois = places
           .filter((p) => p.imageUrl) // 이미지 있는 항목 우선
           .map((p) => ({
             id: p.id,
@@ -100,8 +103,9 @@ export function usePlaces(lang = 'en', rows = 12) {
             tel: p.tel ?? null,
             cat: toCat(p.contentTypeId),
           }))
+        return { pois, provider: 'tourapi' }
       } catch {
-        return MOCK_POIS
+        return { pois: MOCK_POIS, provider: 'mock' }
       }
     },
   })
@@ -112,7 +116,7 @@ export function useMapPois(lang = 'en', rows = 20) {
   return useQuery({
     queryKey: ['map-pois', lang, rows],
     staleTime: 24 * 60 * 60 * 1000,
-    queryFn: async (): Promise<Poi[]> => {
+    queryFn: async (): Promise<PoiResult> => {
       try {
         const { data, error } = await supabase.functions.invoke('places', {
           body: { lang, areaCode: 6, rows },
@@ -131,9 +135,11 @@ export function useMapPois(lang = 'en', rows = 20) {
             cat: toCat(p.contentTypeId),
           }))
           .filter((p) => p.lat && p.lng) // 좌표 필수
-        return mapped.length ? mapped : MOCK_POIS
+        return mapped.length
+          ? { pois: mapped, provider: 'tourapi' }
+          : { pois: MOCK_POIS, provider: 'mock' }
       } catch {
-        return MOCK_POIS
+        return { pois: MOCK_POIS, provider: 'mock' }
       }
     },
   })

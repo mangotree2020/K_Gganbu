@@ -24,6 +24,7 @@ import {
 } from 'lucide-react-native'
 
 import { Icon } from '@/components/brand'
+import { FallbackBadge } from '@/components/FallbackBadge'
 import { useAuthStore } from '@/features/auth/store'
 import { usePlaces, type Poi } from '@/features/map/queries'
 import { useT } from '@/lib/i18n'
@@ -280,12 +281,25 @@ function PlaceThumb({ category, height = 92 }: { category: string; height?: numb
 }
 
 // 섹션 헤더
-function SectionHeader({ title, sub, action }: { title?: string; sub?: string; action?: string }) {
+function SectionHeader({
+  title,
+  sub,
+  action,
+  badge,
+}: {
+  title?: string
+  sub?: string
+  action?: string
+  badge?: React.ReactNode
+}) {
   return (
     <View style={ss.sectionHeader}>
-      <View>
-        {title && <Text style={ss.sectionTitle}>{title}</Text>}
-        {sub && <Text style={ss.sectionSub}>{sub}</Text>}
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+        <View>
+          {title && <Text style={ss.sectionTitle}>{title}</Text>}
+          {sub && <Text style={ss.sectionSub}>{sub}</Text>}
+        </View>
+        {badge}
       </View>
       {action && (
         <Pressable style={ss.sectionAction}>
@@ -572,7 +586,9 @@ export default function HomeScreen() {
   useAuthStore((state) => state.user)
   const t = useT()
   const [promptIdx, setPromptIdx] = useState(0)
-  const { data: pois } = usePlaces('en', 12)
+  const { data: placesData } = usePlaces('en', 12)
+  const pois = placesData?.pois
+  const poisMock = placesData?.provider === 'mock'
 
   useEffect(() => {
     const t = setInterval(() => setPromptIdx((i) => (i + 1) % AI_PROMPTS.length), 3500)
@@ -676,7 +692,11 @@ export default function HomeScreen() {
 
         {/* ─── Nearby now (TourAPI 실데이터) ─── */}
         <View style={{ paddingTop: 22 }}>
-          <SectionHeader title="Nearby now" action="See all" />
+          <SectionHeader
+            title="Nearby now"
+            action="See all"
+            badge={poisMock ? <FallbackBadge label="Sample" /> : undefined}
+          />
           <ScrollView
             horizontal
             showsHorizontalScrollIndicator={false}
