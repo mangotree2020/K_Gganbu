@@ -3,6 +3,7 @@ import { Eye, EyeOff, Lock, Mail, MessageSquare } from 'lucide-react-native'
 import { useRef, useState } from 'react'
 import { Controller, useForm } from 'react-hook-form'
 import {
+  Alert,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -193,6 +194,12 @@ export default function LoginScreen() {
                 </View>
               }
               label="Continue with LINE"
+              onPress={() =>
+                Alert.alert(
+                  'LINE login',
+                  'Coming in Phase 2. Please use Google, Apple, or phone for now.',
+                )
+              }
             />
           </View>
 
