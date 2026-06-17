@@ -202,6 +202,10 @@ Dev      : Claude Code, CLAUDE.md 기반 컨텍스트, feature-folder 구조, mo
 - 좌표계 변환 유의 (Naver 일부 API의 TM128 ↔ WGS84), `google_place_id`·`naver_place_id` 양쪽 보관해 상호 매핑
 - 비교 모드: 사용자가 Google 결과 / Naver 결과를 전환 비교 가능
 - 캐시: 마지막 조회 지역 POI 24h 캐시, 즐겨찾기는 오프라인 보관
+- **지도 라벨 다국어**: 베이스맵 라벨·오버레이 POI 모두 앱 설정 언어(`useLocaleStore.lang`)를 따른다.
+  - Naver: WebView 스크립트 URL에 `&language=` 부착(`ko/en/ja/zh`만 지원 → 중문 간/번체는 `zh`로 통합). 언어 변경 시 HTML 재생성으로 즉시 반영
+  - Google: react-native-maps는 per-component 언어 prop이 없어 베이스맵 라벨은 OS/앱 로케일을 따른다(런타임 강제 불가). 오버레이 POI는 언어별 TourAPI(`useMapPois(lang)`)로 현지화
+  - 한계: 앱 내에서 언어만 바꿔도 Google 베이스맵 라벨은 OS 로케일 기준 유지 → Phase 2에서 앱 로케일 오버라이드(iOS `AppleLanguages`/Android config) 검토
 
 ## 18. AI 깐부 페르소나 & 가드레일
 

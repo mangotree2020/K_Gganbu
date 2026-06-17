@@ -20,6 +20,7 @@ type Props = {
   selectedId?: string
   onMarkerPress?: (id: string) => void
   onAuthError?: (msg: string) => void
+  language?: string // 앱 설정 언어 (AppLang). 지도 라벨 언어로 사용
 }
 
 export type NaverMapHandle = {
@@ -30,11 +31,29 @@ export type NaverMapHandle = {
 
 const CLIENT_ID = process.env.EXPO_PUBLIC_NAVER_MAPS_CLIENT_ID ?? ''
 
+// 앱 설정 언어(AppLang) → Naver Maps 지원 언어. Naver는 ko/en/ja/zh만 지원하므로
+// 중문 간체/번체는 모두 zh로 통합한다.
+type NaverLang = 'ko' | 'en' | 'ja' | 'zh'
+const NAVER_LANG: Record<string, NaverLang> = {
+  ko: 'ko',
+  en: 'en',
+  ja: 'ja',
+  'zh-CN': 'zh',
+  'zh-TW': 'zh',
+}
+const toNaverLang = (lang?: string): NaverLang => NAVER_LANG[lang ?? ''] ?? 'en'
+
 // legacy=false: 신형 NCP Maps(oapi + ncpKeyId), legacy=true: 구형(openapi + ncpClientId)
-function buildHtml(lat: number, lng: number, markers: NaverMarker[], legacy: boolean) {
+function buildHtml(
+  lat: number,
+  lng: number,
+  markers: NaverMarker[],
+  legacy: boolean,
+  lang: NaverLang,
+) {
   const src = legacy
-    ? `https://openapi.map.naver.com/openapi/v3/maps.js?ncpClientId=${CLIENT_ID}`
-    : `https://oapi.map.naver.com/openapi/v3/maps.js?ncpKeyId=${CLIENT_ID}`
+    ? `https://openapi.map.naver.com/openapi/v3/maps.js?ncpClientId=${CLIENT_ID}&language=${lang}`
+    : `https://oapi.map.naver.com/openapi/v3/maps.js?ncpKeyId=${CLIENT_ID}&language=${lang}`
   return `<!DOCTYPE html>
 <html>
 <head>
@@ -105,17 +124,18 @@ function buildHtml(lat: number, lng: number, markers: NaverMarker[], legacy: boo
 }
 
 export const NaverMap = forwardRef<NaverMapHandle, Props>(function NaverMap(
-  { latitude, longitude, markers, onMarkerPress, onAuthError },
+  { latitude, longitude, markers, onMarkerPress, onAuthError, language },
   ref,
 ) {
   const webRef = useRef<WebView>(null)
   // 신형 인증 실패 시 구형 형식으로 1회 자동 폴백
   const [legacy, setLegacy] = useState(false)
+  const naverLang = toNaverLang(language)
   const html = useMemo(
-    () => buildHtml(latitude, longitude, markers, legacy),
-    // 마커/형식 변경 시에만 재생성 (좌표 변경은 moveTo로 처리)
+    () => buildHtml(latitude, longitude, markers, legacy, naverLang),
+    // 마커/형식/언어 변경 시에만 재생성 (좌표 변경은 moveTo로 처리)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [markers, legacy],
+    [markers, legacy, naverLang],
   )
 
   useImperativeHandle(ref, () => ({

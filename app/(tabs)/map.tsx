@@ -22,7 +22,7 @@ import { useFavorites, useToggleFavorite } from '@/features/favorites/queries'
 import { fetchRoute, useMapPois, type LatLng, type Poi } from '@/features/map/queries'
 import { NaverMap, type NaverMapHandle, type NaverMarker } from '@/features/map/NaverMap'
 import { useCurrentLocation } from '@/hooks/useCurrentLocation'
-import { useT } from '@/lib/i18n'
+import { useLocaleStore, useT } from '@/lib/i18n'
 import { palette, shadows } from '@/theme/tokens'
 
 type ProviderId = 'naver' | 'blend' | 'google'
@@ -71,6 +71,7 @@ function PinMarker({ color, icon, selected }: { color: string; icon: string; sel
 
 export default function MapScreen() {
   const t = useT()
+  const lang = useLocaleStore((s) => s.lang) // 지도 라벨·POI 언어
   const [provider, setProvider] = useState<ProviderId>('blend')
   const [blendOpacity, setBlendOpacity] = useState(0.5)
   const [selected, setSelected] = useState<string | null>(null)
@@ -85,7 +86,7 @@ export default function MapScreen() {
   const [routing, setRouting] = useState(false)
 
   const { coords, loading: locLoading } = useCurrentLocation()
-  const { data: poisData } = useMapPois('en', 20)
+  const { data: poisData } = useMapPois(lang, 20)
   const places = useMemo(() => poisData?.pois ?? [], [poisData])
   const poisMock = poisData?.provider === 'mock'
 
@@ -251,6 +252,7 @@ export default function MapScreen() {
               latitude={coords.latitude}
               longitude={coords.longitude}
               markers={naverMarkers}
+              language={lang}
               selectedId={selectedId ?? undefined}
               onMarkerPress={(id) => {
                 const p = places.find((x) => x.id === id)
