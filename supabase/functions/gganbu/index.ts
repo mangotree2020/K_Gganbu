@@ -34,7 +34,10 @@ async function ragContext(language: string): Promise<string> {
       _type: 'json',
       arrange: 'O',
     })
-    const res = await fetch(`https://apis.data.go.kr/B551011/${service}/areaBasedList2?${params}`)
+    // RAG는 부가 컨텍스트일 뿐 — 느리면 응답을 막지 않도록 2.5s 타임아웃
+    const res = await fetch(`https://apis.data.go.kr/B551011/${service}/areaBasedList2?${params}`, {
+      signal: AbortSignal.timeout(2500),
+    })
     if (!res.ok) return ''
     const json = await res.json()
     const items = json?.response?.body?.items?.item ?? []
@@ -117,6 +120,14 @@ Deno.serve(async (req) => {
       )
     }
     const reply = (json.content ?? []).find((b: { type: string }) => b.type === 'text')?.text ?? ''
+
+    // 빈 응답 방어 — 클라이언트 mock 폴백을 타도록 502 반환
+    if (!reply.trim()) {
+      return new Response(JSON.stringify({ error: 'empty_reply' }), {
+        status: 502,
+        headers: { ...cors, 'Content-Type': 'application/json' },
+      })
+    }
 
     return new Response(JSON.stringify({ reply }), {
       headers: { ...cors, 'Content-Type': 'application/json' },
