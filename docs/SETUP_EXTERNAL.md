@@ -20,7 +20,8 @@
 | #19  | 시크릿+공개 | `NAVER_SEARCH_CLIENT_*` `NAVER_MAPS_CLIENT_*` / `EXPO_PUBLIC_NAVER_MAPS_CLIENT_ID` | Naver Developers + NCP    | 검색/경로 키 별개              |
 | #22  | 시크릿      | `ANTHROPIC_API_KEY` `TOUR_API_KEY`                                                 | Anthropic + 한국관광공사  | gganbu 함수                    |
 
-> 공통 선행: Edge Function 배포 — `supabase functions deploy <name>` (대상: `translate` `gganbu` `places` `ocr` `coupon` `naver-search` `naver-directions` `livekit-token`).
+> 공통 선행: Edge Function 배포 — `supabase functions deploy <name>` (대상: `translate` `translate-content` `gganbu` `places` `ocr` `coupon` `naver-search` `naver-directions` `livekit-token`).
+> `translate-content`(콘텐츠 자동 번역 파이프라인)는 `translate`와 동일하게 `GOOGLE_TRANSLATION_API_KEY` 사용 — 소스 텍스트를 5개 로케일 jsonb로 채움.
 
 ---
 
@@ -113,7 +114,7 @@
 
 ## 배포 후 점검 체크리스트
 
-- [ ] `supabase functions deploy` 8종 완료
+- [ ] `supabase functions deploy` 9종 완료
 - [ ] `supabase secrets list`로 시크릿 등록 확인
 - [ ] `.env`에 `EXPO_PUBLIC_*` 공개 키 입력, `EXPO_PUBLIC_USE_MOCK` 비움
 - [ ] 소셜/전화 로그인 + Guest 승계 동작

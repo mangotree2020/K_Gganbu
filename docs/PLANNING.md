@@ -288,7 +288,8 @@ emergency_phrases id, category, source_text, translations(jsonb), priority
 > **구현 현황 (2026-06-17)**: ✅ 카메라 OCR 번역(mock-first) · ✅ 추천 코스(`app/itinerary.tsx`, §6 "여행 일정 추천" 겸함) · ✅ AI 일정 생성(§18 "일정 만들어줘" — gganbu RAG, mock-first) · ✅ 티켓 카테고리·아웃링크(`app/tickets.tsx`).
 > ✅ 결제 라우팅 추상화(§24 — `features/payment/`: selectProvider 규칙·어댑터·payment-router 계약, mock-first + 단위테스트). 실 PG(Eximbay/Toss/Stripe/코나) 키·webhook은 외부 설정 대기.
 > ✅ 푸시 opt-in 클라이언트 추상화(§11 — `features/notifications/`: 권한·토큰·등록 계약 mock-first, profile 알림 토글 MMKV persist). 실 전송은 `@react-native-firebase/messaging`(미설치) + Firebase FCM 설정 대기.
-> 미착수(앱 코드 스코프 밖): Admin 기본형(별도 Admin 앱) · 콘텐츠 자동 번역 파이프라인(백엔드 배치).
+> ✅ 콘텐츠 자동 번역 파이프라인(`supabase/functions/translate-content` — 소스 텍스트 → 5개 로케일 jsonb 자동 채움, GOOGLE_TRANSLATION_API_KEY 사용).
+> 미착수(이 RN 저장소 스코프 밖): Admin 기본형 — 별도 Admin 앱/대시보드 필요.
 
 ## Phase 3 — 플랫폼화
 
