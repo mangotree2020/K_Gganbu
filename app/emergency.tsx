@@ -1,9 +1,10 @@
 import { LinearGradient } from 'expo-linear-gradient'
 import { router } from 'expo-router'
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
+import { Linking, Pressable, ScrollView, Share, StyleSheet, Text, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 
 import { Icon } from '@/components/brand'
+import { useCurrentLocation } from '@/hooks/useCurrentLocation'
 import { palette, shadows } from '@/theme/tokens'
 
 const CALLS = [
@@ -38,6 +39,34 @@ const PHRASES = [
 ]
 
 export default function EmergencyScreen() {
+  const { coords, loading: locLoading } = useCurrentLocation()
+  const hasGps = !locLoading && !!coords?.latitude
+
+  // 전화 연결 (긴급 번호)
+  const call = (num: string) => Linking.openURL(`tel:${num}`).catch(() => {})
+
+  // 현재 위치 공유 (좌표 + 구글맵 링크) — 일행/구조대에게 전달
+  const shareLocation = async () => {
+    if (!hasGps) return
+    const { latitude, longitude } = coords
+    const link = `https://maps.google.com/?q=${latitude},${longitude}`
+    try {
+      await Share.share({
+        message: `My current location: ${latitude.toFixed(5)}, ${longitude.toFixed(5)}\n${link}`,
+      })
+    } catch {
+      // 공유 취소 — 무시
+    }
+  }
+
+  // 가까운 병원 찾기 — 현재 위치 기준 외부 지도 검색
+  const findHospital = () => {
+    const q = hasGps
+      ? `https://www.google.com/maps/search/hospital/@${coords.latitude},${coords.longitude},15z`
+      : `https://www.google.com/maps/search/?api=1&query=hospital+Busan`
+    Linking.openURL(q).catch(() => {})
+  }
+
   return (
     <View style={ss.container}>
       <LinearGradient colors={['#EF4444', '#DC2626']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}>
@@ -50,7 +79,11 @@ export default function EmergencyScreen() {
               <Text style={ss.headerTitle}>Emergency help</Text>
               <View style={ss.headerLoc}>
                 <Icon name="location_on" size={12} color="#fff" filled />
-                <Text style={ss.headerLocText}>Haeundae-gu, Busan · GPS shared on call</Text>
+                <Text style={ss.headerLocText}>
+                  {hasGps
+                    ? `${coords.latitude.toFixed(4)}, ${coords.longitude.toFixed(4)} · GPS ready`
+                    : 'Locating… · GPS shared on call'}
+                </Text>
               </View>
             </View>
             <Pressable onPress={() => router.back()} style={ss.close}>
@@ -65,7 +98,7 @@ export default function EmergencyScreen() {
         contentContainerStyle={{ padding: 16, paddingBottom: 24 }}>
         <View style={{ gap: 8 }}>
           {CALLS.map((c) => (
-            <Pressable key={c.num} style={[ss.callCard, shadows.card]}>
+            <Pressable key={c.num} style={[ss.callCard, shadows.card]} onPress={() => call(c.num)}>
               <View style={[ss.callIcon, { backgroundColor: c.tone }]}>
                 <Icon name={c.icon} size={22} color="#fff" filled />
               </View>
@@ -90,7 +123,17 @@ export default function EmergencyScreen() {
           ))}
         </View>
 
-        <Pressable style={({ pressed }) => [ss.hospitalBtn, { opacity: pressed ? 0.9 : 1 }]}>
+        <Pressable
+          onPress={shareLocation}
+          disabled={!hasGps}
+          style={({ pressed }) => [ss.shareBtn, { opacity: pressed || !hasGps ? 0.6 : 1 }]}>
+          <Icon name="share" size={18} color={palette.zinc[900]} />
+          <Text style={ss.shareText}>{hasGps ? 'Share my location' : 'Locating…'}</Text>
+        </Pressable>
+
+        <Pressable
+          onPress={findHospital}
+          style={({ pressed }) => [ss.hospitalBtn, { opacity: pressed ? 0.9 : 1 }]}>
           <Icon name="local_hospital" size={18} color="#fff" filled />
           <Text style={ss.hospitalText}>Find nearest hospital</Text>
         </Pressable>
@@ -169,12 +212,25 @@ const ss = StyleSheet.create({
   phraseKo: { fontSize: 15, fontWeight: '700', color: palette.zinc[900] },
   phraseEn: { fontSize: 11, color: palette.zinc[500], marginTop: 2 },
 
+  shareBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    marginTop: 18,
+    backgroundColor: palette.zinc[100],
+    borderWidth: 0.5,
+    borderColor: palette.zinc[300],
+    borderRadius: 999,
+    paddingVertical: 12,
+  },
+  shareText: { color: palette.zinc[900], fontWeight: '700', fontSize: 13 },
   hospitalBtn: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: 6,
-    marginTop: 14,
+    marginTop: 10,
     backgroundColor: palette.blue[50],
     borderRadius: 999,
     paddingVertical: 12,
