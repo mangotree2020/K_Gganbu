@@ -44,7 +44,7 @@ function buildHtml(lat: number, lng: number, markers: NaverMarker[], legacy: boo
   <div id="map"></div>
   <script>
     function post(obj){ if(window.ReactNativeWebView) window.ReactNativeWebView.postMessage(JSON.stringify(obj)); }
-    window.navermap_authFailure = function(){ post({type:'auth_error', message:'Naver 인증 실패 (ncpKeyId/도메인 등록 확인)'}); };
+    window.navermap_authFailure = function(){ post({type:'auth_error', message:'Naver 인증 실패 — Console에서 ' + location.origin + ' 등록/서비스 활성/전파(최대 30분) 확인'}); };
   </script>
   <script src="${src}" onerror="post({type:'auth_error',message:'Naver 지도 스크립트 로드 실패'})"></script>
   <script>
