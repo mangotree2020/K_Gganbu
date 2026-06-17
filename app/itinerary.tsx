@@ -128,7 +128,7 @@ export default function ItineraryScreen() {
         <Pressable
           onPress={onGenerate}
           disabled={genLoading}
-          style={({ pressed }) => [ss.aiBtn, { opacity: pressed || genLoading ? 0.85 : 1 }]}>
+          style={[ss.aiBtn, genLoading && { opacity: 0.85 }]}>
           {genLoading ? (
             <ActivityIndicator color="#fff" size="small" />
           ) : (

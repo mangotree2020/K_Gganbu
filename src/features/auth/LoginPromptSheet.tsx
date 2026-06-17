@@ -53,27 +53,16 @@ export function LoginPromptSheet() {
         <Pressable
           disabled={isPending}
           onPress={() => onProvider('google')}
-          style={({ pressed }) => [
-            ss.btn,
-            ss.btnLight,
-            { opacity: pressed || isPending ? 0.85 : 1 },
-          ]}>
+          style={[ss.btn, ss.btnLight, isPending && { opacity: 0.85 }]}>
           <Text style={ss.btnLightText}>{t('auth.withGoogle')}</Text>
         </Pressable>
         <Pressable
           disabled={isPending}
           onPress={() => onProvider('apple')}
-          style={({ pressed }) => [
-            ss.btn,
-            ss.btnDark,
-            { opacity: pressed || isPending ? 0.85 : 1 },
-          ]}>
+          style={[ss.btn, ss.btnDark, isPending && { opacity: 0.85 }]}>
           <Text style={ss.btnDarkText}>{t('auth.withApple')}</Text>
         </Pressable>
-        <Pressable
-          disabled={isPending}
-          onPress={onPhone}
-          style={({ pressed }) => [ss.btn, ss.btnLight, { opacity: pressed ? 0.85 : 1 }]}>
+        <Pressable disabled={isPending} onPress={onPhone} style={[ss.btn, ss.btnLight]}>
           <Text style={ss.btnLightText}>{t('auth.withPhone')}</Text>
         </Pressable>
 

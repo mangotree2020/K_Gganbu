@@ -105,9 +105,7 @@ export default function TicketsScreen() {
               </View>
               <Text style={ss.price}>{price(x)}</Text>
             </View>
-            <Pressable
-              onPress={() => book(x)}
-              style={({ pressed }) => [ss.bookBtn, { opacity: pressed ? 0.9 : 1 }]}>
+            <Pressable onPress={() => book(x)} style={ss.bookBtn}>
               <Icon name="open_in_new" size={14} color="#fff" filled />
               <Text style={ss.bookText}>{t('ticket.book')}</Text>
             </Pressable>
