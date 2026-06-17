@@ -20,7 +20,7 @@
 | #19  | 시크릿+공개 | `NAVER_SEARCH_CLIENT_*` `NAVER_MAPS_CLIENT_*` / `EXPO_PUBLIC_NAVER_MAPS_CLIENT_ID` | Naver Developers + NCP    | 검색/경로 키 별개              |
 | #22  | 시크릿      | `ANTHROPIC_API_KEY` `TOUR_API_KEY`                                                 | Anthropic + 한국관광공사  | gganbu 함수                    |
 
-> 공통 선행: Edge Function 배포 — `supabase functions deploy <name>` (대상: `translate` `translate-content` `gganbu` `places` `ocr` `coupon` `naver-search` `naver-directions` `livekit-token`).
+> 공통 선행: Edge Function 배포 — `supabase functions deploy <name>` (대상: `translate` `translate-content` `gganbu` `places` `ocr` `coupon` `partner-coupon` `naver-search` `naver-directions` `livekit-token`).
 > `translate-content`(콘텐츠 자동 번역 파이프라인)는 `translate`와 동일하게 `GOOGLE_TRANSLATION_API_KEY` 사용 — 소스 텍스트를 5개 로케일 jsonb로 채움.
 
 ---
@@ -112,9 +112,23 @@
 
 ---
 
+## Admin 기본형 (파트너 쿠폰 등록) — 백엔드 primitive
+
+> Admin UI는 **별도 앱/대시보드**(이 RN 소비자 앱 저장소 밖). 그 핵심 백엔드인 파트너 쿠폰
+> 등록 API는 이 저장소의 `partner-coupon` Edge Function으로 제공한다.
+
+1. 공유 시크릿 설정 후 배포:
+   ```bash
+   supabase secrets set ADMIN_API_KEY=...
+   supabase functions deploy partner-coupon
+   ```
+2. Admin 앱은 `x-admin-key` 헤더로 호출 — `action: 'register'`(쿠폰 생성) / `'list'`(파트너 쿠폰 목록). 미설정 시 503으로 비활성.
+
+**검증**: `register`로 활성 파트너 쿠폰 생성 → 앱 쿠폰 탭에 노출 확인. 비활성 파트너/키 불일치 시 거부.
+
 ## 배포 후 점검 체크리스트
 
-- [ ] `supabase functions deploy` 9종 완료
+- [ ] `supabase functions deploy` 10종 완료
 - [ ] `supabase secrets list`로 시크릿 등록 확인
 - [ ] `.env`에 `EXPO_PUBLIC_*` 공개 키 입력, `EXPO_PUBLIC_USE_MOCK` 비움
 - [ ] 소셜/전화 로그인 + Guest 승계 동작
