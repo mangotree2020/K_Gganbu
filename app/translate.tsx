@@ -19,6 +19,7 @@ import { Icon } from '@/components/brand'
 import { FallbackBadge } from '@/components/FallbackBadge'
 import { detectText } from '@/features/translate/ocr'
 import { translateText } from '@/features/translate/services'
+import { useT } from '@/lib/i18n'
 import { palette } from '@/theme/tokens'
 
 type Mode = 'text' | 'camera' | 'voice'
@@ -89,6 +90,7 @@ const MODES: { id: Mode; icon: string; label: string }[] = [
 ]
 
 export default function TranslateScreen() {
+  const t = useT()
   const [mode, setMode] = useState<Mode>('text')
   const [src, setSrc] = useState('en')
   const [tgt, setTgt] = useState('ko')
@@ -175,8 +177,8 @@ export default function TranslateScreen() {
             <Icon name="translate" size={20} color={palette.teal[40]} filled />
           </View>
           <View style={{ flex: 1 }}>
-            <Text style={ss.headerTitle}>Translate</Text>
-            <Text style={ss.headerSub}>Camera · Voice · Text · 5 languages</Text>
+            <Text style={ss.headerTitle}>{t('translate.title')}</Text>
+            <Text style={ss.headerSub}>{t('translate.subtitle')}</Text>
           </View>
           <Pressable onPress={() => router.back()} style={ss.closeBtn}>
             <Icon name="close" size={18} color={palette.zinc[700]} />
@@ -203,7 +205,7 @@ export default function TranslateScreen() {
                   />
                   <Text
                     style={[ss.modeLabel, { color: on ? palette.teal[30] : palette.zinc[700] }]}>
-                    {m.label}
+                    {t(`translate.mode${m.id.charAt(0).toUpperCase()}${m.id.slice(1)}`)}
                   </Text>
                 </Pressable>
               )
@@ -234,14 +236,14 @@ export default function TranslateScreen() {
                   value={input}
                   onChangeText={setInput}
                   multiline
-                  placeholder="Type to translate..."
+                  placeholder={t('translate.placeholder')}
                   placeholderTextColor={palette.zinc[400]}
                   style={ss.inputField}
                 />
                 <View style={{ alignItems: 'flex-end', marginTop: 6 }}>
                   <Pressable onPress={doTranslate} style={ss.translateBtn}>
                     <Icon name="auto_awesome" size={14} color="#fff" filled />
-                    <Text style={ss.translateBtnText}>Translate</Text>
+                    <Text style={ss.translateBtnText}>{t('translate.cta')}</Text>
                   </Pressable>
                 </View>
               </View>
@@ -269,13 +271,13 @@ export default function TranslateScreen() {
                 )}
                 <View style={{ flexDirection: 'row', gap: 6, marginTop: 10 }}>
                   {[
-                    { icon: 'content_copy', label: 'Copy' },
-                    { icon: 'volume_up', label: 'Play' },
-                    { icon: 'bookmark_add', label: 'Save' },
+                    { icon: 'content_copy', label: 'translate.copy' },
+                    { icon: 'volume_up', label: 'translate.play' },
+                    { icon: 'bookmark_add', label: 'translate.save' },
                   ].map((b) => (
                     <View key={b.label} style={ss.outputAction}>
                       <Icon name={b.icon} size={14} color={palette.teal[30]} />
-                      <Text style={ss.outputActionText}>{b.label}</Text>
+                      <Text style={ss.outputActionText}>{t(b.label)}</Text>
                     </View>
                   ))}
                 </View>
@@ -293,8 +295,8 @@ export default function TranslateScreen() {
                   <View style={ss.placeholderIcon}>
                     <Icon name="photo_camera" size={32} color={palette.teal[40]} filled />
                   </View>
-                  <Text style={ss.placeholderTitle}>Point at a menu or sign</Text>
-                  <Text style={ss.placeholderSub}>OCR로 글자를 읽어 바로 번역해요</Text>
+                  <Text style={ss.placeholderTitle}>{t('translate.pointCamera')}</Text>
+                  <Text style={ss.placeholderSub}>{t('translate.ocrSub')}</Text>
                 </View>
               )}
 
@@ -302,11 +304,11 @@ export default function TranslateScreen() {
               <View style={{ flexDirection: 'row', gap: 10, marginTop: 12 }}>
                 <Pressable style={ss.ocrBtn} onPress={() => runOcr('camera')}>
                   <Icon name="photo_camera" size={18} color="#fff" filled />
-                  <Text style={ss.ocrBtnText}>Take photo</Text>
+                  <Text style={ss.ocrBtnText}>{t('translate.takePhoto')}</Text>
                 </Pressable>
                 <Pressable style={ss.ocrBtnAlt} onPress={() => runOcr('library')}>
                   <Icon name="photo_library" size={18} color={palette.teal[30]} />
-                  <Text style={ss.ocrBtnAltText}>Gallery</Text>
+                  <Text style={ss.ocrBtnAltText}>{t('translate.gallery')}</Text>
                 </Pressable>
               </View>
 
@@ -314,13 +316,13 @@ export default function TranslateScreen() {
               {ocrLoading && (
                 <View style={ss.ocrLoading}>
                   <ActivityIndicator color={palette.teal[40]} />
-                  <Text style={ss.ocrLoadingText}>Reading text…</Text>
+                  <Text style={ss.ocrLoadingText}>{t('translate.reading')}</Text>
                 </View>
               )}
               {!ocrLoading && !!ocrText && (
                 <View style={{ marginTop: 12, gap: 10 }}>
                   <View style={ss.ocrCard}>
-                    <Text style={ss.ocrCardLabel}>DETECTED · 한국어</Text>
+                    <Text style={ss.ocrCardLabel}>{t('translate.detected')} · 한국어</Text>
                     <Text style={ss.ocrDetected}>{ocrText}</Text>
                   </View>
                   <LinearGradient
@@ -339,7 +341,7 @@ export default function TranslateScreen() {
 
           {/* 상황별 문구 */}
           <View style={{ paddingHorizontal: 16, paddingTop: 14 }}>
-            <Text style={ss.sectionLabel}>SITUATION PHRASES</Text>
+            <Text style={ss.sectionLabel}>{t('translate.situationPhrases')}</Text>
             <View style={ss.scenarioGrid}>
               {SCENARIOS.map((s) => (
                 <Pressable
@@ -355,7 +357,7 @@ export default function TranslateScreen() {
                     { backgroundColor: s.bg, borderTopColor: s.color, opacity: pressed ? 0.9 : 1 },
                   ]}>
                   <Icon name={s.icon} size={20} color={s.color} filled />
-                  <Text style={ss.scenarioTitle}>{s.k}</Text>
+                  <Text style={ss.scenarioTitle}>{t(`scenario.${s.k.toLowerCase()}`)}</Text>
                   <Text style={ss.scenarioEx}>{s.ex}</Text>
                 </Pressable>
               ))}
@@ -373,14 +375,14 @@ export default function TranslateScreen() {
           <Pressable style={ss.modalBg} onPress={() => setPicker(null)}>
             <View style={ss.sheet}>
               <Text style={ss.sheetTitle}>
-                {picker === 'src' ? 'Translate from' : 'Translate to'}
+                {picker === 'src' ? t('translate.from') : t('translate.to')}
               </Text>
               {picker === 'src' && (
                 <Pressable
                   onPress={() => pickLang('auto')}
                   style={[ss.langOpt, src === 'auto' && ss.langOptOn]}>
                   <Text style={{ fontSize: 20 }}>🌐</Text>
-                  <Text style={ss.langOptText}>Auto detect</Text>
+                  <Text style={ss.langOptText}>{t('translate.autoDetect')}</Text>
                   {src === 'auto' && (
                     <Icon name="check_circle" size={18} color={palette.teal[40]} filled />
                   )}
