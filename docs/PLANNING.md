@@ -297,6 +297,9 @@ emergency_phrases id, category, source_text, translations(jsonb), priority
 
 로컬 가이드 매칭 · 여행사/호텔 상품 연동 · **Stripe(해외 법인 정산) + 코나플레이트 선불카드(충전→오프라인 제휴 매장 결제)** · 리뷰 · B2B 제휴 대시보드 · 다국가 마케팅 랜딩 · 데이터 기반 관광 리포트 · vi/th/id 언어 확장 · WeChat/LINE 로그인
 
+> **구현 현황 (2026-06-17)**: ✅ 리뷰(`app/reviews.tsx` — 내 리뷰 목록, mock-first). Stripe/코나 정산은 결제 라우팅 어댑터(§24, 어댑터 stub 완료)에 키 연결.
+> 미착수(플랫폼·외부 파트너/인프라 의존): 로컬 가이드 매칭 · 여행사/호텔 연동 · B2B 대시보드 · 마케팅 랜딩 · 데이터 리포트 · vi/th/id 언어 확장(2차) · WeChat/LINE 로그인.
+
 ---
 
 # 사업 / 운영

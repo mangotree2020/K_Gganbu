@@ -103,6 +103,7 @@ export default function ProfileScreen() {
     else if (r.id === 'notifications') toggleNotifications()
     else if (r.id === 'itineraries') router.push('/itinerary' as never)
     else if (r.id === 'tickets') router.push('/tickets' as never)
+    else if (r.id === 'reviews') router.push('/reviews' as never)
     else if (r.id === 'saved-places') router.push('/favorites')
     else if (r.id === 'saved-coupons') router.push('/saved-coupons')
     else if (r.id === 'allergy') router.push('/allergy')

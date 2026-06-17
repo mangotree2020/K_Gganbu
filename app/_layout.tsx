@@ -72,6 +72,7 @@ function RootLayoutNav() {
         <Stack.Screen name="saved-coupons" options={{ presentation: 'modal' }} />
         <Stack.Screen name="itinerary" options={{ presentation: 'modal' }} />
         <Stack.Screen name="tickets" options={{ presentation: 'modal' }} />
+        <Stack.Screen name="reviews" options={{ presentation: 'modal' }} />
       </Stack>
       <LoginPromptSheet />
     </>
