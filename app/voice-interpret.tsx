@@ -10,6 +10,7 @@ import { RoomEvent } from 'livekit-client'
 
 import { Icon } from '@/components/brand'
 import { getVoiceToken, type LiveKitGrant } from '@/features/translate/voice'
+import { useT } from '@/lib/i18n'
 import { palette, shadows } from '@/theme/tokens'
 
 // WebRTC 전역 등록 (LiveKit RN 필수)
@@ -46,6 +47,7 @@ function Transcripts({ onLines }: { onLines: (fn: (prev: Line[]) => Line[]) => v
 }
 
 export default function VoiceInterpretScreen() {
+  const t = useT()
   const [status, setStatus] = useState<
     'idle' | 'connecting' | 'connected' | 'error' | 'unavailable'
   >('idle')
@@ -87,7 +89,7 @@ export default function VoiceInterpretScreen() {
             <Icon name="mic" size={20} color={palette.teal[40]} filled />
           </View>
           <View style={{ flex: 1 }}>
-            <Text style={ss.title}>Voice interpret</Text>
+            <Text style={ss.title}>{t('voice.title')}</Text>
             <Text style={ss.sub}>Real-time ko↔ via Gemini Live</Text>
           </View>
           <Pressable onPress={() => router.back()} style={ss.close}>
@@ -114,7 +116,7 @@ export default function VoiceInterpretScreen() {
                   filled
                 />
                 <Text style={ss.statusText}>
-                  {status === 'connected' ? 'Listening · speak now' : 'Connecting…'}
+                  {status === 'connected' ? t('voice.listening') : t('voice.connecting')}
                 </Text>
               </View>
 
@@ -124,7 +126,7 @@ export default function VoiceInterpretScreen() {
                 contentContainerStyle={{ gap: 8, paddingBottom: 12 }}
                 onContentSizeChange={() => scrollRef.current?.scrollToEnd({ animated: true })}>
                 {lines.length === 0 ? (
-                  <Text style={ss.hint}>대화를 시작하면 원문과 번역이 여기에 표시됩니다.</Text>
+                  <Text style={ss.hint}>{t('voice.hint')}</Text>
                 ) : (
                   lines.map((l) => (
                     <View
@@ -142,7 +144,7 @@ export default function VoiceInterpretScreen() {
 
               <Pressable onPress={stop} style={ss.stopBtn}>
                 <Icon name="close" size={18} color="#fff" />
-                <Text style={ss.stopText}>End</Text>
+                <Text style={ss.stopText}>{t('voice.end')}</Text>
               </Pressable>
             </View>
           </LiveKitRoom>
@@ -153,36 +155,27 @@ export default function VoiceInterpretScreen() {
             </View>
             {status === 'unavailable' ? (
               <>
-                <Text style={ss.bigTitle}>음성 통역 준비 필요</Text>
-                <Text style={ss.bigSub}>
-                  LiveKit·Gemini 키와 Agent 워커 설정 후 사용할 수 있어요. 지금은 텍스트 번역을
-                  이용해 주세요.
-                </Text>
+                <Text style={ss.bigTitle}>{t('voice.unavailableTitle')}</Text>
+                <Text style={ss.bigSub}>{t('voice.unavailableSub')}</Text>
                 <Pressable onPress={() => router.replace('/translate')} style={ss.altBtn}>
                   <Icon name="translate" size={16} color="#fff" filled />
-                  <Text style={ss.altText}>텍스트 번역으로</Text>
+                  <Text style={ss.altText}>{t('voice.toText')}</Text>
                 </Pressable>
               </>
             ) : (
               <>
-                <Text style={ss.bigTitle}>Real-time interpreting</Text>
-                <Text style={ss.bigSub}>
-                  Speak and hear instant translation. Tap to start — mic permission required.
-                </Text>
+                <Text style={ss.bigTitle}>{t('voice.realtimeTitle')}</Text>
+                <Text style={ss.bigSub}>{t('voice.realtimeSub')}</Text>
                 <Pressable
                   onPress={start}
                   disabled={status === 'connecting'}
                   style={[ss.startBtn, { opacity: status === 'connecting' ? 0.6 : 1 }]}>
                   <Icon name="mic" size={18} color="#fff" filled />
                   <Text style={ss.startText}>
-                    {status === 'connecting' ? 'Connecting…' : 'Start interpreting'}
+                    {status === 'connecting' ? t('voice.connecting') : t('voice.start')}
                   </Text>
                 </Pressable>
-                {status === 'error' && (
-                  <Text style={ss.err}>
-                    연결에 실패했어요. 네트워크를 확인하고 다시 시도해 주세요.
-                  </Text>
-                )}
+                {status === 'error' && <Text style={ss.err}>{t('voice.error')}</Text>}
               </>
             )}
           </View>

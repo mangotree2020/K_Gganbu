@@ -3,20 +3,23 @@ import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
 
 import { Icon } from '@/components/brand'
 import { SheetHeader } from '@/components/SheetHeader'
+import { useT } from '@/lib/i18n'
 import { palette } from '@/theme/tokens'
 
+// ko(식당 직원에게 보여줄 한국어) 고정 + key(사용자 언어 라벨)
 const ALLERGENS = [
-  { id: 'peanut', emoji: '🥜', en: 'Peanut', ko: '땅콩' },
-  { id: 'shellfish', emoji: '🦐', en: 'Shellfish', ko: '갑각류 (새우, 게)' },
-  { id: 'milk', emoji: '🥛', en: 'Milk/Dairy', ko: '유제품' },
-  { id: 'egg', emoji: '🥚', en: 'Egg', ko: '달걀' },
-  { id: 'wheat', emoji: '🌾', en: 'Wheat/Gluten', ko: '밀 (글루텐)' },
-  { id: 'soy', emoji: '🫘', en: 'Soybean', ko: '콩' },
-  { id: 'fish', emoji: '🐟', en: 'Fish', ko: '생선' },
-  { id: 'sesame', emoji: '🌿', en: 'Sesame', ko: '참깨' },
+  { id: 'peanut', emoji: '🥜', key: 'allergen.peanut', ko: '땅콩' },
+  { id: 'shellfish', emoji: '🦐', key: 'allergen.shellfish', ko: '갑각류 (새우, 게)' },
+  { id: 'milk', emoji: '🥛', key: 'allergen.milk', ko: '유제품' },
+  { id: 'egg', emoji: '🥚', key: 'allergen.egg', ko: '달걀' },
+  { id: 'wheat', emoji: '🌾', key: 'allergen.wheat', ko: '밀 (글루텐)' },
+  { id: 'soy', emoji: '🫘', key: 'allergen.soy', ko: '콩' },
+  { id: 'fish', emoji: '🐟', key: 'allergen.fish', ko: '생선' },
+  { id: 'sesame', emoji: '🌿', key: 'allergen.sesame', ko: '참깨' },
 ]
 
 export default function AllergyScreen() {
+  const t = useT()
   const [sel, setSel] = useState<Record<string, boolean>>({ peanut: true, shellfish: true })
   const toggle = (id: string) => setSel((s) => ({ ...s, [id]: !s[id] }))
   const active = ALLERGENS.filter((a) => sel[a.id])
@@ -25,8 +28,8 @@ export default function AllergyScreen() {
     <View style={ss.container}>
       <View style={{ paddingTop: 8 }}>
         <SheetHeader
-          title="🥜 Allergy card"
-          sub="Show this card to restaurant staff"
+          title={`🥜 ${t('profile.allergy')}`}
+          sub={t('allergy.sub')}
           accent={palette.coral[50]}
           accentBg={palette.coral[95]}
           icon="medical_services"
@@ -44,14 +47,14 @@ export default function AllergyScreen() {
             </View>
             <View style={{ gap: 8 }}>
               {active.length === 0 ? (
-                <Text style={ss.empty}>Select your allergies below</Text>
+                <Text style={ss.empty}>{t('allergy.selectBelow')}</Text>
               ) : (
                 active.map((a) => (
                   <View key={a.id} style={ss.activeRow}>
                     <Text style={{ fontSize: 26 }}>{a.emoji}</Text>
                     <View style={{ flex: 1 }}>
                       <Text style={ss.activeKo}>{a.ko}</Text>
-                      <Text style={ss.activeEn}>{a.en}</Text>
+                      <Text style={ss.activeEn}>{t(a.key)}</Text>
                     </View>
                     <Icon name="block" size={18} color={palette.error[50]} filled />
                   </View>
@@ -62,16 +65,14 @@ export default function AllergyScreen() {
               <Text style={ss.noteKo}>
                 저는 위 재료에 알레르기가 있습니다. 가능한 다른 메뉴를 추천해 주세요.
               </Text>
-              <Text style={ss.noteEn}>
-                (I have these allergies — please recommend an alternative.)
-              </Text>
+              <Text style={ss.noteEn}>{t('allergy.noteEn')}</Text>
             </View>
           </View>
         </View>
 
         {/* 선택기 */}
         <View style={{ paddingHorizontal: 16, paddingTop: 18 }}>
-          <Text style={ss.pickerLabel}>MY ALLERGIES</Text>
+          <Text style={ss.pickerLabel}>{t('allergy.myAllergies')}</Text>
           <View style={ss.grid}>
             {ALLERGENS.map((a) => {
               const on = !!sel[a.id]
@@ -84,7 +85,7 @@ export default function AllergyScreen() {
                   <View style={{ flex: 1 }}>
                     <Text
                       style={[ss.pickEn, { color: on ? palette.error[50] : palette.zinc[900] }]}>
-                      {a.en}
+                      {t(a.key)}
                     </Text>
                     <Text style={ss.pickKo}>{a.ko}</Text>
                   </View>

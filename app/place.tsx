@@ -3,9 +3,11 @@ import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
 
 import { Icon, Pill } from '@/components/brand'
 import { PlaceThumb } from '@/components/PlaceThumb'
+import { useT } from '@/lib/i18n'
 import { palette } from '@/theme/tokens'
 
 export default function PlaceScreen() {
+  const t = useT()
   const p = useLocalSearchParams<{
     cat?: string
     name?: string
@@ -60,7 +62,7 @@ export default function PlaceScreen() {
             </View>
             <View style={ss.meta}>
               <Icon name="schedule" size={13} color={palette.success[50]} filled />
-              <Text style={ss.metaText}>Open</Text>
+              <Text style={ss.metaText}>{t('place.open')}</Text>
             </View>
             <View style={ss.meta}>
               <Icon name="directions_walk" size={13} color={palette.zinc[500]} />
@@ -73,7 +75,7 @@ export default function PlaceScreen() {
           <View style={{ flexDirection: 'row', gap: 8, marginTop: 16 }}>
             <Pressable style={ss.dirBtn}>
               <Icon name="navigation" size={16} color="#fff" filled />
-              <Text style={ss.dirText}>Directions</Text>
+              <Text style={ss.dirText}>{t('place.directions')}</Text>
             </Pressable>
             <Pressable style={ss.iconBtn}>
               <Icon name="bookmark_add" size={18} color={palette.zinc[700]} />
