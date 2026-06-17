@@ -1,0 +1,12 @@
+-- =============================================================================
+-- rls_auto_enable EXECUTE 권한 회수 (Supabase security advisor 대응)
+-- =============================================================================
+-- rls_auto_enable() 은 신규 테이블 생성 시 RLS 를 자동 활성화하는 DDL 이벤트
+-- 트리거 전용 함수다(RETURNS event_trigger). 이벤트 트리거는 권한과 무관하게
+-- 시스템이 실행하므로, anon/authenticated/public 의 직접 RPC 호출 권한을 회수해도
+-- 동작에 영향이 없다. (handle_new_user 와 동일 패턴)
+--
+-- 대응 advisor:
+--   - anon_security_definer_function_executable
+--   - authenticated_security_definer_function_executable
+revoke execute on function public.rls_auto_enable() from anon, authenticated, public;
