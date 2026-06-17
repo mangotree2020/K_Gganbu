@@ -5,20 +5,13 @@ import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 
 import { Icon, Pill } from '@/components/brand'
+import { FallbackBadge } from '@/components/FallbackBadge'
 import { PlaceThumb } from '@/components/PlaceThumb'
+import { useCoupons, type CouponCard } from '@/features/coupon/queries'
 import { palette, shadows } from '@/theme/tokens'
 
-type Coupon = {
-  id: number
-  name: string
-  cat: string
-  icon: string
-  detail: string
-  dist: string
-  disc: string
-  note: string
-  filter: string
-}
+// 실데이터(CouponCard)와 mock(number id)을 함께 수용
+type Coupon = Omit<CouponCard, 'id'> & { id: string | number }
 
 const ITEMS: Coupon[] = [
   {
@@ -99,7 +92,11 @@ const FILTERS = [
 
 export default function CouponsScreen() {
   const [filter, setFilter] = useState('all')
-  const shown = filter === 'all' ? ITEMS : ITEMS.filter((i) => i.filter === filter)
+  const { data: dbCoupons } = useCoupons()
+  // 실데이터 없으면 mock 폴백 (네트워크/빈 DB)
+  const source: Coupon[] = dbCoupons?.length ? dbCoupons : ITEMS
+  const isMock = !dbCoupons?.length
+  const shown = filter === 'all' ? source : source.filter((i) => i.filter === filter)
 
   return (
     <View style={ss.container}>
@@ -119,9 +116,10 @@ export default function CouponsScreen() {
               <Text style={ss.headerTitle}>Coupons near you</Text>
               <View style={ss.headerLoc}>
                 <Icon name="location_on" size={13} color="#fff" filled />
-                <Text style={ss.headerLocText}>Haeundae · 24 available</Text>
+                <Text style={ss.headerLocText}>Haeundae · {source.length} available</Text>
               </View>
             </View>
+            {isMock && <FallbackBadge label="Sample" />}
           </View>
           <ScrollView
             horizontal
@@ -130,7 +128,7 @@ export default function CouponsScreen() {
             {FILTERS.map((f) => {
               const on = f.id === filter
               const count =
-                f.id === 'all' ? ITEMS.length : ITEMS.filter((i) => i.filter === f.id).length
+                f.id === 'all' ? source.length : source.filter((i) => i.filter === f.id).length
               return (
                 <Pressable
                   key={f.id}
@@ -167,7 +165,7 @@ export default function CouponsScreen() {
               <Text style={ss.cardName}>{c.name}</Text>
               <Text style={ss.cardDetail}>{c.detail}</Text>
               <View style={{ flexDirection: 'row', gap: 6, marginTop: 5 }}>
-                <Pill tone="neutral" size="xs">{`📍 ${c.dist}`}</Pill>
+                {!!c.dist && <Pill tone="neutral" size="xs">{`📍 ${c.dist}`}</Pill>}
                 <Pill tone="blue" size="xs">
                   {c.cat}
                 </Pill>
