@@ -7,9 +7,11 @@ import { Icon } from '@/components/brand'
 import { PlaceThumb } from '@/components/PlaceThumb'
 import { SheetHeader } from '@/components/SheetHeader'
 import { useFavorites, useToggleFavorite, type FavoriteRow } from '@/features/favorites/queries'
+import { useT } from '@/lib/i18n'
 import { palette } from '@/theme/tokens'
 
 export default function FavoritesScreen() {
+  const t = useT()
   const { data: favorites, isLoading } = useFavorites()
   const toggleFav = useToggleFavorite()
 
@@ -30,8 +32,8 @@ export default function FavoritesScreen() {
         <View style={ss.headerRow}>
           <View style={{ flex: 1 }}>
             <SheetHeader
-              title="Saved places"
-              sub="Your favorite spots"
+              title={t('fav.title')}
+              sub={t('fav.subtitle')}
               icon="bookmark"
               accent={palette.coral[50]}
               accentBg={palette.coral[95]}
@@ -44,12 +46,12 @@ export default function FavoritesScreen() {
 
         <ScrollView contentContainerStyle={{ padding: 16, gap: 10 }}>
           {isLoading ? (
-            <Text style={ss.dim}>Loading…</Text>
+            <Text style={ss.dim}>{t('common.loading')}</Text>
           ) : !favorites?.length ? (
             <View style={ss.empty}>
               <Icon name="bookmark" size={40} color={palette.zinc[300]} />
-              <Text style={ss.emptyText}>No saved places yet</Text>
-              <Text style={ss.emptySub}>Tap the bookmark on any place to save it here.</Text>
+              <Text style={ss.emptyText}>{t('fav.empty')}</Text>
+              <Text style={ss.emptySub}>{t('fav.emptySub')}</Text>
             </View>
           ) : (
             favorites.map((f) => (

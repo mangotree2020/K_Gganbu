@@ -39,6 +39,20 @@ const ROWS: Row[] = [
   { id: 'settings', label: 'Settings', emoji: '⚙️' },
 ]
 
+// 행 id → i18n 키
+const ROW_KEY: Record<string, string> = {
+  customize: 'profile.customize',
+  itineraries: 'profile.itineraries',
+  'saved-places': 'profile.savedPlaces',
+  'saved-coupons': 'profile.savedCoupons',
+  reviews: 'profile.reviews',
+  phrasebook: 'profile.phrasebook',
+  allergy: 'profile.allergy',
+  payment: 'profile.payment',
+  language: 'common.language',
+  settings: 'common.settings',
+}
+
 export default function ProfileScreen() {
   const user = useAuthStore((state) => state.user)
   const { mutate: signOut, isPending } = useSignOut()
@@ -54,11 +68,7 @@ export default function ProfileScreen() {
     r.id === 'saved-places' ? (favorites?.length ? String(favorites.length) : undefined) : r.badge
 
   // 행별 라벨/디테일/동작 (언어 행은 i18n + 현재 언어 표시)
-  const labelFor = (r: Row) => {
-    if (r.id === 'language') return t('common.language')
-    if (r.id === 'settings') return t('common.settings')
-    return r.label
-  }
+  const labelFor = (r: Row) => (ROW_KEY[r.id] ? t(ROW_KEY[r.id]) : r.label)
   const detailFor = (r: Row) => (r.id === 'language' ? currentLang.label : r.detail)
   const onRowPress = (r: Row) => {
     if (r.id === 'language') setLangOpen(true)
