@@ -171,10 +171,11 @@ export default function RegisterScreen() {
 
             {!!error && <Text style={ss.formError}>{error.message}</Text>}
 
+            {/* 카드형 Pressable은 plain 배열 style 사용 (CLAUDE.md: 함수형 style 간헐 미적용) */}
             <Pressable
               onPress={onSubmit}
               disabled={isPending}
-              style={({ pressed }) => [ss.cta, { opacity: pressed || isPending ? 0.85 : 1 }]}>
+              style={[ss.cta, isPending && { opacity: 0.85 }]}>
               <Text style={ss.ctaText}>{isPending ? 'Creating…' : 'Create account'}</Text>
             </Pressable>
           </View>
