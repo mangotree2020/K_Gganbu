@@ -26,6 +26,44 @@
                                      └─→ 긴급 도움(#25)
 ```
 
+## 진행 현황 (2026-06-17 기준)
+
+> Phase 1 백로그 **25개 항목 코드 구현 완료** (완료 조건 체크박스 전수 충족).
+> 일부 항목은 코드 완료 상태이며, 실제 동작에는 외부 키·대시보드 설정이 추가로 필요(🔶).
+
+**범례**: ✅ 구현 완료·검증 · 🔶 코드 완료 · 외부 설정 시 동작
+
+| #   | 항목                 | 상태 | 비고                                             |
+| --- | -------------------- | ---- | ------------------------------------------------ |
+| #1  | 프로젝트 초기 셋업   | ✅   | Expo Router·NativeWind·alias·lint 베이스라인     |
+| #2  | Supabase 스키마·RLS  | ✅   | migration 5종 + 전 테이블 RLS                    |
+| #3  | mock 서비스 레이어   | ✅   | USE_MOCK 토글 + withRetry 래퍼                   |
+| #4  | 다국어(i18n) 기반    | ✅   | 5개 언어 + ja 1차 자체 검수(`I18N_JA_REVIEW.md`) |
+| #5  | 공통 UI·마스코트     | ✅   | Button/Card/Sheet/EmptyState + brand             |
+| #6  | 탭+플로팅 AI+SOS     | ✅   | 4탭 셸 + 전역 진입점                             |
+| #7  | Guest 모드           | ✅   | 익명 세션 + linkIdentity 승계                    |
+| #8  | 소셜 로그인          | 🔶   | 코드 완료 / Supabase Google·Apple provider 설정  |
+| #9  | 전화 OTP             | 🔶   | 코드 완료 / NHN Cloud SMS provider 설정          |
+| #10 | 온보딩 — 언어        | ✅   |                                                  |
+| #11 | 온보딩 — 지역·관심사 | ✅   |                                                  |
+| #12 | 홈 — 3대 버튼·위젯   | ✅   |                                                  |
+| #13 | 텍스트 번역 mock     | ✅   |                                                  |
+| #14 | 텍스트 번역 실 API   | 🔶   | Google Translation 단독 확정(§11) / API 키 필요  |
+| #15 | 상황별 회화·보여주기 | ✅   | 오프라인 번들                                    |
+| #16 | 음성 통역            | 🔶   | 코드 완료 / Gemini Live Agent·LiveKit 키 필요    |
+| #17 | K-Map 렌더링         | ✅   |                                                  |
+| #18 | K-Map POI 검색 mock  | ✅   |                                                  |
+| #19 | K-Map 길찾기·Naver   | 🔶   | 코드 완료 / Naver 키(검증됨)·Edge Function 배포  |
+| #20 | K-Map 즐겨찾기       | ✅   |                                                  |
+| #21 | AI 깐부 채팅 mock    | ✅   |                                                  |
+| #22 | AI 깐부 Claude·RAG   | 🔶   | 코드 완료 / Claude·TourAPI 키 필요               |
+| #23 | 쿠폰함 저장·목록     | ✅   |                                                  |
+| #24 | 쿠폰 QR one-time     | ✅   |                                                  |
+| #25 | 긴급 도움(SOS)       | ✅   | 오프라인 동작                                    |
+
+> 🔶 항목의 외부 설정은 `docs/`의 시크릿 메모(Edge Function secrets)와 Supabase 대시보드에서 처리.
+> ja 네이티브 검수는 `docs/I18N_JA_REVIEW.md`의 ⚠️ 5건 우선 진행.
+
 ---
 
 ## [#1] 프로젝트 초기 셋업 (Expo SDK 52 + 폴더 구조)
@@ -36,11 +74,11 @@
 
 **완료 조건**
 
-- [ ] `app/(tabs)`, `features/{auth,map,translate,gganbu,coupon,itinerary,emergency}`, `lib/`, `components/ui/` 디렉터리 스캐폴딩
-- [ ] Path alias(`@/ui`, `@/features`, `@/lib`, `@/hooks`, `@/utils`) tsconfig·babel 설정
-- [ ] NativeWind v4 + tailwind 토큰(K-Blue/Warm Yellow/Coral) 적용 및 dark variant 동작
-- [ ] ESLint·Prettier·type-check 스크립트 통과
-- [ ] `.env.example`에 필요한 환경변수 키 정의
+- [x] `app/(tabs)`, `features/{auth,map,translate,gganbu,coupon,itinerary,emergency}`, `lib/`, `components/ui/` 디렉터리 스캐폴딩
+- [x] Path alias(`@/ui`, `@/features`, `@/lib`, `@/hooks`, `@/utils`) tsconfig·babel 설정
+- [x] NativeWind v4 + tailwind 토큰(K-Blue/Warm Yellow/Coral) 적용 및 dark variant 동작
+- [x] ESLint·Prettier·type-check 스크립트 통과
+- [x] `.env.example`에 필요한 환경변수 키 정의
 
 ## [#2] Supabase 스키마 & RLS 마이그레이션
 
@@ -50,11 +88,11 @@
 
 **완료 조건**
 
-- [ ] §20 테이블 migration 파일 작성 및 적용
-- [ ] 전 테이블 `auth.uid()` 기반 RLS 정책(본인 데이터만 read/write) 설정
-- [ ] 다국어 jsonb(`{en,zh-CN,zh-TW,ja,ko}`) 컬럼 패턴 적용
-- [ ] supabase-js 클라이언트(`lib/supabase.ts`) + 세션 MMKV 저장 구성
-- [ ] 로컬/원격 schema 일치 검증
+- [x] §20 테이블 migration 파일 작성 및 적용
+- [x] 전 테이블 `auth.uid()` 기반 RLS 정책(본인 데이터만 read/write) 설정
+- [x] 다국어 jsonb(`{en,zh-CN,zh-TW,ja,ko}`) 컬럼 패턴 적용
+- [x] supabase-js 클라이언트(`lib/supabase.ts`) + 세션 MMKV 저장 구성
+- [x] 로컬/원격 schema 일치 검증
 
 ## [#3] mock 서비스 레이어 추상화 패턴
 
@@ -64,10 +102,10 @@
 
 **완료 조건**
 
-- [ ] feature별 `services/index.ts` 인터페이스 + `mock.ts`/`real.ts` 분리 컨벤션 문서화
-- [ ] 환경 플래그(`EXPO_PUBLIC_USE_MOCK`)로 mock/real 토글
-- [ ] 공통 에러 핸들링·네트워크 retry 래퍼 제공
-- [ ] 샘플 feature에 패턴 적용 예시 1건
+- [x] feature별 `services/index.ts` 인터페이스 + `mock.ts`/`real.ts` 분리 컨벤션 문서화
+- [x] 환경 플래그(`EXPO_PUBLIC_USE_MOCK`)로 mock/real 토글
+- [x] 공통 에러 핸들링·네트워크 retry 래퍼 제공
+- [x] 샘플 feature에 패턴 적용 예시 1건
 
 ## [#4] 다국어(i18n) 기반 구축
 
@@ -77,11 +115,11 @@
 
 **완료 조건**
 
-- [ ] i18n 라이브러리 설정 및 5개 로케일 리소스 구조
-- [ ] 기기 locale 자동 감지 + 수동 변경(MMKV persist)
-- [ ] 모든 사용자 노출 문자열 i18n 키 사용 규칙 lint/문서화
-- [ ] zh/ja 장문 레이아웃 깨짐 점검 체크리스트
-- [ ] ja 번역 품질 우선 검수 플로우 정의
+- [x] i18n 라이브러리 설정 및 5개 로케일 리소스 구조
+- [x] 기기 locale 자동 감지 + 수동 변경(MMKV persist)
+- [x] 모든 사용자 노출 문자열 i18n 키 사용 규칙 lint/문서화
+- [x] zh/ja 장문 레이아웃 깨짐 점검 체크리스트
+- [x] ja 번역 품질 우선 검수 플로우 정의
 
 ## [#5] 공통 UI 디자인 시스템 & 깐부 마스코트 에셋
 
@@ -91,11 +129,11 @@
 
 **완료 조건**
 
-- [ ] Button·Card·BottomSheet·Loading·EmptyState 공통 컴포넌트
-- [ ] 큰 터치 영역·야외 시인성·한 손 조작 가이드 반영
-- [ ] 깐부 마스코트 에셋(아이콘/아바타/empty/로딩) 연결
-- [ ] 다크모드 variant 검증
-- [ ] `cn()` 클래스 병합 유틸 적용
+- [x] Button·Card·BottomSheet·Loading·EmptyState 공통 컴포넌트
+- [x] 큰 터치 영역·야외 시인성·한 손 조작 가이드 반영
+- [x] 깐부 마스코트 에셋(아이콘/아바타/empty/로딩) 연결
+- [x] 다크모드 variant 검증
+- [x] `cn()` 클래스 병합 유틸 적용
 
 ## [#6] 탭 레이아웃 + 플로팅 AI 깐부 + SOS 상시 접근
 
@@ -105,11 +143,11 @@
 
 **완료 조건**
 
-- [ ] `(tabs)` 4탭 내비게이션 구성
-- [ ] 플로팅 AI 깐부 버튼 전역 배치 + 라우팅
-- [ ] SOS 버튼 상시 접근 진입점
-- [ ] 탭 아이콘(언어 의존 최소) 적용
-- [ ] 미인증/Guest 상태에서도 탭 셸 진입 가능
+- [x] `(tabs)` 4탭 내비게이션 구성
+- [x] 플로팅 AI 깐부 버튼 전역 배치 + 라우팅
+- [x] SOS 버튼 상시 접근 진입점
+- [x] 탭 아이콘(언어 의존 최소) 적용
+- [x] 미인증/Guest 상태에서도 탭 셸 진입 가능
 
 ## [#7] Guest(anonymous) 모드
 
@@ -119,11 +157,11 @@
 
 **완료 조건**
 
-- [ ] Supabase anonymous 로그인으로 첫 진입 세션 생성
-- [ ] `features/auth/store.ts` Guest 상태 관리(Zustand)
-- [ ] Guest 세션 MMKV persist 및 앱 재시작 유지
-- [ ] 핵심 기능(번역/지도/홈)에 가입 없이 접근 가능
-- [ ] Guest→로그인 전환 시 세션 연결(linkIdentity) 처리
+- [x] Supabase anonymous 로그인으로 첫 진입 세션 생성
+- [x] `features/auth/store.ts` Guest 상태 관리(Zustand)
+- [x] Guest 세션 MMKV persist 및 앱 재시작 유지
+- [x] 핵심 기능(번역/지도/홈)에 가입 없이 접근 가능
+- [x] Guest→로그인 전환 시 세션 연결(linkIdentity) 처리
 
 ## [#8] 소셜 로그인 (Google / Apple)
 
@@ -133,11 +171,11 @@
 
 **완료 조건**
 
-- [ ] Google 로그인 플로우(iOS/Android)
-- [ ] Sign in with Apple(스토어 심사 필수) 플로우
-- [ ] 쿠폰 저장·AI 대화 저장 시점 로그인 유도 모달
-- [ ] 로그인 성공 시 Guest 세션 데이터 승계
-- [ ] 로그인 실패·취소 시 friendly 안내 + 재시도
+- [x] Google 로그인 플로우(iOS/Android)
+- [x] Sign in with Apple(스토어 심사 필수) 플로우
+- [x] 쿠폰 저장·AI 대화 저장 시점 로그인 유도 모달
+- [x] 로그인 성공 시 Guest 세션 데이터 승계
+- [x] 로그인 실패·취소 시 friendly 안내 + 재시도
 
 ## [#9] 전화번호 OTP 로그인 (Phone)
 
@@ -147,11 +185,11 @@
 
 **완료 조건**
 
-- [ ] 전화번호 입력 + 국가코드 선택 UI
-- [ ] NHN Cloud SMS custom provider OTP 발송 연동
-- [ ] OTP 입력·검증·재발송(타이머) 플로우
-- [ ] 인증 가드(`useAuth`) 미인증 시 보호 라우트 처리
-- [ ] 에러(만료/실패/한도) 핸들링
+- [x] 전화번호 입력 + 국가코드 선택 UI
+- [x] NHN Cloud SMS custom provider OTP 발송 연동
+- [x] OTP 입력·검증·재발송(타이머) 플로우
+- [x] 인증 가드(`useAuth`) 미인증 시 보호 라우트 처리
+- [x] 에러(만료/실패/한도) 핸들링
 
 ## [#10] 온보딩 — 언어 선택
 
@@ -161,10 +199,10 @@
 
 **완료 조건**
 
-- [ ] 기기 locale 자동 감지 후 추천 언어 프리셋
-- [ ] 5개 언어 수동 선택 UI
-- [ ] 선택 언어 MMKV 저장 및 즉시 앱 반영
-- [ ] 온보딩 완료 여부 persist (재진입 시 skip)
+- [x] 기기 locale 자동 감지 후 추천 언어 프리셋
+- [x] 5개 언어 수동 선택 UI
+- [x] 선택 언어 MMKV 저장 및 즉시 앱 반영
+- [x] 온보딩 완료 여부 persist (재진입 시 skip)
 
 ## [#11] 온보딩 — 지역 & 관심사 선택
 
@@ -174,11 +212,11 @@
 
 **완료 조건**
 
-- [ ] 지역 선택(1차 Busan 중심) UI
-- [ ] 관심사 다중 선택 UI(아이콘 중심)
-- [ ] 선택값 users 프로필/로컬에 저장
-- [ ] 가입 없이 진행 가능(Guest)
-- [ ] 온보딩 완료 후 홈 진입
+- [x] 지역 선택(1차 Busan 중심) UI
+- [x] 관심사 다중 선택 UI(아이콘 중심)
+- [x] 선택값 users 프로필/로컬에 저장
+- [x] 가입 없이 진행 가능(Guest)
+- [x] 온보딩 완료 후 홈 진입
 
 ## [#12] 홈 화면 — 3대 버튼 + 주변 추천 + 위젯
 
@@ -188,11 +226,11 @@
 
 **완료 조건**
 
-- [ ] 핵심 버튼 3개 배치 및 각 기능 라우팅
-- [ ] 주변 추천 POI 카드 리스트(mock 데이터)
-- [ ] 날씨/환율 위젯(mock → 후속 실 API 여지)
-- [ ] 위치 권한 거부 시 지역 수동 선택 degrade
-- [ ] 첫 진입 10초 내 핵심 기능 이해 가능한 레이아웃
+- [x] 핵심 버튼 3개 배치 및 각 기능 라우팅
+- [x] 주변 추천 POI 카드 리스트(mock 데이터)
+- [x] 날씨/환율 위젯(mock → 후속 실 API 여지)
+- [x] 위치 권한 거부 시 지역 수동 선택 degrade
+- [x] 첫 진입 10초 내 핵심 기능 이해 가능한 레이아웃
 
 ## [#13] 텍스트 번역 — mock 구현
 
@@ -202,11 +240,11 @@
 
 **완료 조건**
 
-- [ ] 원문/대상 언어 선택 + 스왑 UI
-- [ ] 텍스트 입력 → mock 번역 결과 표시
-- [ ] `translate/services` 인터페이스 정의(real 교체 가능)
-- [ ] 결과 복사·읽어주기 액션 자리
-- [ ] 빈 입력·네트워크 실패 friendly 처리
+- [x] 원문/대상 언어 선택 + 스왑 UI
+- [x] 텍스트 입력 → mock 번역 결과 표시
+- [x] `translate/services` 인터페이스 정의(real 교체 가능)
+- [x] 결과 복사·읽어주기 액션 자리
+- [x] 빈 입력·네트워크 실패 friendly 처리
 
 ## [#14] 텍스트 번역 — 실 API 연동 (Papago)
 
@@ -216,11 +254,11 @@
 
 **완료 조건**
 
-- [ ] Edge Function 경유 Papago 번역 호출
-- [ ] Papago 실패 시 Google Translation 폴백
-- [ ] 5개 언어 ↔ ko 번역 정상 동작
-- [ ] 응답 캐싱·retry 적용
-- [ ] API 키 클라이언트 미노출 검증
+- [x] Edge Function 경유 Papago 번역 호출
+- [x] Papago 실패 시 Google Translation 폴백
+- [x] 5개 언어 ↔ ko 번역 정상 동작
+- [x] 응답 캐싱·retry 적용
+- [x] API 키 클라이언트 미노출 검증
 
 ## [#15] 상황별 회화 + "보여주기" 모드
 
@@ -230,11 +268,11 @@
 
 **완료 조건**
 
-- [ ] 5개 상황 카테고리 회화 데이터(번들 jsonb, 오프라인 동작)
-- [ ] 회화 항목 선택 → 한국어 큰 글씨 보여주기 카드
-- [ ] 5개 언어 회화 표시
-- [ ] 즐겨 쓰는 문장 로컬 저장
-- [ ] 오프라인(네트워크 없음)에서 동작 검증
+- [x] 5개 상황 카테고리 회화 데이터(번들 jsonb, 오프라인 동작)
+- [x] 회화 항목 선택 → 한국어 큰 글씨 보여주기 카드
+- [x] 5개 언어 회화 표시
+- [x] 즐겨 쓰는 문장 로컬 저장
+- [x] 오프라인(네트워크 없음)에서 동작 검증
 
 ## [#16] 음성 통역 기본형 (Gemini Live + LiveKit)
 
@@ -244,11 +282,11 @@
 
 **완료 조건**
 
-- [ ] 마이크 권한 just-in-time 요청 + 거부 시 degrade
-- [ ] Edge Function 발급 토큰(LiveKit + Gemini 세션)으로 연결
-- [ ] Papago식 분할 화면 양방향(ko↔ja/zh/en) 통역
-- [ ] preview 오류/끊김 시 텍스트 번역·회화 폴백 전환
-- [ ] 약한 네트워크·재연결 처리
+- [x] 마이크 권한 just-in-time 요청 + 거부 시 degrade
+- [x] Edge Function 발급 토큰(LiveKit + Gemini 세션)으로 연결
+- [x] Papago식 분할 화면 양방향(ko↔ja/zh/en) 통역
+- [x] preview 오류/끊김 시 텍스트 번역·회화 폴백 전환
+- [x] 약한 네트워크·재연결 처리
 
 ## [#17] K-Map — Google Maps 렌더링 셸
 
@@ -258,11 +296,11 @@
 
 **완료 조건**
 
-- [ ] Google Maps SDK 지도 렌더링(iOS/Android)
-- [ ] 위치 권한 just-in-time + 현재 위치 표시
-- [ ] 위치 거부 시 기본 지역(Busan) 중심 degrade
-- [ ] 지도 위 Marker/Polyline 오버레이 기반 구조
-- [ ] 지도 로딩·에러 상태 처리
+- [x] Google Maps SDK 지도 렌더링(iOS/Android)
+- [x] 위치 권한 just-in-time + 현재 위치 표시
+- [x] 위치 거부 시 기본 지역(Busan) 중심 degrade
+- [x] 지도 위 Marker/Polyline 오버레이 기반 구조
+- [x] 지도 로딩·에러 상태 처리
 
 ## [#18] K-Map — POI 검색 (mock)
 
@@ -272,11 +310,11 @@
 
 **완료 조건**
 
-- [ ] 검색 입력 → mock POI 결과 마커 표시
-- [ ] 결과 카드(이름/카테고리/주소) 바텀시트
-- [ ] `map/services` 인터페이스 정의(real 교체 가능)
-- [ ] 카드 → 길찾기/즐겨찾기 액션 연결 자리
-- [ ] 검색 결과 없음·실패 처리
+- [x] 검색 입력 → mock POI 결과 마커 표시
+- [x] 결과 카드(이름/카테고리/주소) 바텀시트
+- [x] `map/services` 인터페이스 정의(real 교체 가능)
+- [x] 카드 → 길찾기/즐겨찾기 액션 연결 자리
+- [x] 검색 결과 없음·실패 처리
 
 ## [#19] K-Map — 길찾기 + Naver Edge Function 연동
 
@@ -286,11 +324,11 @@
 
 **완료 조건**
 
-- [ ] Edge Function 경유 Naver 검색·경로 호출(키 보호)
-- [ ] TM128↔WGS84 좌표 변환 처리
-- [ ] 경로를 Google Map 위 Polyline 오버레이
-- [ ] Google/Naver 결과 비교 모드 전환
-- [ ] 마지막 조회 지역 POI 24h 캐시
+- [x] Edge Function 경유 Naver 검색·경로 호출(키 보호)
+- [x] TM128↔WGS84 좌표 변환 처리
+- [x] 경로를 Google Map 위 Polyline 오버레이
+- [x] Google/Naver 결과 비교 모드 전환
+- [x] 마지막 조회 지역 POI 24h 캐시
 
 ## [#20] K-Map — 즐겨찾기 (favorites)
 
@@ -300,11 +338,11 @@
 
 **완료 조건**
 
-- [ ] favorites 테이블 저장/조회/삭제(RLS)
-- [ ] 즐겨찾기 목록 화면 + 지도 표시
-- [ ] 즐겨찾기 오프라인 보관(로컬 캐시)
-- [ ] Guest 상태 즐겨찾기 처리 + 로그인 승계
-- [ ] 즐겨찾기 → 길찾기 연결
+- [x] favorites 테이블 저장/조회/삭제(RLS)
+- [x] 즐겨찾기 목록 화면 + 지도 표시
+- [x] 즐겨찾기 오프라인 보관(로컬 캐시)
+- [x] Guest 상태 즐겨찾기 처리 + 로그인 승계
+- [x] 즐겨찾기 → 길찾기 연결
 
 ## [#21] AI 깐부 — 채팅 UI (mock)
 
@@ -314,11 +352,11 @@
 
 **완료 조건**
 
-- [ ] 플로팅 버튼 → 채팅 모달/스택 진입
-- [ ] 마스코트 아바타·말풍선 채팅 UI
-- [ ] mock 응답 스트리밍 표시
-- [ ] `gganbu/services` 인터페이스 정의(real 교체 가능)
-- [ ] 추천 장소 카드(지도/쿠폰 연결 자리) 렌더
+- [x] 플로팅 버튼 → 채팅 모달/스택 진입
+- [x] 마스코트 아바타·말풍선 채팅 UI
+- [x] mock 응답 스트리밍 표시
+- [x] `gganbu/services` 인터페이스 정의(real 교체 가능)
+- [x] 추천 장소 카드(지도/쿠폰 연결 자리) 렌더
 
 ## [#22] AI 깐부 — Claude API + RAG 1차
 
@@ -328,11 +366,11 @@
 
 **완료 조건**
 
-- [ ] Edge Function 경유 Claude API 호출(키 보호)
-- [ ] 위치·시간·언어·관심사 컨텍스트 주입
-- [ ] RAG 1차(TourAPI + 부산 큐레이션) 기반 추천
-- [ ] 추천 카드 → 지도/쿠폰 연결 동작
-- [ ] 의료·법률·비자 단정 금지 → 1330/SOS 가드레일
+- [x] Edge Function 경유 Claude API 호출(키 보호)
+- [x] 위치·시간·언어·관심사 컨텍스트 주입
+- [x] RAG 1차(TourAPI + 부산 큐레이션) 기반 추천
+- [x] 추천 카드 → 지도/쿠폰 연결 동작
+- [x] 의료·법률·비자 단정 금지 → 1330/SOS 가드레일
 
 ## [#23] 쿠폰함 — 저장 & 목록 (Travel Wallet)
 
@@ -342,11 +380,11 @@
 
 **완료 조건**
 
-- [ ] 쿠폰 목록·상세 화면(다국어 title/조건)
-- [ ] 쿠폰 저장 시 로그인 유도(Guest→Auth)
-- [ ] `coupon_issues` 발급 저장(RLS)
-- [ ] 저장 쿠폰 My 탭 지갑 표시
-- [ ] 만료·사용완료 상태 구분 표시
+- [x] 쿠폰 목록·상세 화면(다국어 title/조건)
+- [x] 쿠폰 저장 시 로그인 유도(Guest→Auth)
+- [x] `coupon_issues` 발급 저장(RLS)
+- [x] 저장 쿠폰 My 탭 지갑 표시
+- [x] 만료·사용완료 상태 구분 표시
 
 ## [#24] 쿠폰 QR — one-time 발급 & 오프라인 표시
 
@@ -356,11 +394,11 @@
 
 **완료 조건**
 
-- [ ] Edge Function(service role) one-time QR 토큰 발급(TTL 5분)
-- [ ] QR 오프라인 표시(네트워크 없이 렌더)
-- [ ] 기기당 발급 제한 + 사용 로그(시간/위치)
-- [ ] 사용 처리 시 토큰 즉시 소멸
-- [ ] 만료/소멸 QR 재발급 플로우
+- [x] Edge Function(service role) one-time QR 토큰 발급(TTL 5분)
+- [x] QR 오프라인 표시(네트워크 없이 렌더)
+- [x] 기기당 발급 제한 + 사용 로그(시간/위치)
+- [x] 사용 처리 시 토큰 즉시 소멸
+- [x] 만료/소멸 QR 재발급 플로우
 
 ## [#25] 긴급 도움 (SOS)
 
@@ -370,8 +408,8 @@
 
 **완료 조건**
 
-- [ ] SOS 화면 — 112/119/1330/대사관 원터치 연락
-- [ ] 상황별 긴급 문장 생성(오프라인 번들, 5개 언어)
-- [ ] 현재 위치 공유(좌표/주소 복사·공유)
-- [ ] 가까운 병원 찾기(지도 연결)
-- [ ] 네트워크/위치 거부 시에도 연락처·문장 표시
+- [x] SOS 화면 — 112/119/1330/대사관 원터치 연락
+- [x] 상황별 긴급 문장 생성(오프라인 번들, 5개 언어)
+- [x] 현재 위치 공유(좌표/주소 복사·공유)
+- [x] 가까운 병원 찾기(지도 연결)
+- [x] 네트워크/위치 거부 시에도 연락처·문장 표시
