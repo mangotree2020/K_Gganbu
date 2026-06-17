@@ -2,6 +2,7 @@
 // 실 연동 시 AI 깐부(gganbu) 일정 생성 + TourAPI 코스 데이터로 교체 가능한 구조.
 import { withRetry } from '@/lib/withRetry'
 import { USE_MOCK } from '@/lib/config'
+import { askGganbu } from '@/features/gganbu/services'
 
 export type ItinDuration = 'quick' | 'half' | 'full'
 export type ItinTheme = 'family' | 'couple' | 'kpop' | 'cruise'
@@ -20,7 +21,11 @@ export type Itinerary = {
   theme: ItinTheme
   region: string
   stops: ItinStop[]
+  generated?: boolean // AI 생성 코스 표시
+  aiNote?: string // AI 깐부 한마디 (생성 시)
 }
+
+export type ItinPrefs = { duration: ItinDuration; theme: ItinTheme }
 
 // 부산 1차 큐레이션 (MVP). place 이름은 데이터(영문) 기준 — chrome만 i18n.
 const MOCK: Itinerary[] = [
@@ -141,5 +146,40 @@ export async function getItineraries(): Promise<Itinerary[]> {
     return await withRetry(fetchReal)
   } catch {
     return MOCK
+  }
+}
+
+// 선호(기간/테마) 기반 코스 stop 합성 — 일치 코스 우선, 없으면 큐레이션 풀에서 구성
+function composeStops(prefs: ItinPrefs): ItinStop[] {
+  const exact = MOCK.find((c) => c.duration === prefs.duration && c.theme === prefs.theme)
+  if (exact) return exact.stops
+  const byDur = MOCK.filter((c) => c.duration === prefs.duration)
+  const pool = (byDur.length ? byDur : MOCK).flatMap((c) => c.stops)
+  const count = prefs.duration === 'quick' ? 3 : prefs.duration === 'half' ? 4 : 5
+  const seen = new Set<string>()
+  const picked: ItinStop[] = []
+  for (const s of pool) {
+    if (seen.has(s.place)) continue
+    seen.add(s.place)
+    picked.push(s)
+    if (picked.length >= count) break
+  }
+  return picked.sort((a, b) => a.time.localeCompare(b.time))
+}
+
+// AI 일정 생성 (PLANNING §18 "일정 만들어줘") — RAG: stop은 큐레이션 데이터,
+// 설명(aiNote)은 gganbu(Claude) 경유. 키 미설정 시 mock 폴백(askGganbu 내부 처리).
+export async function generateAiItinerary(prefs: ItinPrefs, language = 'en'): Promise<Itinerary> {
+  const stops = composeStops(prefs)
+  const { reply } = await askGganbu([{ role: 'user', text: 'Make my day plan' }], { language })
+  return {
+    id: `ai-${prefs.duration}-${prefs.theme}`,
+    title: 'AI plan for you',
+    duration: prefs.duration,
+    theme: prefs.theme,
+    region: 'Busan',
+    stops,
+    generated: true,
+    aiNote: reply,
   }
 }

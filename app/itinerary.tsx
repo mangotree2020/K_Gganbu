@@ -3,14 +3,31 @@ import { useQuery } from '@tanstack/react-query'
 import { LinearGradient } from 'expo-linear-gradient'
 import { router } from 'expo-router'
 import { useMemo, useState } from 'react'
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
+import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 
 import { Icon, Pill } from '@/components/brand'
 import { PlaceThumb } from '@/components/PlaceThumb'
-import { getItineraries, type Itinerary } from '@/features/itinerary/services'
-import { useT } from '@/lib/i18n'
+import {
+  generateAiItinerary,
+  getItineraries,
+  type ItinDuration,
+  type ItinPrefs,
+  type ItinTheme,
+  type Itinerary,
+} from '@/features/itinerary/services'
+import { useLocaleStore, useT } from '@/lib/i18n'
 import { palette, shadows } from '@/theme/tokens'
+
+const DURATIONS = ['quick', 'half', 'full']
+const THEMES = ['family', 'couple', 'kpop', 'cruise']
+
+// 현재 필터를 AI 생성 선호로 변환 (기간 필터→해당 기간, 테마 필터→해당 테마)
+function prefsFromFilter(f: string): ItinPrefs {
+  if (DURATIONS.includes(f)) return { duration: f as ItinDuration, theme: 'family' }
+  if (THEMES.includes(f)) return { duration: 'half', theme: f as ItinTheme }
+  return { duration: 'half', theme: 'family' }
+}
 
 // 필터: 전체 + 기간(3종) + 테마(4종). id는 Itinerary의 duration/theme와 매칭.
 const FILTERS = [
@@ -32,7 +49,10 @@ const DURATION_KEY: Record<string, string> = {
 
 export default function ItineraryScreen() {
   const t = useT()
+  const lang = useLocaleStore((s) => s.lang)
   const [filter, setFilter] = useState('all')
+  const [generated, setGenerated] = useState<Itinerary[]>([])
+  const [genLoading, setGenLoading] = useState(false)
   const { data } = useQuery({ queryKey: ['itineraries'], queryFn: getItineraries })
 
   const shown = useMemo(() => {
@@ -46,6 +66,18 @@ export default function ItineraryScreen() {
       pathname: '/place',
       params: { name: s.place, sub: s.sub, cat: s.cat },
     })
+
+  // AI 일정 생성 (PLANNING §18) — 현재 필터를 선호로 사용, 결과를 상단에 누적
+  const onGenerate = async () => {
+    if (genLoading) return
+    setGenLoading(true)
+    try {
+      const it = await generateAiItinerary(prefsFromFilter(filter), lang)
+      setGenerated((prev) => [it, ...prev.filter((p) => p.id !== it.id)])
+    } finally {
+      setGenLoading(false)
+    }
+  }
 
   return (
     <View style={ss.container}>
@@ -92,10 +124,25 @@ export default function ItineraryScreen() {
       <ScrollView
         showsVerticalScrollIndicator={false}
         contentContainerStyle={{ padding: 16, paddingBottom: 28, gap: 12 }}>
-        {shown.length === 0 ? (
+        {/* AI 일정 생성 (PLANNING §18) — 현재 필터를 선호로 사용 */}
+        <Pressable
+          onPress={onGenerate}
+          disabled={genLoading}
+          style={({ pressed }) => [ss.aiBtn, { opacity: pressed || genLoading ? 0.85 : 1 }]}>
+          {genLoading ? (
+            <ActivityIndicator color="#fff" size="small" />
+          ) : (
+            <Icon name="auto_awesome" size={16} color="#fff" filled />
+          )}
+          <Text style={ss.aiBtnText}>
+            {genLoading ? t('itin.aiGenerating') : t('itin.aiGenerate')}
+          </Text>
+        </Pressable>
+
+        {generated.length === 0 && shown.length === 0 ? (
           <Text style={ss.empty}>{t('itin.empty')}</Text>
         ) : (
-          shown.map((c) => (
+          [...generated, ...shown].map((c) => (
             <View key={c.id} style={[ss.card, shadows.card]}>
               <View style={ss.cardHead}>
                 <View style={{ flex: 1 }}>
@@ -104,10 +151,19 @@ export default function ItineraryScreen() {
                     {t(DURATION_KEY[c.duration])} · {c.stops.length} {t('itin.stops')}
                   </Text>
                 </View>
-                <Pill tone={c.theme === 'cruise' ? 'cruise' : 'blue'} size="sm">
-                  ✦ {t('itin.aiPick')}
+                <Pill
+                  tone={c.generated ? 'teal' : c.theme === 'cruise' ? 'cruise' : 'blue'}
+                  size="sm">
+                  ✦ {c.generated ? t('itin.aiNew') : t('itin.aiPick')}
                 </Pill>
               </View>
+
+              {!!c.aiNote && (
+                <View style={ss.aiNote}>
+                  <Icon name="auto_awesome" size={13} color={palette.teal[40]} filled />
+                  <Text style={ss.aiNoteText}>{c.aiNote}</Text>
+                </View>
+              )}
 
               <View style={{ padding: 14 }}>
                 {c.stops.map((s, i) => {
@@ -208,6 +264,29 @@ const ss = StyleSheet.create({
   chipOn: { backgroundColor: '#fff' },
   chipText: { fontSize: 12, fontWeight: '700' },
 
+  aiBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    backgroundColor: palette.teal[40],
+    borderRadius: 14,
+    paddingVertical: 13,
+    ...shadows.card,
+  },
+  aiBtnText: { color: '#fff', fontWeight: '800', fontSize: 14 },
+  aiNote: {
+    flexDirection: 'row',
+    gap: 8,
+    marginHorizontal: 14,
+    marginTop: 12,
+    padding: 10,
+    borderRadius: 12,
+    backgroundColor: palette.teal[95],
+    borderWidth: 0.5,
+    borderColor: palette.teal[80],
+  },
+  aiNoteText: { flex: 1, fontSize: 12, color: palette.teal[20], lineHeight: 18 },
   empty: { fontSize: 13, color: palette.zinc[400], textAlign: 'center', marginTop: 48 },
   card: {
     backgroundColor: '#fff',
