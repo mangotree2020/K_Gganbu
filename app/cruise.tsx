@@ -5,6 +5,7 @@ import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 
 import { Icon, Pill } from '@/components/brand'
+import { useT } from '@/lib/i18n'
 import { palette, shadows } from '@/theme/tokens'
 
 const STOPS = [
@@ -34,21 +35,21 @@ const STOPS = [
 
 const QUICK = [
   {
-    label: 'Emergency Translate',
+    key: 'cruise.qTranslate',
     icon: 'translate',
     bg: palette.coral[95],
     color: palette.coral[50],
     border: palette.coral[80],
   },
   {
-    label: 'Back to Port',
+    key: 'cruise.qPort',
     icon: 'navigation',
     bg: palette.cruise[90],
     color: palette.cruise.base,
     border: '#93C5FD',
   },
   {
-    label: 'Port Coupons',
+    key: 'cruise.qCoupons',
     icon: 'confirmation_number',
     bg: '#FEF3C7',
     color: palette.amber[50],
@@ -57,6 +58,7 @@ const QUICK = [
 ]
 
 export default function CruiseScreen() {
+  const t = useT()
   const [hours, setHours] = useState(4)
   return (
     <View style={ss.container}>
@@ -67,8 +69,8 @@ export default function CruiseScreen() {
               <Icon name="directions_boat" size={20} color="#fff" filled />
             </View>
             <View style={{ flex: 1 }}>
-              <Text style={ss.headerTitle}>Cruise Mode</Text>
-              <Text style={ss.headerSub}>Busan Port · special itinerary for passengers</Text>
+              <Text style={ss.headerTitle}>{t('cruise.title')}</Text>
+              <Text style={ss.headerSub}>{t('cruise.sub')}</Text>
             </View>
             <Pressable onPress={() => router.back()} style={ss.close}>
               <Icon name="close" size={18} color="#fff" />
@@ -78,9 +80,9 @@ export default function CruiseScreen() {
           {/* 타이머 */}
           <View style={ss.timer}>
             {[
-              { lbl: 'RETURN', val: '15:00', color: '#fff' },
-              { lbl: 'REMAINING', val: '5h 18m', color: '#fff' },
-              { lbl: 'STATUS', val: 'On tour', color: '#86EFAC' },
+              { lbl: t('cruise.return'), val: '15:00', color: '#fff' },
+              { lbl: t('cruise.remaining'), val: '5h 18m', color: '#fff' },
+              { lbl: t('cruise.statusLabel'), val: t('cruise.onTour'), color: '#86EFAC' },
             ].map((b) => (
               <View key={b.lbl}>
                 <Text style={ss.timerLbl}>{b.lbl}</Text>
@@ -104,7 +106,7 @@ export default function CruiseScreen() {
                       fontSize: 12,
                       color: on ? palette.cruise.base : '#fff',
                     }}>
-                    {h} hours
+                    {h} {t('cruise.hours')}
                   </Text>
                 </Pressable>
               )
@@ -120,10 +122,12 @@ export default function CruiseScreen() {
           <View style={ss.itinHead}>
             <View style={{ flex: 1 }}>
               <Text style={ss.itinTitle}>Gamcheon → Jagalchi → BIFF</Text>
-              <Text style={ss.itinSub}>{hours} hour itinerary · AI optimized</Text>
+              <Text style={ss.itinSub}>
+                {hours} {t('cruise.itinSuffix')}
+              </Text>
             </View>
             <Pill tone="cruise" size="sm">
-              ✦ AI pick
+              ✦ {t('cruise.aiPick')}
             </Pill>
           </View>
           <View style={{ padding: 14 }}>
@@ -159,12 +163,12 @@ export default function CruiseScreen() {
           <View style={{ flexDirection: 'row', gap: 8, padding: 14, paddingTop: 0 }}>
             <Pressable style={ss.startBtn}>
               <Text style={{ color: '#fff', fontWeight: '700', fontSize: 13 }}>
-                Start this tour
+                {t('cruise.startTour')}
               </Text>
             </Pressable>
             <Pressable style={ss.customBtn}>
               <Text style={{ color: palette.zinc[800], fontWeight: '700', fontSize: 13 }}>
-                Customize
+                {t('cruise.customize')}
               </Text>
             </Pressable>
           </View>
@@ -173,10 +177,10 @@ export default function CruiseScreen() {
         <View style={{ flexDirection: 'row', gap: 8, marginTop: 12 }}>
           {QUICK.map((q) => (
             <View
-              key={q.label}
+              key={q.key}
               style={[ss.quickBtn, { backgroundColor: q.bg, borderColor: q.border }]}>
               <Icon name={q.icon} size={18} color={q.color} filled />
-              <Text style={[ss.quickLabel, { color: q.color }]}>{q.label}</Text>
+              <Text style={[ss.quickLabel, { color: q.color }]}>{t(q.key)}</Text>
             </View>
           ))}
         </View>

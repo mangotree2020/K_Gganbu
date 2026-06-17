@@ -1,6 +1,7 @@
 import { ScrollView, StyleSheet, Text, View } from 'react-native'
 
 import { SheetHeader } from '@/components/SheetHeader'
+import { useT } from '@/lib/i18n'
 import { palette } from '@/theme/tokens'
 
 const TONES: Record<string, { bg: string; c: string }> = {
@@ -12,63 +13,24 @@ const TONES: Record<string, { bg: string; c: string }> = {
 }
 
 const TIPS = [
-  {
-    emoji: '💳',
-    title: 'Cards work almost everywhere',
-    body: 'Visa/Mastercard accepted at 95% of shops. Tap-to-pay common. AMEX rare — bring backup.',
-    tone: 'blue',
-  },
-  {
-    emoji: '🚇',
-    title: 'T-money for transit',
-    body: 'Buy at any convenience store (₩4,000 + topup). Works on subway, bus, taxi. Bus drivers don’t take cash.',
-    tone: 'teal',
-  },
-  {
-    emoji: '🚫',
-    title: 'No tipping culture',
-    body: 'Tipping is not expected and can feel awkward. The bill is the final price; service charge already included at fancy restaurants.',
-    tone: 'coral',
-  },
-  {
-    emoji: '✈️',
-    title: 'Tax-free refund at airport',
-    body: 'Spend ₩15,000+ at TAX FREE shops, keep receipts. Refund desk: Incheon T1 4F, Gimhae 3F International.',
-    tone: 'amber',
-  },
-  {
-    emoji: '📞',
-    title: 'Tourist hotline 1330',
-    body: '24/7 free interpreter in EN/JA/ZH/RU/TH/VI. Police: 112. Ambulance/fire: 119.',
-    tone: 'error',
-  },
-  {
-    emoji: '🍻',
-    title: 'Drinking is social',
-    body: 'Two hands when receiving / pouring for elders. 건배 (geonbae) = cheers. Bars often close at 1–2 AM weekdays.',
-    tone: 'blue',
-  },
-  {
-    emoji: '🚖',
-    title: 'Taxi via Kakao T',
-    body: 'Show destination in 한글 on map. Default taxis are cheap. “International Taxi” fixes price for long routes.',
-    tone: 'teal',
-  },
-  {
-    emoji: '🛎',
-    title: 'Show, don’t say',
-    body: 'Address & restaurant names on screen beat pronouncing. Use the “show staff” button to enlarge Korean text.',
-    tone: 'coral',
-  },
+  { emoji: '💳', tk: 'tips.t1', bk: 'tips.b1', tone: 'blue' },
+  { emoji: '🚇', tk: 'tips.t2', bk: 'tips.b2', tone: 'teal' },
+  { emoji: '🚫', tk: 'tips.t3', bk: 'tips.b3', tone: 'coral' },
+  { emoji: '✈️', tk: 'tips.t4', bk: 'tips.b4', tone: 'amber' },
+  { emoji: '📞', tk: 'tips.t5', bk: 'tips.b5', tone: 'error' },
+  { emoji: '🍻', tk: 'tips.t6', bk: 'tips.b6', tone: 'blue' },
+  { emoji: '🚖', tk: 'tips.t7', bk: 'tips.b7', tone: 'teal' },
+  { emoji: '🛎', tk: 'tips.t8', bk: 'tips.b8', tone: 'coral' },
 ]
 
 export default function TipsScreen() {
+  const t = useT()
   return (
     <View style={ss.container}>
       <View style={{ paddingTop: 8 }}>
         <SheetHeader
-          title="💡 Payment & culture tips"
-          sub="The 30-second crash course for Korea"
+          title={`💡 ${t('tips.title')}`}
+          sub={t('tips.sub')}
           accent={palette.blue[50]}
           accentBg={palette.blue[95]}
           icon="lightbulb"
@@ -77,14 +39,14 @@ export default function TipsScreen() {
       <ScrollView
         showsVerticalScrollIndicator={false}
         contentContainerStyle={{ padding: 16, paddingBottom: 24, gap: 10 }}>
-        {TIPS.map((t) => {
-          const tone = TONES[t.tone]
+        {TIPS.map((tip) => {
+          const tone = TONES[tip.tone]
           return (
-            <View key={t.title} style={[ss.card, { backgroundColor: tone.bg }]}>
-              <Text style={ss.emoji}>{t.emoji}</Text>
+            <View key={tip.tk} style={[ss.card, { backgroundColor: tone.bg }]}>
+              <Text style={ss.emoji}>{tip.emoji}</Text>
               <View style={{ flex: 1 }}>
-                <Text style={[ss.title, { color: tone.c }]}>{t.title}</Text>
-                <Text style={ss.body}>{t.body}</Text>
+                <Text style={[ss.title, { color: tone.c }]}>{t(tip.tk)}</Text>
+                <Text style={ss.body}>{t(tip.bk)}</Text>
               </View>
             </View>
           )
