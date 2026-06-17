@@ -240,6 +240,24 @@ app/
 - feature 폴더: `features/{auth,map,translate,gganbu,coupon,itinerary,emergency}` — 각 feature에 `components/ hooks/ services/ types/`
 - 서비스 레이어 분리: mock → 실 API 교체 가능 구조 (mock-first)
 
+### 19.1 홈 화면 인터랙션 정의 (디자인 HomeV2 "Daybreak" 기준, 2026-06-18)
+
+`docs/K-Gganbu (standalone).html`의 HomeV2를 충실 구현하고, 디자인의 모든 탭 요소를 실 라우트로 연결한다.
+
+| 요소                                                      | 동작                                                                 |
+| --------------------------------------------------------- | -------------------------------------------------------------------- |
+| 프로필 아이콘(우상단)                                     | → `(tabs)/profile`                                                   |
+| 알림 아이콘·위치 핀(좌상단)                               | 표시 전용(배지 3) — 알림 화면은 Phase 2                              |
+| 검색바 KO 버튼                                            | → `translate`                                                        |
+| 코어 액션 Translate/AskAI/Find                            | → `translate` / `(tabs)/ai` / `(tabs)/map`                           |
+| AI 깐부 카드                                              | → `(tabs)/ai` (회전 프롬프트 4종)                                    |
+| 퀵타일 Translate/Coupons/Cruise/Allergy/Payment/Emergency | → `translate`·`(tabs)/coupons`·`cruise`·`allergy`·`tips`·`emergency` |
+| Today's pick 카드                                         | → `place` (장소 상세)                                                |
+| Nearby now "See all" / 카드                               | → `(tabs)/map` / `place` (카드는 실 TourAPI POI, 없으면 샘플)        |
+| Today's deals "See all"·배너                              | → `(tabs)/coupons`                                                   |
+| Recommended courses "See all"·카드                        | → `itinerary` (크루즈 코스는 `cruise`)                               |
+| From travelers "See all"                                  | → `reviews`                                                          |
+
 ## 20. 데이터 모델 (Supabase 초기 스키마)
 
 ```
