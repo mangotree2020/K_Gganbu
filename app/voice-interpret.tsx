@@ -121,7 +121,8 @@ export default function VoiceInterpretScreen() {
 
   return (
     <View style={ss.container}>
-      <SafeAreaView edges={['top']} style={{ flex: 1 }}>
+      {/* 하단 edge 포함 — '종료' 버튼이 안드로이드 시스템 내비 버튼에 가리지 않도록 */}
+      <SafeAreaView edges={['top', 'bottom']} style={{ flex: 1 }}>
         {/* 헤더 */}
         <View style={ss.header}>
           <View style={ss.headerIcon}>
