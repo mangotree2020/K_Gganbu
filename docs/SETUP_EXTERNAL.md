@@ -73,7 +73,7 @@
    supabase functions deploy gemini-live-token
    ```
    `gemini-live-token`이 v1alpha auth token(단기·1회)으로 ephemeral 토큰 발급 → 클라가 그 토큰으로 `wss://…BidiGenerateContent`에 직접 접속(장기 키 미노출).
-2. **클라이언트**: `src/features/translate/geminiLive.ts` — WS 세션 설정(translate-preview), 16kHz PCM 송신, 24kHz PCM + transcription 수신.
+2. **클라이언트**: `src/features/translate/geminiLive.ts` — 모델 `gemini-3.1-flash-live-preview` + systemInstruction으로 **양방향 자동 통역**(외국인↔한국어, 언어 자동 감지). 16kHz PCM 송신, 24kHz PCM + 원문/통역 transcription 수신. WS 응답은 ArrayBuffer 프레임이라 UTF-8 디코딩.
 3. **네이티브 오디오**: 16kHz PCM 마이크 스트림 캡처 + 출력 모듈 필요(`prebuild` 1회). 미설정/오류 시 앱은 텍스트 번역 폴백 상시 노출(코드 완료).
 
 **검증**: 키·오디오 모듈 설정 후 음성통역 진입 → 마이크 허용 → 화자 원문/번역 transcript 표시 + 번역 음성 출력. 미응답 시 "텍스트 번역으로" 탈출구로 전환.

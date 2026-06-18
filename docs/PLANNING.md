@@ -418,6 +418,8 @@ DB: payments(id, user_id, ticket_id, provider, amount, currency,
         ◀── 번역 음성 24kHz + 원문/번역 transcript ──
   키 보호: Edge Function(gemini-live-token)이 ephemeral 토큰 발급 → 앱이 그 토큰으로 직결
   → LiveKit·서버 Agent 불필요. 코드: src/features/translate/geminiLive.ts
+  모델: gemini-3.1-flash-live-preview + systemInstruction으로 양방향 자동 통역(언어 자동 감지).
+  (translate-preview는 KO→EN 고정이라 미채택). 대화형 말풍선: 화자별 좌(한국어)/우(외국인) 정렬.
 
 [A안·보류] LiveKit Room → Agent → Gemini Live (다자/통화형 확장 시 재활용)
   livekit-token 함수는 보존
