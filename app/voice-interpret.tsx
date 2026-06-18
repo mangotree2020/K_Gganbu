@@ -14,8 +14,10 @@ import {
   View,
 } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
+import Slider from '@react-native-community/slider'
 
 import { Icon } from '@/components/brand'
+import { storage } from '@/lib/mmkv'
 import { startLiveTranslate, type LiveSession } from '@/features/translate/geminiLive'
 import {
   createPlayer,
@@ -28,7 +30,8 @@ import { palette, shadows } from '@/theme/tokens'
 
 type VoiceStatus = 'idle' | 'connecting' | 'connected' | 'error' | 'unavailable'
 // lang: 감지된 발화 언어 코드. 화자(언어)별 색상·정렬·칩에 사용.
-type Turn = { id: number; original: string; translation: string; lang: string }
+// hasAudio: 통역 음성 보유 여부(다시 듣기 버튼 표시용. PCM은 audioStoreRef에 보관).
+type Turn = { id: number; original: string; translation: string; lang: string; hasAudio: boolean }
 
 // 발화 언어 감지(스크립트 기반) — 가나>한글>한자>라틴 우선순위.
 // 일본어는 가나+한자가 섞이므로 가나를 먼저 확인(한자만이면 중국어).
@@ -59,21 +62,25 @@ const langMeta = (code: string) =>
 
 // 대화 말풍선 — 화자(언어)별 색상·좌우 정렬. 언어 칩 + 원문 + 구분선 + 통역.
 // isMe: 앱 사용자(앱 언어) 발화 → 우측·진한 톤. 상대 → 좌측·언어별 연한 톤.
+// onReplay: 통역 음성 다시 듣기(있을 때만 스피커 버튼 표시).
 function Bubble({
   original,
   translation,
   lang,
   isMe,
   dim,
+  onReplay,
 }: {
   original: string
   translation: string
   lang: string
   isMe: boolean
   dim?: boolean
+  onReplay?: () => void
 }) {
   const tone = toneOf(lang)
   const meta = langMeta(lang)
+  const accentOnCard = isMe ? 'rgba(255,255,255,.9)' : tone.accent
   const showDivider = !!original && !!translation
   return (
     <View style={[ss.turnRow, { justifyContent: isMe ? 'flex-end' : 'flex-start' }]}>
@@ -91,11 +98,19 @@ function Bubble({
           shadows.card,
           dim && { opacity: 0.55 },
         ]}>
-        <View style={ss.speakerChip}>
-          <Text style={ss.flag}>{meta.flag}</Text>
-          <Text style={[ss.langLabel, { color: isMe ? 'rgba(255,255,255,.9)' : tone.accent }]}>
-            {meta.label}
-          </Text>
+        <View style={ss.chipRow}>
+          <View style={ss.speakerChip}>
+            <Text style={ss.flag}>{meta.flag}</Text>
+            <Text style={[ss.langLabel, { color: accentOnCard }]}>{meta.label}</Text>
+          </View>
+          {!!onReplay && (
+            <Pressable
+              onPress={onReplay}
+              hitSlop={10}
+              style={[ss.replayBtn, { backgroundColor: isMe ? 'rgba(255,255,255,.18)' : '#fff' }]}>
+              <Icon name="volume_up" size={14} color={accentOnCard} filled />
+            </Pressable>
+          )}
         </View>
         {!!original && (
           <Text
@@ -135,12 +150,19 @@ export default function VoiceInterpretScreen() {
   const [active, setActive] = useState(false)
   const [turns, setTurns] = useState<Turn[]>([])
   const [current, setCurrent] = useState<{ original: string; translation: string } | null>(null)
+  // 통역 음성 볼륨(0~1) — MMKV에 저장해 세션 간 유지
+  const [volume, setVolumeState] = useState(() => {
+    const v = storage.getNumber('voiceVolume')
+    return v == null ? 1 : v
+  })
   const scrollRef = useRef<ScrollView>(null)
 
   const sessionRef = useRef<LiveSession | null>(null)
   const micRef = useRef<MicHandle | null>(null)
   const playerRef = useRef<Player | null>(null)
   const idRef = useRef(0)
+  // turn id → 통역 음성 PCM (다시 듣기용)
+  const audioStoreRef = useRef<Map<number, Uint8Array>>(new Map())
 
   const teardown = () => {
     micRef.current?.stop()
@@ -149,6 +171,20 @@ export default function VoiceInterpretScreen() {
     sessionRef.current = null
     playerRef.current?.close()
     playerRef.current = null
+    audioStoreRef.current.clear()
+  }
+
+  // 볼륨 변경 — 재생 중 즉시 반영(state+player), 슬라이딩 종료 시 MMKV 저장
+  const onVolumeChange = (v: number) => {
+    setVolumeState(v)
+    playerRef.current?.setVolume(v)
+  }
+  const onVolumeCommit = (v: number) => storage.set('voiceVolume', v)
+
+  // 말풍선 통역 음성 다시 듣기
+  const replay = (id: number) => {
+    const pcm = audioStoreRef.current.get(id)
+    if (pcm) playerRef.current?.playNow(pcm)
   }
 
   const start = async () => {
@@ -166,7 +202,7 @@ export default function VoiceInterpretScreen() {
           onStatus: (s) => {
             if (s === 'open') {
               setStatus('connected')
-              playerRef.current = createPlayer(24000)
+              playerRef.current = createPlayer(24000, volume)
               micRef.current = startMic((pcm) => sessionRef.current?.sendAudio(pcm))
             } else if (s === 'error' || s === 'closed') {
               failToFallback()
@@ -178,6 +214,7 @@ export default function VoiceInterpretScreen() {
               if (turn.original.trim() || turn.translation.trim()) {
                 idRef.current += 1
                 const orig = turn.original.trim()
+                if (turn.audio) audioStoreRef.current.set(idRef.current, turn.audio)
                 setTurns((prev) =>
                   [
                     ...prev,
@@ -186,6 +223,7 @@ export default function VoiceInterpretScreen() {
                       original: orig,
                       translation: turn.translation.trim(),
                       lang: detectLang(orig),
+                      hasAudio: !!turn.audio,
                     },
                   ].slice(-40),
                 )
@@ -258,6 +296,27 @@ export default function VoiceInterpretScreen() {
               </Text>
             </View>
 
+            <View style={ss.volumeRow}>
+              <Icon
+                name="volume_up"
+                size={16}
+                color={volume === 0 ? palette.zinc[400] : palette.teal[40]}
+                filled
+              />
+              <Slider
+                style={ss.slider}
+                minimumValue={0}
+                maximumValue={1}
+                value={volume}
+                onValueChange={onVolumeChange}
+                onSlidingComplete={onVolumeCommit}
+                minimumTrackTintColor={palette.teal[40]}
+                maximumTrackTintColor={palette.zinc[200]}
+                thumbTintColor={palette.teal[40]}
+              />
+              <Text style={ss.volPct}>{Math.round(volume * 100)}%</Text>
+            </View>
+
             <ScrollView
               ref={scrollRef}
               style={{ flex: 1, marginTop: 12 }}
@@ -280,6 +339,7 @@ export default function VoiceInterpretScreen() {
                       translation={tn.translation}
                       lang={tn.lang}
                       isMe={tn.lang === appLang}
+                      onReplay={tn.hasAudio ? () => replay(tn.id) : undefined}
                     />
                   ))}
                   {!!current &&
@@ -392,6 +452,21 @@ const ss = StyleSheet.create({
     paddingVertical: 6,
   },
   statusText: { fontSize: 12, fontWeight: '600', color: palette.zinc[700] },
+  volumeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: 4,
+    marginTop: 10,
+  },
+  slider: { flex: 1, height: 32 },
+  volPct: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: palette.zinc[500],
+    width: 34,
+    textAlign: 'right',
+  },
   hint: { fontSize: 13, color: palette.zinc[400], textAlign: 'center' },
   toTextBtn: {
     flexDirection: 'row',
@@ -415,7 +490,21 @@ const ss = StyleSheet.create({
     paddingVertical: 10,
     paddingHorizontal: 14,
   },
-  speakerChip: { flexDirection: 'row', alignItems: 'center', gap: 5, marginBottom: 5 },
+  chipRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 10,
+    marginBottom: 5,
+  },
+  speakerChip: { flexDirection: 'row', alignItems: 'center', gap: 5 },
+  replayBtn: {
+    width: 24,
+    height: 24,
+    borderRadius: 999,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   flag: { fontSize: 13 },
   langLabel: { fontSize: 10.5, fontWeight: '800', letterSpacing: 0.3 },
   original: { fontSize: 12.5, lineHeight: 18 },

@@ -7,7 +7,8 @@ import { supabase } from '@/lib/supabase'
 export type LiveStatus = 'connecting' | 'open' | 'closed' | 'error'
 
 // 한 turn = 화자 원문 + 통역 결과 (대화형 말풍선용)
-export type Turn = { original: string; translation: string; final: boolean }
+// audio: 통역 음성 24kHz PCM 전체(turn 확정 시) — 말풍선 '다시 듣기'용
+export type Turn = { original: string; translation: string; final: boolean; audio?: Uint8Array }
 
 export type LiveCallbacks = {
   onTurn?: (turn: Turn) => void
@@ -26,6 +27,21 @@ const WS_HOST = 'generativelanguage.googleapis.com'
 const MODEL = 'models/gemini-3.1-flash-live-preview'
 // 개발용 직접 키(테스트 전용) — 있으면 Supabase 토큰 없이 직결. 프로덕션은 비워둔다.
 const DEV_KEY = process.env.EXPO_PUBLIC_GEMINI_KEY
+// 통역 음성 — Gemini Live prebuilt 음성. Aoede: 따뜻하고 자연스러운 톤("친절한 로컬 친구")
+const VOICE_NAME = 'Aoede'
+
+// PCM 청크들을 하나로 이어붙임 (turn 단위 음성 저장용)
+function concatPcm(chunks: Uint8Array[]): Uint8Array {
+  let len = 0
+  for (const c of chunks) len += c.length
+  const out = new Uint8Array(len)
+  let o = 0
+  for (const c of chunks) {
+    out.set(c, o)
+    o += c.length
+  }
+  return out
+}
 
 // 언어 코드 → 영어 이름(systemInstruction용)
 const LANG_NAME: Record<string, string> = {
@@ -129,17 +145,22 @@ export async function startLiveTranslate(
   const ws = new WebSocket(url)
   ws.binaryType = 'arraybuffer'
 
-  // 현재 turn 누적 버퍼 (원문/통역)
+  // 현재 turn 누적 버퍼 (원문/통역/음성)
   let origBuf = ''
   let transBuf = ''
+  let audioChunks: Uint8Array[] = []
 
   ws.onopen = () => {
     // 세션 설정 — 양방향 통역(systemInstruction). AUDIO 출력 + 원문/통역 transcription.
+    // speechConfig: 통역 음성을 자연스러운 prebuilt 음성(Aoede)으로 지정.
     ws.send(
       JSON.stringify({
         setup: {
           model: grant.model,
-          generationConfig: { responseModalities: ['AUDIO'] },
+          generationConfig: {
+            responseModalities: ['AUDIO'],
+            speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: VOICE_NAME } } },
+          },
           systemInstruction: { parts: [{ text: interpreterInstruction(opts.appLang) }] },
           inputAudioTranscription: {},
           outputAudioTranscription: {},
@@ -164,16 +185,26 @@ export async function startLiveTranslate(
       if (sc.inputTranscription?.text) origBuf += sc.inputTranscription.text
       if (sc.outputTranscription?.text) transBuf += sc.outputTranscription.text
       for (const p of sc.modelTurn?.parts ?? []) {
-        if (p.inlineData?.data) cb.onAudio?.(fromB64(p.inlineData.data))
+        if (p.inlineData?.data) {
+          const pcm = fromB64(p.inlineData.data)
+          cb.onAudio?.(pcm) // 실시간 재생
+          audioChunks.push(pcm) // turn 단위 누적(다시 듣기용)
+        }
       }
 
       // 진행 중 갱신 또는 turn 종료 시 확정
       if (sc.inputTranscription || sc.outputTranscription || sc.turnComplete) {
         const final = !!sc.turnComplete
-        cb.onTurn?.({ original: origBuf, translation: transBuf, final })
+        cb.onTurn?.({
+          original: origBuf,
+          translation: transBuf,
+          final,
+          audio: final && audioChunks.length ? concatPcm(audioChunks) : undefined,
+        })
         if (final) {
           origBuf = ''
           transBuf = ''
+          audioChunks = []
         }
       }
     } catch {

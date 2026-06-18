@@ -51,24 +51,37 @@ export function startMic(onPcm16: (bytes: Uint8Array) => void): MicHandle {
   }
 }
 
-export type Player = { play: (pcm16: Uint8Array) => void; close: () => void }
+export type Player = {
+  play: (pcm16: Uint8Array) => void // 스트리밍 재생(시간순 큐)
+  playNow: (pcm16: Uint8Array) => void // 즉시 재생(다시 듣기)
+  setVolume: (v: number) => void // 0~1 볼륨
+  close: () => void
+}
 
-// 24kHz PCM16 스트림 재생 — 버퍼를 시간순으로 이어붙여 끊김 없이 출력
-export function createPlayer(sampleRate = 24000): Player {
+// 24kHz PCM16 스트림 재생 — 버퍼를 시간순으로 이어붙여 끊김 없이 출력.
+// 볼륨은 샘플 진폭에 직접 곱해 적용(GainNode 비의존 — 어느 환경에서나 동작).
+export function createPlayer(sampleRate = 24000, volume = 1): Player {
   const ctx = new AudioContext()
   let nextTime = 0
+  let vol = volume
+  const render = (pcm16: Uint8Array, immediate: boolean) => {
+    const f = pcm16ToFloat(pcm16)
+    if (f.length === 0) return
+    if (vol !== 1) for (let i = 0; i < f.length; i++) f[i] *= vol
+    const buf = ctx.createBuffer(1, f.length, sampleRate)
+    buf.copyToChannel(f, 0)
+    const src = ctx.createBufferSource()
+    src.buffer = buf
+    src.connect(ctx.destination)
+    const t = immediate ? ctx.currentTime : Math.max(ctx.currentTime, nextTime)
+    src.start(t)
+    if (!immediate) nextTime = t + buf.duration
+  }
   return {
-    play: (pcm16: Uint8Array) => {
-      const f = pcm16ToFloat(pcm16)
-      if (f.length === 0) return
-      const buf = ctx.createBuffer(1, f.length, sampleRate)
-      buf.copyToChannel(f, 0)
-      const src = ctx.createBufferSource()
-      src.buffer = buf
-      src.connect(ctx.destination)
-      const t = Math.max(ctx.currentTime, nextTime)
-      src.start(t)
-      nextTime = t + buf.duration
+    play: (pcm16) => render(pcm16, false),
+    playNow: (pcm16) => render(pcm16, true),
+    setVolume: (v) => {
+      vol = Math.max(0, Math.min(1, v))
     },
     close: () => {
       ctx.close().catch(() => {})
