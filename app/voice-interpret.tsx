@@ -23,6 +23,8 @@ import { startLiveTranslate, type LiveSession } from '@/features/translate/gemin
 import { saveSession } from '@/features/translate/history'
 import {
   createPlayer,
+  isHeadsetConnected,
+  observeRouteChange,
   rms16,
   startMic,
   type MicHandle,
@@ -172,6 +174,8 @@ export default function VoiceInterpretScreen() {
     const v = storage.getBoolean('voiceMine')
     return v == null ? true : v
   })
+  // 이어폰 연결 시 에코 누설이 없으므로 동시 발화 게이트를 끈다(완전 동시 통역)
+  const [headset, setHeadset] = useState(false)
   const scrollRef = useRef<ScrollView>(null)
 
   const sessionRef = useRef<LiveSession | null>(null)
@@ -204,6 +208,16 @@ export default function VoiceInterpretScreen() {
   // onAudio/마이크 콜백 클로저에서 최신 On/Off 값을 읽기 위한 미러
   const otherVoiceRef = useRef(otherVoice)
   const myVoiceRef = useRef(myVoice)
+  const headsetRef = useRef(false)
+  const routeSubRef = useRef<{ remove: () => void } | null>(null)
+
+  // 이어폰 연결 상태 갱신(초기 조회 + 라우팅 변경 시)
+  const refreshHeadset = () => {
+    isHeadsetConnected().then((v) => {
+      setHeadset(v)
+      headsetRef.current = v
+    })
+  }
 
   const teardown = () => {
     micRef.current?.stop()
@@ -212,6 +226,8 @@ export default function VoiceInterpretScreen() {
     sessionRef.current = null
     playerRef.current?.close()
     playerRef.current = null
+    routeSubRef.current?.remove()
+    routeSubRef.current = null
     audioStoreRef.current.clear()
   }
 
@@ -250,6 +266,9 @@ export default function VoiceInterpretScreen() {
       setStatus('error')
       return
     }
+    // 이어폰 연결 여부 초기 조회 + 라우팅 변경 구독(연결/해제 시 게이트 자동 전환)
+    refreshHeadset()
+    routeSubRef.current = observeRouteChange(refreshHeadset)
     try {
       const session = await startLiveTranslate(
         { appLang },
@@ -259,10 +278,15 @@ export default function VoiceInterpretScreen() {
               setStatus('connected')
               playerRef.current = createPlayer(24000, volume)
               micRef.current = startMic((pcm) => {
-                // 통역 음성 재생 중: 입력 음량(RMS)이 충분히 크면(상대가 실제로 말함)
-                // 통과시켜 동시 발화를 허용하고, 작으면(스피커→마이크 에코 누설) 차단한다.
-                // AEC를 JS로 켤 수 없는 환경의 근사(완전 차단 half-duplex의 동시발화 보완).
-                if (playerRef.current?.isPlaying() && rms16(pcm) < SPEECH_RMS_GATE) return
+                // 이어폰이면 에코 누설이 없으므로 게이트를 끄고 항상 전송(완전 동시 발화).
+                // 스피커 모드에서만: 통역 재생 중 입력 음량(RMS)이 임계 이상이면 통과(실제
+                // 발화), 작으면 차단(에코 누설). AEC를 JS로 켤 수 없는 환경의 근사.
+                if (
+                  !headsetRef.current &&
+                  playerRef.current?.isPlaying() &&
+                  rms16(pcm) < SPEECH_RMS_GATE
+                )
+                  return
                 sessionRef.current?.sendAudio(pcm)
               })
             } else if (s === 'error' || s === 'closed') {
@@ -372,6 +396,12 @@ export default function VoiceInterpretScreen() {
                 {status === 'connected' ? t('voice.listening') : t('voice.connecting')}
               </Text>
             </View>
+
+            {headset && (
+              <View style={ss.headsetPill}>
+                <Text style={ss.headsetText}>🎧 {t('voice.headsetMode')}</Text>
+              </View>
+            )}
 
             <View style={ss.audioGroup}>
               <View style={ss.audioBar}>
@@ -570,6 +600,15 @@ const ss = StyleSheet.create({
     paddingVertical: 6,
   },
   statusText: { fontSize: 12, fontWeight: '600', color: palette.zinc[700] },
+  headsetPill: {
+    alignSelf: 'center',
+    marginTop: 8,
+    backgroundColor: palette.teal[95],
+    borderRadius: 999,
+    paddingHorizontal: 12,
+    paddingVertical: 5,
+  },
+  headsetText: { fontSize: 12, fontWeight: '700', color: palette.teal[40] },
   audioGroup: { marginTop: 12, gap: 6 },
   volumeRow: {
     flexDirection: 'row',

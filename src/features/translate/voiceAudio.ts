@@ -1,6 +1,33 @@
 // 음성통역 네이티브 오디오 I/O (PLANNING §25 B안) — react-native-audio-api 기반.
 // 마이크 16kHz PCM 캡처 → Gemini Live 송신용 Int16, 24kHz PCM 수신 → 재생 큐.
-import { AudioContext, AudioRecorder } from 'react-native-audio-api'
+import { AudioContext, AudioManager, AudioRecorder } from 'react-native-audio-api'
+
+// 출력 장치가 이어폰/헤드셋인지 — type/name에 head/bluetooth/airpod 등 포함 여부.
+// (런타임 객체는 type 필드를 쓴다 — 예: 'Bluetooth A2DP', 'Wired Headset', 'Built-in Speaker')
+// 이어폰이면 스피커→마이크 에코 누설이 없어 에너지 게이트가 불필요(완전 동시 발화 가능).
+function looksLikeHeadset(d: { category?: string; name?: string; type?: string }): boolean {
+  const s = `${d.type ?? ''} ${d.category ?? ''} ${d.name ?? ''}`.toLowerCase()
+  return /head|bluetooth|airpod|earbud|earphone|a2dp|usb/.test(s)
+}
+
+// 현재 출력이 이어폰/헤드셋에 연결되어 있는지
+export async function isHeadsetConnected(): Promise<boolean> {
+  try {
+    const info = await AudioManager.getDevicesInfo()
+    // Android에서 currentOutputs가 비어있는 경우가 있어 availableOutputs로 폴백.
+    // availableOutputs는 현재 연결된 출력만 반환하므로 헤드셋류가 있으면 연결된 것.
+    const list = info.currentOutputs.length ? info.currentOutputs : info.availableOutputs
+    return list.some(looksLikeHeadset)
+  } catch {
+    return false
+  }
+}
+
+// 오디오 라우팅 변경(이어폰 연결/해제) 구독
+export function observeRouteChange(cb: () => void): { remove: () => void } {
+  const sub = AudioManager.addSystemEventListener('routeChange', () => cb())
+  return { remove: () => sub?.remove() }
+}
 
 // Float32[-1,1] → Int16 LE bytes
 function floatToPcm16(f32: Float32Array): Uint8Array {
