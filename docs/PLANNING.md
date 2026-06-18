@@ -410,13 +410,20 @@ DB: payments(id, user_id, ticket_id, provider, amount, currency,
 - 모델: `gemini-3.5-live-translate-preview` (Gemini Live API). 2026-06-09 출시, preview 단계
 - 동작: 스트리밍 speech-to-speech — 음성 입력 → 번역 음성 출력이 화자보다 몇 초 뒤따라 연속 생성 (turn-by-turn 아님). 화자의 억양·pace·pitch 유지, 70+ 언어 자동 감지
 - 오디오 포맷: **입력 16kHz PCM / 출력 24kHz audio**. 설정 파라미터: `targetLanguageCode`, `echoTargetLanguage`
-- 연결 구조:
+- **연결 구조 (2026-06-18 변경 — 대면 대화 통역은 B안 채택)**:
 
 ```
-앱(마이크) → LiveKit Room(WebRTC) → Agent → Gemini Live API
-        ↑ 번역 음성(24kHz) + optional transcript ↓
-토큰 발급: Edge Function (LiveKit access token + Gemini 세션)
+[B안·채택] 대면 대화(한 기기, 앞사람과 마주봄):
+  앱(마이크 16kHz PCM) ──직접 WS──▶ Gemini Live (BidiGenerateContent)
+        ◀── 번역 음성 24kHz + 원문/번역 transcript ──
+  키 보호: Edge Function(gemini-live-token)이 ephemeral 토큰 발급 → 앱이 그 토큰으로 직결
+  → LiveKit·서버 Agent 불필요. 코드: src/features/translate/geminiLive.ts
+
+[A안·보류] LiveKit Room → Agent → Gemini Live (다자/통화형 확장 시 재활용)
+  livekit-token 함수는 보존
 ```
+
+- B안 남은 단계: 네이티브 16kHz PCM 마이크 스트림 캡처 + 출력 모듈(prebuild 1회) + `GEMINI_API_KEY`(Live preview). 미설정 시 "텍스트 번역으로" 탈출구 상시 노출.
 
 - RN 구현: 실시간 미디어 스트리밍은 **LiveKit(확정)** 으로 처리 — Google 공식 통합 파트너, WebRTC 기반. `@livekit/react-native` + Live API 연동. 미디어 파이프라인(에코 캔슬·지터 버퍼·재연결)을 LiveKit이 담당하므로 앱은 UX에 집중
 - API 키는 클라이언트 노출 금지 → **LiveKit access token + Gemini 세션 토큰 모두 Edge Function에서 발급**
