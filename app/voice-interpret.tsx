@@ -22,34 +22,57 @@ import {
   type MicHandle,
   type Player,
 } from '@/features/translate/voiceAudio'
-import { useLocaleStore, useT } from '@/lib/i18n'
-import { palette } from '@/theme/tokens'
+import { APP_LANGS, useLocaleStore, useT } from '@/lib/i18n'
+import { palette, shadows } from '@/theme/tokens'
 
 type VoiceStatus = 'idle' | 'connecting' | 'connected' | 'error' | 'unavailable'
 // fromKorean: 한국어 발화(좌·청록) vs 외국인 발화(우·파랑)
 type Turn = { id: number; original: string; translation: string; fromKorean: boolean }
 
 const hasHangul = (s: string) => /[가-힣]/.test(s)
+// 화자 판별: 번역문이 한국어면 외국인이 말한 것(번역 대상이 한국어). 번역 전엔 원문으로 추정.
+const isKoreanSpeaker = (original: string, translation: string) =>
+  translation ? !hasHangul(translation) : hasHangul(original)
 
-// 대화 말풍선 — 화자별 좌/우 정렬, 원문 + 통역
+// 대화 말풍선 — 화자별 좌/우 정렬. 언어 칩 + 원문 + 구분선 + 통역.
 function Bubble({
   original,
   translation,
   fromKorean,
+  flag,
+  langLabel,
   dim,
 }: {
   original: string
   translation: string
   fromKorean: boolean
+  flag: string
+  langLabel: string
   dim?: boolean
 }) {
+  const showDivider = !!original && !!translation
   return (
     <View style={[ss.turnRow, { justifyContent: fromKorean ? 'flex-start' : 'flex-end' }]}>
-      <View style={[ss.card, fromKorean ? ss.cardKo : ss.cardForeign, dim && { opacity: 0.6 }]}>
+      <View
+        style={[
+          ss.card,
+          fromKorean ? ss.cardKo : ss.cardForeign,
+          shadows.card,
+          dim && { opacity: 0.55 },
+        ]}>
+        <View style={ss.speakerChip}>
+          <Text style={ss.flag}>{flag}</Text>
+          <Text style={[ss.langLabel, fromKorean ? ss.langLabelKo : ss.langLabelForeign]}>
+            {langLabel}
+          </Text>
+        </View>
         {!!original && (
           <Text style={[ss.original, fromKorean ? ss.originalKo : ss.originalForeign]}>
             {original}
           </Text>
+        )}
+        {showDivider && (
+          <View style={[ss.divider, fromKorean ? ss.dividerKo : ss.dividerForeign]} />
         )}
         {!!translation && (
           <Text style={[ss.translation, fromKorean ? ss.translationKo : ss.translationForeign]}>
@@ -75,6 +98,9 @@ export default function VoiceInterpretScreen() {
   const t = useT()
   const lang = useLocaleStore((s) => s.lang)
   const foreignerLang = lang === 'ko' ? 'en' : lang
+  // 화자 언어 칩 메타(국기 + 언어명)
+  const koMeta = APP_LANGS.find((l) => l.code === 'ko') ?? { flag: '🇰🇷', label: '한국어' }
+  const fMeta = APP_LANGS.find((l) => l.code === foreignerLang) ?? { flag: '🌐', label: 'English' }
   const [status, setStatus] = useState<VoiceStatus>('idle')
   const [active, setActive] = useState(false)
   const [turns, setTurns] = useState<Turn[]>([])
@@ -128,7 +154,7 @@ export default function VoiceInterpretScreen() {
                       id: idRef.current,
                       original: turn.original.trim(),
                       translation: turn.translation.trim(),
-                      fromKorean: hasHangul(turn.original),
+                      fromKorean: isKoreanSpeaker(turn.original, turn.translation),
                     },
                   ].slice(-40),
                 )
@@ -222,16 +248,25 @@ export default function VoiceInterpretScreen() {
                       original={tn.original}
                       translation={tn.translation}
                       fromKorean={tn.fromKorean}
+                      flag={tn.fromKorean ? koMeta.flag : fMeta.flag}
+                      langLabel={tn.fromKorean ? koMeta.label : fMeta.label}
                     />
                   ))}
-                  {!!current && (current.original || current.translation) && (
-                    <Bubble
-                      original={current.original}
-                      translation={current.translation}
-                      fromKorean={hasHangul(current.original)}
-                      dim
-                    />
-                  )}
+                  {!!current &&
+                    (current.original || current.translation) &&
+                    (() => {
+                      const ko = isKoreanSpeaker(current.original, current.translation)
+                      return (
+                        <Bubble
+                          original={current.original}
+                          translation={current.translation}
+                          fromKorean={ko}
+                          flag={ko ? koMeta.flag : fMeta.flag}
+                          langLabel={ko ? koMeta.label : fMeta.label}
+                          dim
+                        />
+                      )
+                    })()}
                 </>
               )}
             </ScrollView>
@@ -343,19 +378,33 @@ const ss = StyleSheet.create({
   toTextText: { fontSize: 13, fontWeight: '700', color: palette.teal[40] },
 
   // 대화 말풍선
-  turnRow: { flexDirection: 'row' },
-  card: { maxWidth: '86%', borderRadius: 18, paddingVertical: 9, paddingHorizontal: 13 },
-  cardForeign: { backgroundColor: palette.blue[50], borderBottomRightRadius: 6 },
+  turnRow: { flexDirection: 'row', alignItems: 'flex-end', gap: 8 },
+  card: {
+    maxWidth: '86%',
+    minWidth: 140,
+    borderRadius: 20,
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+  },
+  cardForeign: { backgroundColor: palette.blue[50], borderBottomRightRadius: 7 },
   cardKo: {
-    backgroundColor: palette.teal[95],
+    backgroundColor: '#fff',
     borderWidth: 0.5,
     borderColor: palette.teal[80],
-    borderBottomLeftRadius: 6,
+    borderBottomLeftRadius: 7,
   },
-  original: { fontSize: 12, marginBottom: 3 },
-  originalForeign: { color: 'rgba(255,255,255,.75)' },
-  originalKo: { color: palette.teal[30] },
-  translation: { fontSize: 15, fontWeight: '700', lineHeight: 21 },
+  speakerChip: { flexDirection: 'row', alignItems: 'center', gap: 5, marginBottom: 5 },
+  flag: { fontSize: 13 },
+  langLabel: { fontSize: 10.5, fontWeight: '800', letterSpacing: 0.3, textTransform: 'uppercase' },
+  langLabelForeign: { color: 'rgba(255,255,255,.85)' },
+  langLabelKo: { color: palette.teal[40] },
+  original: { fontSize: 12.5, lineHeight: 18 },
+  originalForeign: { color: 'rgba(255,255,255,.72)' },
+  originalKo: { color: palette.zinc[500] },
+  divider: { height: StyleSheet.hairlineWidth, marginVertical: 7, marginHorizontal: -2 },
+  dividerForeign: { backgroundColor: 'rgba(255,255,255,.28)' },
+  dividerKo: { backgroundColor: palette.teal[80] },
+  translation: { fontSize: 15.5, fontWeight: '700', lineHeight: 22, letterSpacing: -0.1 },
   translationForeign: { color: '#fff' },
   translationKo: { color: palette.zinc[900] },
 
