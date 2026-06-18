@@ -457,81 +457,101 @@ export default function VoiceInterpretScreen() {
               <Text style={ss.statusText}>
                 {status === 'connected' ? t('voice.listening') : t('voice.connecting')}
               </Text>
+              {headset && <Icon name="headphones" size={13} color={palette.teal[40]} filled />}
             </View>
 
             <View style={ss.settingsCard}>
-              {/* 출력 모드 헤더 — 이어폰/스피커에 따라 아이콘·색상 변경 */}
-              <View
-                style={[
-                  ss.outputHeader,
-                  { backgroundColor: headset ? palette.teal[95] : palette.amber[90] },
-                ]}>
-                <Icon
-                  name={headset ? 'headphones' : 'volume_up'}
-                  size={16}
-                  color={headset ? palette.teal[40] : palette.amber[50]}
-                  filled
-                />
-                <Text
-                  style={[
-                    ss.outputLabel,
-                    { color: headset ? palette.teal[40] : palette.amber[50] },
-                  ]}>
-                  {headset ? t('voice.headsetMode') : t('voice.speakerMode')}
-                </Text>
-              </View>
-
-              <View style={ss.cardBody}>
-                <ToggleRow
-                  icon={otherVoice ? 'volume_up' : 'volume_off'}
-                  label={t('voice.soundOther')}
-                  value={otherVoice}
-                  onToggle={toggleOtherVoice}
-                />
-                <View style={ss.rowDivider} />
-                <ToggleRow
-                  icon={myVoice ? 'volume_up' : 'volume_off'}
-                  label={t('voice.soundMine')}
-                  value={myVoice}
-                  onToggle={toggleMyVoice}
-                />
-                {headset && (
-                  <>
-                    <View style={ss.rowDivider} />
-                    <ToggleRow
-                      icon={speakerMyVoice ? 'megaphone' : 'headphones'}
-                      label={t('voice.myVoiceToSpeaker')}
-                      value={speakerMyVoice}
-                      onToggle={toggleSpeakerMyVoice}
-                      accent={palette.coral[40]}
-                    />
-                  </>
-                )}
-                <View style={ss.rowDivider} />
-                <View style={ss.volumeRow}>
+              {/* 상대 음성 — 이어폰으로 들림 */}
+              <ToggleRow
+                icon={otherVoice ? 'volume_up' : 'volume_off'}
+                label={t('voice.soundOther')}
+                value={otherVoice}
+                onToggle={toggleOtherVoice}
+              />
+              <View style={ss.rowDivider} />
+              {/* 내 통역 — On/Off + (이어폰 시)출력처 칩(이어폰/스피커 전환) 통합 */}
+              <View style={ss.toggleRow}>
+                <View style={ss.toggleLabelGroup}>
                   <Icon
-                    name="volume_up"
-                    size={16}
-                    color={otherVoice || myVoice ? palette.teal[40] : palette.zinc[400]}
+                    name={
+                      !myVoice
+                        ? 'volume_off'
+                        : headset && !speakerMyVoice
+                          ? 'headphones'
+                          : 'megaphone'
+                    }
+                    size={18}
+                    color={
+                      !myVoice
+                        ? palette.zinc[400]
+                        : speakerMyVoice
+                          ? palette.coral[40]
+                          : palette.teal[40]
+                    }
                     filled
                   />
-                  <Slider
-                    style={[ss.slider, !(otherVoice || myVoice) && { opacity: 0.35 }]}
-                    disabled={!(otherVoice || myVoice)}
-                    minimumValue={0}
-                    maximumValue={1}
-                    value={volume}
-                    onValueChange={onVolumeChange}
-                    onSlidingComplete={onVolumeCommit}
-                    minimumTrackTintColor={palette.teal[40]}
-                    maximumTrackTintColor={palette.zinc[200]}
-                    thumbTintColor={palette.teal[40]}
-                  />
-                  <Text
-                    style={[ss.volPct, !(otherVoice || myVoice) && { color: palette.zinc[400] }]}>
-                    {Math.round(volume * 100)}%
+                  <Text style={[ss.toggleLabel, !myVoice && { color: palette.zinc[400] }]}>
+                    {t('voice.soundMine')}
                   </Text>
                 </View>
+                <View style={ss.rowControls}>
+                  {headset && myVoice && (
+                    <Pressable
+                      onPress={toggleSpeakerMyVoice}
+                      hitSlop={6}
+                      style={[
+                        ss.outputChip,
+                        {
+                          backgroundColor: speakerMyVoice ? palette.coral[95] : palette.teal[95],
+                        },
+                      ]}>
+                      <Icon
+                        name={speakerMyVoice ? 'megaphone' : 'headphones'}
+                        size={13}
+                        color={speakerMyVoice ? palette.coral[40] : palette.teal[40]}
+                        filled
+                      />
+                      <Text
+                        style={[
+                          ss.outputChipText,
+                          { color: speakerMyVoice ? palette.coral[40] : palette.teal[40] },
+                        ]}>
+                        {speakerMyVoice ? t('voice.outSpeaker') : t('voice.outEarphone')}
+                      </Text>
+                    </Pressable>
+                  )}
+                  <Switch
+                    value={myVoice}
+                    onValueChange={toggleMyVoice}
+                    trackColor={{ true: palette.teal[80], false: palette.zinc[300] }}
+                    thumbColor={myVoice ? palette.teal[40] : '#f4f4f5'}
+                  />
+                </View>
+              </View>
+              <View style={ss.rowDivider} />
+              {/* 볼륨 */}
+              <View style={ss.volumeRow}>
+                <Icon
+                  name="volume_up"
+                  size={16}
+                  color={otherVoice || myVoice ? palette.teal[40] : palette.zinc[400]}
+                  filled
+                />
+                <Slider
+                  style={[ss.slider, !(otherVoice || myVoice) && { opacity: 0.35 }]}
+                  disabled={!(otherVoice || myVoice)}
+                  minimumValue={0}
+                  maximumValue={1}
+                  value={volume}
+                  onValueChange={onVolumeChange}
+                  onSlidingComplete={onVolumeCommit}
+                  minimumTrackTintColor={palette.teal[40]}
+                  maximumTrackTintColor={palette.zinc[200]}
+                  thumbTintColor={palette.teal[40]}
+                />
+                <Text style={[ss.volPct, !(otherVoice || myVoice) && { color: palette.zinc[400] }]}>
+                  {Math.round(volume * 100)}%
+                </Text>
               </View>
             </View>
 
@@ -671,39 +691,40 @@ const ss = StyleSheet.create({
   },
   statusText: { fontSize: 12, fontWeight: '600', color: palette.zinc[700] },
 
-  // 출력 설정 카드
+  // 출력 설정 카드 (컴팩트)
   settingsCard: {
     marginTop: 12,
     backgroundColor: '#fff',
     borderRadius: 16,
     borderWidth: 0.5,
     borderColor: palette.zinc[200],
-    overflow: 'hidden',
+    paddingHorizontal: 14,
     ...shadows.card,
   },
-  outputHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 7,
-    paddingVertical: 9,
-    paddingHorizontal: 14,
-  },
-  outputLabel: { fontSize: 12.5, fontWeight: '800', letterSpacing: 0.2 },
-  cardBody: { paddingHorizontal: 14 },
   toggleRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingVertical: 10,
+    paddingVertical: 9,
   },
   toggleLabelGroup: { flexDirection: 'row', alignItems: 'center', gap: 10, flex: 1 },
   toggleLabel: { fontSize: 14, fontWeight: '600', color: palette.zinc[800] },
+  rowControls: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  outputChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    borderRadius: 999,
+    paddingHorizontal: 9,
+    paddingVertical: 4,
+  },
+  outputChipText: { fontSize: 11, fontWeight: '700' },
   rowDivider: { height: StyleSheet.hairlineWidth, backgroundColor: palette.zinc[200] },
   volumeRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
-    paddingVertical: 10,
+    paddingVertical: 9,
   },
   slider: { flex: 1, height: 32 },
   volPct: {

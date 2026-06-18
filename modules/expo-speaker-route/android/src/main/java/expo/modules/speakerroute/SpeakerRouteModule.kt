@@ -18,21 +18,25 @@ class SpeakerRouteModule : Module() {
   override fun definition() = ModuleDefinition {
     Name("SpeakerRoute")
 
-    // on=true: 내장 스피커로 강제, false: 통신 디바이스 해제(이어폰 등 기본 복귀)
+    // on=true: 내장 스피커로 강제(통신 모드), false: 통신 디바이스 해제 + MODE_NORMAL 복귀.
+    // MODE_NORMAL로 돌려야 블루투스 A2DP(고음질 미디어) 재생이 정상 동작한다
+    // (통신 모드는 A2DP를 막아 상대 통역이 이어폰으로 안 들리는 문제 발생).
     Function("setSpeaker") { on: Boolean ->
       val am = audioManager() ?: return@Function false
-      am.mode = AudioManager.MODE_IN_COMMUNICATION
       if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
         if (on) {
+          am.mode = AudioManager.MODE_IN_COMMUNICATION
           val spk = am.availableCommunicationDevices.firstOrNull {
             it.type == AudioDeviceInfo.TYPE_BUILTIN_SPEAKER
           }
           if (spk != null) am.setCommunicationDevice(spk) else false
         } else {
           am.clearCommunicationDevice()
+          am.mode = AudioManager.MODE_NORMAL
           true
         }
       } else {
+        am.mode = if (on) AudioManager.MODE_IN_COMMUNICATION else AudioManager.MODE_NORMAL
         @Suppress("DEPRECATION")
         am.isSpeakerphoneOn = on
         true
