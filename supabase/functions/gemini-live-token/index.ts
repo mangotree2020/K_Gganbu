@@ -8,7 +8,8 @@ const cors = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
 
-const MODEL = 'models/gemini-3.5-live-translate-preview'
+// 범용 Live 모델 — 양방향 통역은 클라이언트 systemInstruction으로 제어(언어 자동 감지)
+const MODEL = 'models/gemini-3.1-flash-live-preview'
 // Live WS 엔드포인트(클라이언트가 access_token=ephemeral 로 접속)
 const WS_HOST = 'generativelanguage.googleapis.com'
 

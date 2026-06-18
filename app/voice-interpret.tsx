@@ -1,6 +1,6 @@
-// 음성 통역 화면 (PLANNING §25 B안) — 기기 ↔ Gemini Live 직결 스트리밍 통역.
-// 마이크 16kHz PCM(react-native-audio-api) → Gemini Live(geminiLive.ts) → 번역 음성 24kHz + 자막.
-// LiveKit/Agent 불필요. 키는 ephemeral 토큰(gemini-live-token)으로 보호. 미설정/오류 시 텍스트 폴백.
+// 음성 통역 화면 (PLANNING §25 B안) — 기기 ↔ Gemini Live 직결 양방향 자동 통역.
+// 외국인 발화→한국어, 한국어 발화→외국인 언어. 대화형 말풍선(화자별 좌/우 정렬).
+// 마이크 16kHz PCM(react-native-audio-api) → Gemini Live → 통역 음성 24kHz + 원문/통역 자막.
 import { router } from 'expo-router'
 import { useEffect, useRef, useState } from 'react'
 import {
@@ -22,11 +22,44 @@ import {
   type MicHandle,
   type Player,
 } from '@/features/translate/voiceAudio'
-import { useT } from '@/lib/i18n'
+import { useLocaleStore, useT } from '@/lib/i18n'
 import { palette } from '@/theme/tokens'
 
 type VoiceStatus = 'idle' | 'connecting' | 'connected' | 'error' | 'unavailable'
-type Line = { id: number; text: string; mine: boolean }
+// fromKorean: 한국어 발화(좌·청록) vs 외국인 발화(우·파랑)
+type Turn = { id: number; original: string; translation: string; fromKorean: boolean }
+
+const hasHangul = (s: string) => /[가-힣]/.test(s)
+
+// 대화 말풍선 — 화자별 좌/우 정렬, 원문 + 통역
+function Bubble({
+  original,
+  translation,
+  fromKorean,
+  dim,
+}: {
+  original: string
+  translation: string
+  fromKorean: boolean
+  dim?: boolean
+}) {
+  return (
+    <View style={[ss.turnRow, { justifyContent: fromKorean ? 'flex-start' : 'flex-end' }]}>
+      <View style={[ss.card, fromKorean ? ss.cardKo : ss.cardForeign, dim && { opacity: 0.6 }]}>
+        {!!original && (
+          <Text style={[ss.original, fromKorean ? ss.originalKo : ss.originalForeign]}>
+            {original}
+          </Text>
+        )}
+        {!!translation && (
+          <Text style={[ss.translation, fromKorean ? ss.translationKo : ss.translationForeign]}>
+            {translation}
+          </Text>
+        )}
+      </View>
+    </View>
+  )
+}
 
 async function ensureMicPermission(): Promise<boolean> {
   if (Platform.OS !== 'android') return true
@@ -40,20 +73,19 @@ async function ensureMicPermission(): Promise<boolean> {
 
 export default function VoiceInterpretScreen() {
   const t = useT()
+  const lang = useLocaleStore((s) => s.lang)
+  const foreignerLang = lang === 'ko' ? 'en' : lang
   const [status, setStatus] = useState<VoiceStatus>('idle')
   const [active, setActive] = useState(false)
-  const [lines, setLines] = useState<Line[]>([])
-  const [interim, setInterim] = useState({ src: '', dst: '' })
+  const [turns, setTurns] = useState<Turn[]>([])
+  const [current, setCurrent] = useState<{ original: string; translation: string } | null>(null)
   const scrollRef = useRef<ScrollView>(null)
 
   const sessionRef = useRef<LiveSession | null>(null)
   const micRef = useRef<MicHandle | null>(null)
   const playerRef = useRef<Player | null>(null)
   const idRef = useRef(0)
-  const srcBuf = useRef('')
-  const dstBuf = useRef('')
 
-  // 세션·오디오 정리
   const teardown = () => {
     micRef.current?.stop()
     micRef.current = null
@@ -61,54 +93,55 @@ export default function VoiceInterpretScreen() {
     sessionRef.current = null
     playerRef.current?.close()
     playerRef.current = null
-    srcBuf.current = ''
-    dstBuf.current = ''
-  }
-
-  const commit = (text: string, mine: boolean) => {
-    if (!text.trim()) return
-    idRef.current += 1
-    const line = { id: idRef.current, text: text.trim(), mine }
-    setLines((prev) => [...prev, line].slice(-30))
   }
 
   const start = async () => {
     setStatus('connecting')
-    setLines([])
-    const ok = await ensureMicPermission()
-    if (!ok) {
+    setTurns([])
+    setCurrent(null)
+    if (!(await ensureMicPermission())) {
       setStatus('error')
       return
     }
     try {
       const session = await startLiveTranslate(
-        { sourceLang: 'auto', targetLang: 'ko' },
+        { foreignerLang },
         {
           onStatus: (s) => {
             if (s === 'open') {
               setStatus('connected')
-              // 마이크 캡처 시작 → Gemini로 스트리밍
               playerRef.current = createPlayer(24000)
               micRef.current = startMic((pcm) => sessionRef.current?.sendAudio(pcm))
             } else if (s === 'error' || s === 'closed') {
               failToFallback()
             }
           },
-          onTranscript: (text, o) => {
-            // 버퍼는 콜백 내에서만 변이(렌더 중 ref 읽지 않음) → 표시는 state로 미러링
-            const buf = o.source ? srcBuf : dstBuf
-            buf.current += text
-            if (o.final) {
-              commit(buf.current, o.source)
-              buf.current = ''
+          onTurn: (turn) => {
+            if (turn.final) {
+              setCurrent(null)
+              if (turn.original.trim() || turn.translation.trim()) {
+                idRef.current += 1
+                setTurns((prev) =>
+                  [
+                    ...prev,
+                    {
+                      id: idRef.current,
+                      original: turn.original.trim(),
+                      translation: turn.translation.trim(),
+                      fromKorean: hasHangul(turn.original),
+                    },
+                  ].slice(-40),
+                )
+              }
+            } else {
+              setCurrent({ original: turn.original, translation: turn.translation })
             }
-            setInterim({ src: srcBuf.current, dst: dstBuf.current })
           },
           onAudio: (pcm24) => playerRef.current?.play(pcm24),
         },
       )
       if (!session) {
-        setStatus('unavailable') // 키 미설정 → 폴백 안내
+        setStatus('unavailable')
         return
       }
       sessionRef.current = session
@@ -122,30 +155,25 @@ export default function VoiceInterpretScreen() {
   const stop = () => {
     teardown()
     setActive(false)
-    setLines([])
-    setInterim({ src: '', dst: '' })
+    setTurns([])
+    setCurrent(null)
     setStatus('idle')
   }
 
-  // 연결 실패/끊김 → 정리 후 텍스트 번역 폴백 안내
   const failToFallback = () => {
     teardown()
     setActive(false)
-    setInterim({ src: '', dst: '' })
+    setCurrent(null)
     setStatus('error')
   }
 
   useEffect(() => () => teardown(), [])
 
-  const interimSrc = interim.src
-  const interimDst = interim.dst
-  const empty = lines.length === 0 && !interimSrc && !interimDst
+  const empty = turns.length === 0 && !current?.original && !current?.translation
 
   return (
     <View style={ss.container}>
-      {/* 하단 edge 포함 — '종료' 버튼이 안드로이드 시스템 내비 버튼에 가리지 않도록 */}
       <SafeAreaView edges={['top', 'bottom']} style={{ flex: 1 }}>
-        {/* 헤더 */}
         <View style={ss.header}>
           <View style={ss.headerIcon}>
             <Icon name="mic" size={20} color={palette.teal[40]} filled />
@@ -176,10 +204,9 @@ export default function VoiceInterpretScreen() {
             <ScrollView
               ref={scrollRef}
               style={{ flex: 1, marginTop: 12 }}
-              contentContainerStyle={{ gap: 8, paddingBottom: 12 }}
+              contentContainerStyle={{ gap: 10, paddingBottom: 12 }}
               onContentSizeChange={() => scrollRef.current?.scrollToEnd({ animated: true })}>
               {empty ? (
-                // 통역 출력이 아직 없을 때 — 안내 + 항상 보이는 텍스트 번역 탈출구
                 <View style={{ alignItems: 'center', marginTop: 40, gap: 16 }}>
                   <Text style={ss.hint}>{t('voice.hint')}</Text>
                   <Pressable onPress={() => router.replace('/translate')} style={ss.toTextBtn}>
@@ -189,20 +216,21 @@ export default function VoiceInterpretScreen() {
                 </View>
               ) : (
                 <>
-                  {lines.map((l) => (
-                    <View key={l.id} style={[ss.bubble, l.mine ? ss.mine : ss.theirs]}>
-                      <Text style={[ss.bubbleText, l.mine && { color: '#fff' }]}>{l.text}</Text>
-                    </View>
+                  {turns.map((tn) => (
+                    <Bubble
+                      key={tn.id}
+                      original={tn.original}
+                      translation={tn.translation}
+                      fromKorean={tn.fromKorean}
+                    />
                   ))}
-                  {!!interimSrc && (
-                    <View style={[ss.bubble, ss.mine, { opacity: 0.6 }]}>
-                      <Text style={[ss.bubbleText, { color: '#fff' }]}>{interimSrc}</Text>
-                    </View>
-                  )}
-                  {!!interimDst && (
-                    <View style={[ss.bubble, ss.theirs, { opacity: 0.6 }]}>
-                      <Text style={ss.bubbleText}>{interimDst}</Text>
-                    </View>
+                  {!!current && (current.original || current.translation) && (
+                    <Bubble
+                      original={current.original}
+                      translation={current.translation}
+                      fromKorean={hasHangul(current.original)}
+                      dim
+                    />
                   )}
                 </>
               )}
@@ -313,16 +341,24 @@ const ss = StyleSheet.create({
     paddingHorizontal: 16,
   },
   toTextText: { fontSize: 13, fontWeight: '700', color: palette.teal[40] },
-  bubble: { maxWidth: '88%', borderRadius: 16, paddingVertical: 9, paddingHorizontal: 13 },
-  mine: { alignSelf: 'flex-end', backgroundColor: palette.blue[50], borderBottomRightRadius: 6 },
-  theirs: {
-    alignSelf: 'flex-start',
+
+  // 대화 말풍선
+  turnRow: { flexDirection: 'row' },
+  card: { maxWidth: '86%', borderRadius: 18, paddingVertical: 9, paddingHorizontal: 13 },
+  cardForeign: { backgroundColor: palette.blue[50], borderBottomRightRadius: 6 },
+  cardKo: {
     backgroundColor: palette.teal[95],
     borderWidth: 0.5,
     borderColor: palette.teal[80],
     borderBottomLeftRadius: 6,
   },
-  bubbleText: { fontSize: 14, color: palette.zinc[900], lineHeight: 20 },
+  original: { fontSize: 12, marginBottom: 3 },
+  originalForeign: { color: 'rgba(255,255,255,.75)' },
+  originalKo: { color: palette.teal[30] },
+  translation: { fontSize: 15, fontWeight: '700', lineHeight: 21 },
+  translationForeign: { color: '#fff' },
+  translationKo: { color: palette.zinc[900] },
+
   stopBtn: {
     flexDirection: 'row',
     alignItems: 'center',
