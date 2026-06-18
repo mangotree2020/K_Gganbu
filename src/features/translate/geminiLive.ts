@@ -12,7 +12,8 @@ export type Turn = { original: string; translation: string; final: boolean; audi
 
 export type LiveCallbacks = {
   onTurn?: (turn: Turn) => void
-  onAudio?: (pcm24: Uint8Array) => void // 24kHz PCM 통역 음성
+  // 24kHz PCM 통역 음성. sourceText: 현재 turn 원문(화자 판단용 — 화자별 음성 On/Off)
+  onAudio?: (pcm24: Uint8Array, sourceText: string) => void
   onStatus?: (s: LiveStatus) => void
 }
 
@@ -188,7 +189,7 @@ export async function startLiveTranslate(
       for (const p of sc.modelTurn?.parts ?? []) {
         if (p.inlineData?.data) {
           const pcm = fromB64(p.inlineData.data)
-          cb.onAudio?.(pcm) // 실시간 재생
+          cb.onAudio?.(pcm, origBuf) // 실시간 재생(원문 함께 — 화자 판단)
           audioChunks.push(pcm) // turn 단위 누적(다시 듣기용)
         }
       }

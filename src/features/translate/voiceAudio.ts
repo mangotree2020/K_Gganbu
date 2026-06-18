@@ -22,6 +22,19 @@ function pcm16ToFloat(bytes: Uint8Array): Float32Array {
   return out
 }
 
+// Int16 PCM의 RMS(0~1) — 입력 음량 추정(동시 발화용 에너지 게이트)
+export function rms16(bytes: Uint8Array): number {
+  const n = Math.floor(bytes.byteLength / 2)
+  if (n === 0) return 0
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength)
+  let sum = 0
+  for (let i = 0; i < n; i++) {
+    const s = view.getInt16(i * 2, true) / 0x8000
+    sum += s * s
+  }
+  return Math.sqrt(sum / n)
+}
+
 export type MicHandle = { stop: () => void }
 
 // 마이크 캡처 시작 — 16kHz mono PCM16 청크를 콜백으로 전달

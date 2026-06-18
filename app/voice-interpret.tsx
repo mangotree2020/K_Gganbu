@@ -20,8 +20,10 @@ import Slider from '@react-native-community/slider'
 import { Icon } from '@/components/brand'
 import { storage } from '@/lib/mmkv'
 import { startLiveTranslate, type LiveSession } from '@/features/translate/geminiLive'
+import { saveSession } from '@/features/translate/history'
 import {
   createPlayer,
+  rms16,
   startMic,
   type MicHandle,
   type Player,
@@ -30,6 +32,10 @@ import { APP_LANGS, useLocaleStore, useT, type AppLang } from '@/lib/i18n'
 import { palette, shadows } from '@/theme/tokens'
 
 type VoiceStatus = 'idle' | 'connecting' | 'connected' | 'error' | 'unavailable'
+
+// 동시 발화 게이트 임계 — 통역 재생 중 이 RMS 이상의 입력만 통과(실제 발화 vs 에코 누설).
+// 스피커 볼륨이 크면 누설도 커져 구분이 약해짐 → 이어폰 권장.
+const SPEECH_RMS_GATE = 0.06
 // lang: 감지된 발화 언어 코드. 화자(언어)별 색상·정렬·칩에 사용.
 // hasAudio: 통역 음성 보유 여부(다시 듣기 버튼 표시용. PCM은 audioStoreRef에 보관).
 type Turn = { id: number; original: string; translation: string; lang: string; hasAudio: boolean }
@@ -156,9 +162,13 @@ export default function VoiceInterpretScreen() {
     const v = storage.getNumber('voiceVolume')
     return v == null ? 1 : v
   })
-  // 통역 음성 On/Off — Off면 실시간 자동 재생 끔(자막은 유지, 다시 듣기는 가능)
-  const [voiceEnabled, setVoiceEnabledState] = useState(() => {
-    const v = storage.getBoolean('voiceEnabled')
+  // 통역 음성 On/Off — 화자별 구분. 상대 발화 통역(내 언어로 들림) / 내 발화 통역(상대에게 들려줌)
+  const [otherVoice, setOtherVoice] = useState(() => {
+    const v = storage.getBoolean('voiceOther')
+    return v == null ? true : v
+  })
+  const [myVoice, setMyVoice] = useState(() => {
+    const v = storage.getBoolean('voiceMine')
     return v == null ? true : v
   })
   const scrollRef = useRef<ScrollView>(null)
@@ -169,8 +179,30 @@ export default function VoiceInterpretScreen() {
   const idRef = useRef(0)
   // turn id → 통역 음성 PCM (다시 듣기용)
   const audioStoreRef = useRef<Map<number, Uint8Array>>(new Map())
-  // onAudio 콜백 클로저에서 최신 On/Off 값을 읽기 위한 미러
-  const voiceEnabledRef = useRef(voiceEnabled)
+  // 이력 저장용 — 콜백/언마운트에서 최신값 읽기
+  const turnsRef = useRef<Turn[]>([])
+  const appLangRef = useRef(appLang)
+  useEffect(() => {
+    turnsRef.current = turns
+  }, [turns])
+  useEffect(() => {
+    appLangRef.current = appLang
+  }, [appLang])
+
+  // 현재 대화를 이력에 저장(빈 대화는 무시)
+  const persist = () => {
+    saveSession(
+      turnsRef.current.map((x) => ({
+        original: x.original,
+        translation: x.translation,
+        lang: x.lang,
+      })),
+      appLangRef.current,
+    )
+  }
+  // onAudio/마이크 콜백 클로저에서 최신 On/Off 값을 읽기 위한 미러
+  const otherVoiceRef = useRef(otherVoice)
+  const myVoiceRef = useRef(myVoice)
 
   const teardown = () => {
     micRef.current?.stop()
@@ -189,12 +221,18 @@ export default function VoiceInterpretScreen() {
   }
   const onVolumeCommit = (v: number) => storage.set('voiceVolume', v)
 
-  // 통역 음성 On/Off 토글 — 즉시 반영(ref) + MMKV 저장
-  const toggleVoice = () => {
-    const next = !voiceEnabled
-    setVoiceEnabledState(next)
-    voiceEnabledRef.current = next
-    storage.set('voiceEnabled', next)
+  // 화자별 통역 음성 On/Off 토글 — 즉시 반영(ref) + MMKV 저장
+  const toggleOtherVoice = () => {
+    const next = !otherVoice
+    setOtherVoice(next)
+    otherVoiceRef.current = next
+    storage.set('voiceOther', next)
+  }
+  const toggleMyVoice = () => {
+    const next = !myVoice
+    setMyVoice(next)
+    myVoiceRef.current = next
+    storage.set('voiceMine', next)
   }
 
   // 말풍선 통역 음성 다시 듣기 (음성 Off여도 명시적 액션이므로 재생)
@@ -220,9 +258,10 @@ export default function VoiceInterpretScreen() {
               setStatus('connected')
               playerRef.current = createPlayer(24000, volume)
               micRef.current = startMic((pcm) => {
-                // 통역 음성 재생 중에는 마이크 입력을 보내지 않음(에코 루프 방지).
-                // 재생 음성이 마이크로 재유입되어 무한 통역되는 것을 차단(half-duplex).
-                if (playerRef.current?.isPlaying()) return
+                // 통역 음성 재생 중: 입력 음량(RMS)이 충분히 크면(상대가 실제로 말함)
+                // 통과시켜 동시 발화를 허용하고, 작으면(스피커→마이크 에코 누설) 차단한다.
+                // AEC를 JS로 켤 수 없는 환경의 근사(완전 차단 half-duplex의 동시발화 보완).
+                if (playerRef.current?.isPlaying() && rms16(pcm) < SPEECH_RMS_GATE) return
                 sessionRef.current?.sendAudio(pcm)
               })
             } else if (s === 'error' || s === 'closed') {
@@ -253,8 +292,11 @@ export default function VoiceInterpretScreen() {
               setCurrent({ original: turn.original, translation: turn.translation })
             }
           },
-          onAudio: (pcm24) => {
-            if (voiceEnabledRef.current) playerRef.current?.play(pcm24)
+          onAudio: (pcm24, sourceText) => {
+            // 화자 판단: 원문이 앱 언어면 내 발화 통역, 아니면 상대 발화 통역
+            const isMine = detectLang(sourceText) === appLang
+            const enabled = isMine ? myVoiceRef.current : otherVoiceRef.current
+            if (enabled) playerRef.current?.play(pcm24)
           },
         },
       )
@@ -271,6 +313,7 @@ export default function VoiceInterpretScreen() {
   }
 
   const stop = () => {
+    persist()
     teardown()
     setActive(false)
     setTurns([])
@@ -285,7 +328,14 @@ export default function VoiceInterpretScreen() {
     setStatus('error')
   }
 
-  useEffect(() => () => teardown(), [])
+  // 언마운트(X 닫기 등) 시에도 미저장 대화 보존
+  useEffect(
+    () => () => {
+      persist()
+      teardown()
+    },
+    [],
+  )
 
   const empty = turns.length === 0 && !current?.original && !current?.translation
 
@@ -300,6 +350,9 @@ export default function VoiceInterpretScreen() {
             <Text style={ss.title}>{t('voice.title')}</Text>
             <Text style={ss.sub}>{t('voice.headerSub')}</Text>
           </View>
+          <Pressable onPress={() => router.push('/voice-history')} style={ss.close}>
+            <Icon name="history" size={18} color={palette.zinc[700]} />
+          </Pressable>
           <Pressable onPress={() => router.back()} style={ss.close}>
             <Icon name="close" size={18} color={palette.zinc[700]} />
           </Pressable>
@@ -319,46 +372,66 @@ export default function VoiceInterpretScreen() {
               </Text>
             </View>
 
-            <View style={ss.audioBar}>
-              <Pressable onPress={toggleVoice} hitSlop={8} style={ss.voiceLabelGroup}>
+            <View style={ss.audioGroup}>
+              <View style={ss.audioBar}>
+                <Pressable onPress={toggleOtherVoice} hitSlop={8} style={ss.voiceLabelGroup}>
+                  <Icon
+                    name={otherVoice ? 'volume_up' : 'volume_off'}
+                    size={17}
+                    color={otherVoice ? palette.teal[40] : palette.zinc[400]}
+                    filled
+                  />
+                  <Text style={ss.voiceLabel}>{t('voice.soundOther')}</Text>
+                </Pressable>
+                <Switch
+                  value={otherVoice}
+                  onValueChange={toggleOtherVoice}
+                  trackColor={{ true: palette.teal[80], false: palette.zinc[300] }}
+                  thumbColor={otherVoice ? palette.teal[40] : '#f4f4f5'}
+                />
+              </View>
+
+              <View style={ss.audioBar}>
+                <Pressable onPress={toggleMyVoice} hitSlop={8} style={ss.voiceLabelGroup}>
+                  <Icon
+                    name={myVoice ? 'volume_up' : 'volume_off'}
+                    size={17}
+                    color={myVoice ? palette.teal[40] : palette.zinc[400]}
+                    filled
+                  />
+                  <Text style={ss.voiceLabel}>{t('voice.soundMine')}</Text>
+                </Pressable>
+                <Switch
+                  value={myVoice}
+                  onValueChange={toggleMyVoice}
+                  trackColor={{ true: palette.teal[80], false: palette.zinc[300] }}
+                  thumbColor={myVoice ? palette.teal[40] : '#f4f4f5'}
+                />
+              </View>
+
+              <View style={ss.volumeRow}>
                 <Icon
-                  name={voiceEnabled ? 'volume_up' : 'volume_off'}
-                  size={17}
-                  color={voiceEnabled ? palette.teal[40] : palette.zinc[400]}
+                  name="volume_up"
+                  size={16}
+                  color={otherVoice || myVoice ? palette.teal[40] : palette.zinc[400]}
                   filled
                 />
-                <Text style={ss.voiceLabel}>{t('voice.sound')}</Text>
-              </Pressable>
-              <Switch
-                value={voiceEnabled}
-                onValueChange={toggleVoice}
-                trackColor={{ true: palette.teal[80], false: palette.zinc[300] }}
-                thumbColor={voiceEnabled ? palette.teal[40] : '#f4f4f5'}
-              />
-            </View>
-
-            <View style={ss.volumeRow}>
-              <Icon
-                name="volume_up"
-                size={16}
-                color={voiceEnabled ? palette.teal[40] : palette.zinc[400]}
-                filled
-              />
-              <Slider
-                style={[ss.slider, !voiceEnabled && { opacity: 0.35 }]}
-                disabled={!voiceEnabled}
-                minimumValue={0}
-                maximumValue={1}
-                value={volume}
-                onValueChange={onVolumeChange}
-                onSlidingComplete={onVolumeCommit}
-                minimumTrackTintColor={palette.teal[40]}
-                maximumTrackTintColor={palette.zinc[200]}
-                thumbTintColor={palette.teal[40]}
-              />
-              <Text style={[ss.volPct, !voiceEnabled && { color: palette.zinc[400] }]}>
-                {Math.round(volume * 100)}%
-              </Text>
+                <Slider
+                  style={[ss.slider, !(otherVoice || myVoice) && { opacity: 0.35 }]}
+                  disabled={!(otherVoice || myVoice)}
+                  minimumValue={0}
+                  maximumValue={1}
+                  value={volume}
+                  onValueChange={onVolumeChange}
+                  onSlidingComplete={onVolumeCommit}
+                  minimumTrackTintColor={palette.teal[40]}
+                  maximumTrackTintColor={palette.zinc[200]}
+                  thumbTintColor={palette.teal[40]}
+                />
+                <Text style={[ss.volPct, !(otherVoice || myVoice) && { color: palette.zinc[400] }]}>
+                  {Math.round(volume * 100)}%
+                </Text>
+              </View>
             </View>
 
             <ScrollView
@@ -496,12 +569,13 @@ const ss = StyleSheet.create({
     paddingVertical: 6,
   },
   statusText: { fontSize: 12, fontWeight: '600', color: palette.zinc[700] },
+  audioGroup: { marginTop: 12, gap: 6 },
   volumeRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
     paddingHorizontal: 4,
-    marginTop: 10,
+    marginTop: 2,
   },
   audioBar: {
     flexDirection: 'row',
@@ -511,7 +585,6 @@ const ss = StyleSheet.create({
     borderRadius: 12,
     paddingVertical: 6,
     paddingHorizontal: 14,
-    marginTop: 12,
   },
   voiceLabelGroup: { flexDirection: 'row', alignItems: 'center', gap: 7 },
   voiceLabel: { fontSize: 13, fontWeight: '700', color: palette.zinc[700] },
