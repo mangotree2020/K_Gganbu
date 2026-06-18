@@ -59,28 +59,33 @@ export async function startLiveTranslate(
   const ws = new WebSocket(url)
 
   ws.onopen = () => {
-    // 세션 설정 — speech-to-speech 통역(translate-preview). 원문/번역 transcription 활성.
+    // 세션 설정 — speech-to-speech 통역(translate-preview). 실측 검증된 형식:
+    // model + responseModalities AUDIO + speechConfig.languageCode(대상 언어) + 입출력 transcription.
+    // (translateConfig/targetLanguageCode 필드는 API가 거부하므로 사용하지 않음)
     ws.send(
       JSON.stringify({
         setup: {
           model: grant.model,
-          generationConfig: { responseModalities: ['AUDIO'] },
+          generationConfig: {
+            responseModalities: ['AUDIO'],
+            speechConfig: { languageCode: opts.targetLang },
+          },
           inputAudioTranscription: {},
           outputAudioTranscription: {},
-          // translate-preview 통역 방향(preview 스펙에 맞춰 조정)
-          translateConfig: {
-            targetLanguageCode: opts.targetLang,
-            echoTargetLanguage: true,
-          },
         },
       }),
     )
-    cb.onStatus?.('open')
+    // 연결됨 — 단, 오디오 전송은 setupComplete 수신 후 시작
   }
 
   ws.onmessage = (ev: WebSocketMessageEvent) => {
     try {
       const msg = JSON.parse(typeof ev.data === 'string' ? ev.data : '')
+      // setup 완료 → 이제 오디오 송신 가능
+      if (msg.setupComplete) {
+        cb.onStatus?.('open')
+        return
+      }
       const sc = msg.serverContent
       if (sc?.inputTranscription?.text) {
         cb.onTranscript?.(sc.inputTranscription.text, {
