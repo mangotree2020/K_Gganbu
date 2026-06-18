@@ -17,19 +17,57 @@ export type LiveSession = {
   close: () => void
 }
 
-type TokenGrant = { token: string; wsHost: string; model: string }
+const WS_HOST = 'generativelanguage.googleapis.com'
+const MODEL = 'models/gemini-3.5-live-translate-preview'
+// 개발용 직접 키(테스트 전용) — 있으면 Supabase 토큰 없이 직결. 프로덕션은 비워둔다.
+const DEV_KEY = process.env.EXPO_PUBLIC_GEMINI_KEY
+
+type TokenGrant = { auth: string; isKey: boolean; wsHost: string; model: string }
 
 async function getLiveToken(sourceLang: string, targetLang: string): Promise<TokenGrant | null> {
+  // 개발: 직접 키로 연결(?key=). 프로덕션: Supabase ephemeral 토큰(?access_token=).
+  if (DEV_KEY) return { auth: DEV_KEY, isKey: true, wsHost: WS_HOST, model: MODEL }
   try {
     const { data, error } = await supabase.functions.invoke('gemini-live-token', {
       body: { sourceLang, targetLang },
     })
     if (error) throw error
-    if (data?.token && data?.wsHost && data?.model) return data as TokenGrant
+    if (data?.token && data?.wsHost && data?.model)
+      return { auth: data.token as string, isKey: false, wsHost: data.wsHost, model: data.model }
     return null
   } catch {
     return null
   }
+}
+
+// UTF-8 디코드 (한글 등 멀티바이트) — Gemini Live WS는 RN에서 ArrayBuffer 프레임으로 옴
+function utf8Decode(ab: ArrayBuffer): string {
+  const b = new Uint8Array(ab)
+  let out = ''
+  let i = 0
+  while (i < b.length) {
+    const c = b[i++]
+    if (c < 0x80) out += String.fromCharCode(c)
+    else if (c < 0xe0) out += String.fromCharCode(((c & 0x1f) << 6) | (b[i++] & 0x3f))
+    else if (c < 0xf0)
+      out += String.fromCharCode(((c & 0x0f) << 12) | ((b[i++] & 0x3f) << 6) | (b[i++] & 0x3f))
+    else {
+      let cp =
+        ((c & 0x07) << 18) | ((b[i++] & 0x3f) << 12) | ((b[i++] & 0x3f) << 6) | (b[i++] & 0x3f)
+      cp -= 0x10000
+      out += String.fromCharCode(0xd800 + (cp >> 10), 0xdc00 + (cp & 0x3ff))
+    }
+  }
+  return out
+}
+
+// WS 프레임(string | ArrayBuffer) → 텍스트
+function frameToText(data: unknown): string {
+  if (typeof data === 'string') return data
+  if (data instanceof ArrayBuffer) return utf8Decode(data)
+  const view = data as ArrayBufferView | undefined
+  if (view?.buffer) return utf8Decode(view.buffer as ArrayBuffer)
+  return ''
 }
 
 function toB64(bytes: Uint8Array): string {
@@ -55,8 +93,11 @@ export async function startLiveTranslate(
   if (!grant) return null
 
   cb.onStatus?.('connecting')
-  const url = `wss://${grant.wsHost}/ws/google.ai.generativelanguage.v1alpha.GenerativeService.BidiGenerateContent?access_token=${grant.token}`
+  const apiVer = grant.isKey ? 'v1beta' : 'v1alpha'
+  const authParam = grant.isKey ? `key=${grant.auth}` : `access_token=${grant.auth}`
+  const url = `wss://${grant.wsHost}/ws/google.ai.generativelanguage.${apiVer}.GenerativeService.BidiGenerateContent?${authParam}`
   const ws = new WebSocket(url)
+  ws.binaryType = 'arraybuffer'
 
   ws.onopen = () => {
     // 세션 설정 — speech-to-speech 통역(translate-preview). 실측 검증된 형식:
@@ -80,7 +121,9 @@ export async function startLiveTranslate(
 
   ws.onmessage = (ev: WebSocketMessageEvent) => {
     try {
-      const msg = JSON.parse(typeof ev.data === 'string' ? ev.data : '')
+      const raw = frameToText(ev.data)
+      if (!raw) return
+      const msg = JSON.parse(raw)
       // setup 완료 → 이제 오디오 송신 가능
       if (msg.setupComplete) {
         cb.onStatus?.('open')
