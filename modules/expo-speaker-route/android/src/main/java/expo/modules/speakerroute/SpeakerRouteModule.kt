@@ -1,0 +1,57 @@
+package expo.modules.speakerroute
+
+import android.content.Context
+import android.media.AudioDeviceInfo
+import android.media.AudioManager
+import android.os.Build
+import expo.modules.kotlin.modules.Module
+import expo.modules.kotlin.modules.ModuleDefinition
+
+// 출력 라우팅 전환 — 이어폰 사용 중 '내 발화 통역'만 스피커로 내보내기 위함.
+// API 31+ 는 setCommunicationDevice(스피커), 그 이하는 isSpeakerphoneOn 사용.
+class SpeakerRouteModule : Module() {
+  private fun audioManager(): AudioManager? {
+    val ctx = appContext.reactContext ?: return null
+    return ctx.getSystemService(Context.AUDIO_SERVICE) as? AudioManager
+  }
+
+  override fun definition() = ModuleDefinition {
+    Name("SpeakerRoute")
+
+    // on=true: 내장 스피커로 강제, false: 통신 디바이스 해제(이어폰 등 기본 복귀)
+    Function("setSpeaker") { on: Boolean ->
+      val am = audioManager() ?: return@Function false
+      am.mode = AudioManager.MODE_IN_COMMUNICATION
+      if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+        if (on) {
+          val spk = am.availableCommunicationDevices.firstOrNull {
+            it.type == AudioDeviceInfo.TYPE_BUILTIN_SPEAKER
+          }
+          if (spk != null) am.setCommunicationDevice(spk) else false
+        } else {
+          am.clearCommunicationDevice()
+          true
+        }
+      } else {
+        @Suppress("DEPRECATION")
+        am.isSpeakerphoneOn = on
+        true
+      }
+    }
+
+    // 세션 종료 시 오디오 모드 원복
+    Function("reset") {
+      val am = audioManager()
+      if (am != null) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+          am.clearCommunicationDevice()
+        } else {
+          @Suppress("DEPRECATION")
+          am.isSpeakerphoneOn = false
+        }
+        am.mode = AudioManager.MODE_NORMAL
+      }
+      true
+    }
+  }
+}

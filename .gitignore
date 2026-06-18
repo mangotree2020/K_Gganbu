@@ -49,3 +49,6 @@ android/app/google-services.json
 ios/GoogleService-Info.plist
 google-services.json
 GoogleService-Info.plist
+
+# Local expo native modules build output
+modules/**/android/build/

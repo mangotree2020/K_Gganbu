@@ -21,6 +21,7 @@ import { Icon } from '@/components/brand'
 import { storage } from '@/lib/mmkv'
 import { startLiveTranslate, type LiveSession } from '@/features/translate/geminiLive'
 import { saveSession } from '@/features/translate/history'
+import { resetSpeaker, setSpeaker } from '../modules/expo-speaker-route'
 import {
   createPlayer,
   isHeadsetConnected,
@@ -176,6 +177,10 @@ export default function VoiceInterpretScreen() {
   })
   // 이어폰 연결 시 에코 누설이 없으므로 동시 발화 게이트를 끈다(완전 동시 통역)
   const [headset, setHeadset] = useState(false)
+  // 이어폰 중 '내 발화 통역'을 스피커로 내보내 상대가 듣게 함
+  const [speakerMyVoice, setSpeakerMyVoice] = useState(
+    () => storage.getBoolean('speakerMyVoice') ?? false,
+  )
   const scrollRef = useRef<ScrollView>(null)
 
   const sessionRef = useRef<LiveSession | null>(null)
@@ -210,6 +215,16 @@ export default function VoiceInterpretScreen() {
   const myVoiceRef = useRef(myVoice)
   const headsetRef = useRef(false)
   const routeSubRef = useRef<{ remove: () => void } | null>(null)
+  const speakerMyVoiceRef = useRef(speakerMyVoice)
+  // 현재 출력이 스피커로 라우팅됐는지(중복 호출 방지)
+  const routedToSpeakerRef = useRef(false)
+
+  // 출력 라우팅 전환(내 통역=스피커, 상대 통역=이어폰). 변경 시에만 네이티브 호출.
+  const applySpeakerRoute = (toSpeaker: boolean) => {
+    if (routedToSpeakerRef.current === toSpeaker) return
+    routedToSpeakerRef.current = toSpeaker
+    setSpeaker(toSpeaker)
+  }
 
   // 이어폰 연결 상태 갱신(초기 조회 + 라우팅 변경 시)
   const refreshHeadset = () => {
@@ -228,7 +243,21 @@ export default function VoiceInterpretScreen() {
     playerRef.current = null
     routeSubRef.current?.remove()
     routeSubRef.current = null
+    routedToSpeakerRef.current = false
+    resetSpeaker() // 오디오 라우팅 원복
     audioStoreRef.current.clear()
+  }
+
+  // '내 통역 스피커 출력' 토글 — 끄면 즉시 이어폰 복귀
+  const toggleSpeakerMyVoice = () => {
+    const next = !speakerMyVoice
+    setSpeakerMyVoice(next)
+    speakerMyVoiceRef.current = next
+    storage.set('speakerMyVoice', next)
+    if (!next) {
+      routedToSpeakerRef.current = false
+      resetSpeaker()
+    }
   }
 
   // 볼륨 변경 — 재생 중 즉시 반영(state+player), 슬라이딩 종료 시 MMKV 저장
@@ -321,7 +350,10 @@ export default function VoiceInterpretScreen() {
             // 화자 판단: 원문이 앱 언어면 내 발화 통역, 아니면 상대 발화 통역
             const isMine = detectLang(sourceText) === appLang
             const enabled = isMine ? myVoiceRef.current : otherVoiceRef.current
-            if (enabled) playerRef.current?.play(pcm24)
+            if (!enabled) return
+            // 이어폰 + 토글 ON: 내 통역은 스피커(상대에게), 상대 통역은 이어폰(나에게)
+            if (headsetRef.current && speakerMyVoiceRef.current) applySpeakerRoute(isMine)
+            playerRef.current?.play(pcm24)
           },
         },
       )
@@ -439,6 +471,26 @@ export default function VoiceInterpretScreen() {
                   thumbColor={myVoice ? palette.teal[40] : '#f4f4f5'}
                 />
               </View>
+
+              {headset && (
+                <View style={ss.audioBar}>
+                  <Pressable onPress={toggleSpeakerMyVoice} hitSlop={8} style={ss.voiceLabelGroup}>
+                    <Icon
+                      name="volume_up"
+                      size={17}
+                      color={speakerMyVoice ? palette.coral[40] : palette.zinc[400]}
+                      filled
+                    />
+                    <Text style={ss.voiceLabel}>{t('voice.myVoiceToSpeaker')}</Text>
+                  </Pressable>
+                  <Switch
+                    value={speakerMyVoice}
+                    onValueChange={toggleSpeakerMyVoice}
+                    trackColor={{ true: palette.coral[80], false: palette.zinc[300] }}
+                    thumbColor={speakerMyVoice ? palette.coral[40] : '#f4f4f5'}
+                  />
+                </View>
+              )}
 
               <View style={ss.volumeRow}>
                 <Icon
