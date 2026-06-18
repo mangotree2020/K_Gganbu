@@ -259,8 +259,8 @@ export default function VoiceInterpretScreen() {
     setSpeaker(toSpeaker)
     // 전환 직후 무음 재생으로 출력 경로를 깨워 통역 음성 앞부분 잘림 방지.
     // 기기 청취: 스피커 전환(내 통역)에서 잘림 발생, 이어폰(상대 통역)은 문제 없음.
-    // → 스피커는 길게(1.0), 이어폰은 짧게(0.5).
-    playerRef.current?.primeSilence(toSpeaker ? 1.0 : 0.5)
+    // → 스피커는 길게(0.9), 이어폰은 짧게(0.6).
+    playerRef.current?.primeSilence(toSpeaker ? 0.9 : 0.6)
   }
 
   // 이어폰 연결 상태 갱신(초기 조회 + 라우팅 변경 시)
