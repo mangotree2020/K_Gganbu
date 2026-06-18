@@ -257,7 +257,8 @@ export default function VoiceInterpretScreen() {
     if (routedToSpeakerRef.current === toSpeaker) return
     routedToSpeakerRef.current = toSpeaker
     setSpeaker(toSpeaker)
-    playerRef.current?.delayNext(0.45)
+    // 전환 직후 무음 재생으로 출력 경로를 깨워 통역 음성 앞부분 잘림 방지
+    playerRef.current?.primeSilence(0.5)
   }
 
   // 이어폰 연결 상태 갱신(초기 조회 + 라우팅 변경 시)
