@@ -27,36 +27,40 @@ const MODEL = 'models/gemini-3.1-flash-live-preview'
 // 개발용 직접 키(테스트 전용) — 있으면 Supabase 토큰 없이 직결. 프로덕션은 비워둔다.
 const DEV_KEY = process.env.EXPO_PUBLIC_GEMINI_KEY
 
-// 외국인측 언어 코드 → 영어 이름(systemInstruction용)
+// 언어 코드 → 영어 이름(systemInstruction용)
 const LANG_NAME: Record<string, string> = {
   en: 'English',
   ja: 'Japanese',
   'zh-CN': 'Chinese (Simplified)',
   'zh-TW': 'Chinese (Traditional)',
-  ko: 'English',
+  ko: 'Korean',
 }
 
-function interpreterInstruction(foreignerLang: string): string {
-  const name = LANG_NAME[foreignerLang] ?? 'English'
-  // 목표 언어 = 앱 설정 언어(name). 발화 언어 자동 감지:
-  // 앱 언어 발화 → 한국어, 그 외(한국어 포함 모든 언어) → 앱 언어.
+function interpreterInstruction(appLang: string): string {
+  const app = LANG_NAME[appLang] ?? 'English'
+  // 멀티 화자/멀티 언어 상황(길거리에서 여러 명이 각자 언어로 번갈아 대화).
+  // 목표 언어 = 앱 설정 언어(app). 어떤 언어든 자동 감지 → app으로 통역.
+  // 단, app으로 말한 발화는 상대가 알아듣도록 other(앱이 한국어면 영어, 그 외 한국어)로.
+  const other = appLang === 'ko' ? 'English' : 'Korean'
   return (
-    `You are a live two-way interpreter for a ${name}-speaking traveler in Korea. ` +
-    `Detect the spoken language of each utterance automatically. ` +
-    `If the utterance is in ${name}, translate it into natural spoken Korean. ` +
-    `If the utterance is in Korean or any other language, translate it into natural spoken ${name}. ` +
-    `Reply with ONLY the translation — no notes, no language labels, no extra words.`
+    `You are a real-time interpreter for a multi-person street conversation in Korea, ` +
+    `where several people take turns speaking in different languages. ` +
+    `Detect the language of each utterance automatically, then apply this strict rule: ` +
+    `an utterance spoken in ${app} must be rendered in ${other}; ` +
+    `an utterance in ANY other language must be rendered in ${app}. ` +
+    `Your output language is therefore always ${app} or ${other} and nothing else, regardless of previous turns. ` +
+    `Reply with ONLY the spoken translation — no notes, no language labels, no extra words.`
   )
 }
 
 type TokenGrant = { auth: string; isKey: boolean; wsHost: string; model: string }
 
-async function getLiveToken(foreignerLang: string): Promise<TokenGrant | null> {
+async function getLiveToken(appLang: string): Promise<TokenGrant | null> {
   // 개발: 직접 키로 연결(?key=). 프로덕션: Supabase ephemeral 토큰(?access_token=).
   if (DEV_KEY) return { auth: DEV_KEY, isKey: true, wsHost: WS_HOST, model: MODEL }
   try {
     const { data, error } = await supabase.functions.invoke('gemini-live-token', {
-      body: { foreignerLang },
+      body: { appLang },
     })
     if (error) throw error
     if (data?.token && data?.wsHost && data?.model)
@@ -112,10 +116,10 @@ function fromB64(b64: string): Uint8Array {
 
 // Gemini Live 양방향 통역 세션 시작. 토큰 미발급(키 미설정) 시 null 반환 → UI 폴백.
 export async function startLiveTranslate(
-  opts: { foreignerLang: string },
+  opts: { appLang: string },
   cb: LiveCallbacks,
 ): Promise<LiveSession | null> {
-  const grant = await getLiveToken(opts.foreignerLang)
+  const grant = await getLiveToken(opts.appLang)
   if (!grant) return null
 
   cb.onStatus?.('connecting')
@@ -136,7 +140,7 @@ export async function startLiveTranslate(
         setup: {
           model: grant.model,
           generationConfig: { responseModalities: ['AUDIO'] },
-          systemInstruction: { parts: [{ text: interpreterInstruction(opts.foreignerLang) }] },
+          systemInstruction: { parts: [{ text: interpreterInstruction(opts.appLang) }] },
           inputAudioTranscription: {},
           outputAudioTranscription: {},
         },

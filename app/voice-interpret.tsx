@@ -1,5 +1,6 @@
-// 음성 통역 화면 (PLANNING §25 B안) — 기기 ↔ Gemini Live 직결 양방향 자동 통역.
-// 외국인 발화→한국어, 한국어 발화→외국인 언어. 대화형 말풍선(화자별 좌/우 정렬).
+// 음성 통역 화면 (PLANNING §25 B안) — 기기 ↔ Gemini Live 직결 멀티 화자 자동 통역.
+// 길거리에서 여러 명이 각자 언어로 번갈아 대화하는 상황 대응. 목표 = 앱 설정 언어.
+// 발화 언어를 스크립트로 감지해 국기·언어 칩 + 화자(언어)별 색상으로 구분.
 // 마이크 16kHz PCM(react-native-audio-api) → Gemini Live → 통역 음성 24kHz + 원문/통역 자막.
 import { router } from 'expo-router'
 import { useEffect, useRef, useState } from 'react'
@@ -22,62 +23,93 @@ import {
   type MicHandle,
   type Player,
 } from '@/features/translate/voiceAudio'
-import { APP_LANGS, useLocaleStore, useT } from '@/lib/i18n'
+import { APP_LANGS, useLocaleStore, useT, type AppLang } from '@/lib/i18n'
 import { palette, shadows } from '@/theme/tokens'
 
 type VoiceStatus = 'idle' | 'connecting' | 'connected' | 'error' | 'unavailable'
-// fromKorean: 한국어 발화(좌·청록) vs 외국인 발화(우·파랑)
-type Turn = { id: number; original: string; translation: string; fromKorean: boolean }
+// lang: 감지된 발화 언어 코드. 화자(언어)별 색상·정렬·칩에 사용.
+type Turn = { id: number; original: string; translation: string; lang: string }
 
-const hasHangul = (s: string) => /[가-힣]/.test(s)
-// 화자 판별 — 번역 방향 기준(ASR 원문보다 견고). 번역문이 한국어면 한국어 화자가
-// 아닌 상대(외국어)가 말한 것 → false. 번역문이 외국어면 한국어 화자 → true.
-// (원문 ASR은 외국어를 한글 음차로 받는 경우가 있어 번역 방향으로 판정)
-const isKoreanSpeaker = (original: string, translation: string) =>
-  translation ? !hasHangul(translation) : hasHangul(original)
+// 발화 언어 감지(스크립트 기반) — 가나>한글>한자>라틴 우선순위.
+// 일본어는 가나+한자가 섞이므로 가나를 먼저 확인(한자만이면 중국어).
+// 한글·라틴 혼용 시 더 많은 쪽으로 판정(ASR이 영어를 한글 음차로 섞는 경우 보정).
+const detectLang = (s: string): string => {
+  if (/[぀-ヿ]/.test(s)) return 'ja' // 히라가나·가타카나
+  const han = (s.match(/[가-힣]/g) || []).length
+  const lat = (s.match(/[a-zA-Z]/g) || []).length
+  if (han && lat) return lat >= han * 2 ? 'en' : 'ko' // 라틴이 한글의 2배↑면 영어
+  if (han) return 'ko'
+  if (/[一-鿿]/.test(s)) return 'zh-CN' // 한자만(가나 없음) → 중국어
+  if (lat) return 'en'
+  return '' // 미상
+}
 
-// 대화 말풍선 — 화자별 좌/우 정렬. 언어 칩 + 원문 + 구분선 + 통역.
+// 언어별 색상 톤 — 화자 구분용. accent: 칩·보더·내 말풍선 채움, tint: 상대 말풍선 배경
+const LANG_TONE: Record<string, { accent: string; tint: string }> = {
+  ko: { accent: palette.teal[40], tint: palette.teal[95] },
+  ja: { accent: palette.coral[40], tint: palette.coral[95] },
+  en: { accent: palette.blue[40], tint: palette.blue[95] },
+  'zh-CN': { accent: palette.amber[50], tint: palette.amber[90] },
+  'zh-TW': { accent: palette.amber[50], tint: palette.amber[90] },
+}
+const toneOf = (lang: string) =>
+  LANG_TONE[lang] ?? { accent: palette.zinc[700], tint: palette.zinc[100] }
+const langMeta = (code: string) =>
+  APP_LANGS.find((l) => l.code === code) ?? { flag: '🌐', label: code || '?' }
+
+// 대화 말풍선 — 화자(언어)별 색상·좌우 정렬. 언어 칩 + 원문 + 구분선 + 통역.
+// isMe: 앱 사용자(앱 언어) 발화 → 우측·진한 톤. 상대 → 좌측·언어별 연한 톤.
 function Bubble({
   original,
   translation,
-  fromKorean,
-  flag,
-  langLabel,
+  lang,
+  isMe,
   dim,
 }: {
   original: string
   translation: string
-  fromKorean: boolean
-  flag: string
-  langLabel: string
+  lang: string
+  isMe: boolean
   dim?: boolean
 }) {
+  const tone = toneOf(lang)
+  const meta = langMeta(lang)
   const showDivider = !!original && !!translation
   return (
-    <View style={[ss.turnRow, { justifyContent: fromKorean ? 'flex-start' : 'flex-end' }]}>
+    <View style={[ss.turnRow, { justifyContent: isMe ? 'flex-end' : 'flex-start' }]}>
       <View
         style={[
           ss.card,
-          fromKorean ? ss.cardKo : ss.cardForeign,
+          isMe
+            ? { backgroundColor: tone.accent, borderBottomRightRadius: 7 }
+            : {
+                backgroundColor: tone.tint,
+                borderWidth: 1,
+                borderColor: tone.accent,
+                borderBottomLeftRadius: 7,
+              },
           shadows.card,
           dim && { opacity: 0.55 },
         ]}>
         <View style={ss.speakerChip}>
-          <Text style={ss.flag}>{flag}</Text>
-          <Text style={[ss.langLabel, fromKorean ? ss.langLabelKo : ss.langLabelForeign]}>
-            {langLabel}
+          <Text style={ss.flag}>{meta.flag}</Text>
+          <Text style={[ss.langLabel, { color: isMe ? 'rgba(255,255,255,.9)' : tone.accent }]}>
+            {meta.label}
           </Text>
         </View>
         {!!original && (
-          <Text style={[ss.original, fromKorean ? ss.originalKo : ss.originalForeign]}>
+          <Text
+            style={[ss.original, { color: isMe ? 'rgba(255,255,255,.72)' : palette.zinc[500] }]}>
             {original}
           </Text>
         )}
         {showDivider && (
-          <View style={[ss.divider, fromKorean ? ss.dividerKo : ss.dividerForeign]} />
+          <View
+            style={[ss.divider, { backgroundColor: isMe ? 'rgba(255,255,255,.28)' : tone.accent }]}
+          />
         )}
         {!!translation && (
-          <Text style={[ss.translation, fromKorean ? ss.translationKo : ss.translationForeign]}>
+          <Text style={[ss.translation, { color: isMe ? '#fff' : palette.zinc[900] }]}>
             {translation}
           </Text>
         )}
@@ -98,11 +130,7 @@ async function ensureMicPermission(): Promise<boolean> {
 
 export default function VoiceInterpretScreen() {
   const t = useT()
-  const lang = useLocaleStore((s) => s.lang)
-  const foreignerLang = lang === 'ko' ? 'en' : lang
-  // 감지된 언어 코드 → 칩 메타(국기 + 언어명)
-  const langMeta = (code: string) =>
-    APP_LANGS.find((l) => l.code === code) ?? { flag: '🌐', label: code }
+  const appLang: AppLang = useLocaleStore((s) => s.lang)
   const [status, setStatus] = useState<VoiceStatus>('idle')
   const [active, setActive] = useState(false)
   const [turns, setTurns] = useState<Turn[]>([])
@@ -133,7 +161,7 @@ export default function VoiceInterpretScreen() {
     }
     try {
       const session = await startLiveTranslate(
-        { foreignerLang },
+        { appLang },
         {
           onStatus: (s) => {
             if (s === 'open') {
@@ -149,14 +177,15 @@ export default function VoiceInterpretScreen() {
               setCurrent(null)
               if (turn.original.trim() || turn.translation.trim()) {
                 idRef.current += 1
+                const orig = turn.original.trim()
                 setTurns((prev) =>
                   [
                     ...prev,
                     {
                       id: idRef.current,
-                      original: turn.original.trim(),
+                      original: orig,
                       translation: turn.translation.trim(),
-                      fromKorean: isKoreanSpeaker(turn.original, turn.translation),
+                      lang: detectLang(orig),
                     },
                   ].slice(-40),
                 )
@@ -244,32 +273,25 @@ export default function VoiceInterpretScreen() {
                 </View>
               ) : (
                 <>
-                  {turns.map((tn) => {
-                    // 화자 언어 = 정렬과 동일 신호(번역 방향). 한국어 화자→ko, 상대→앱 언어.
-                    const m = langMeta(tn.fromKorean ? 'ko' : foreignerLang)
-                    return (
-                      <Bubble
-                        key={tn.id}
-                        original={tn.original}
-                        translation={tn.translation}
-                        fromKorean={tn.fromKorean}
-                        flag={m.flag}
-                        langLabel={m.label}
-                      />
-                    )
-                  })}
+                  {turns.map((tn) => (
+                    <Bubble
+                      key={tn.id}
+                      original={tn.original}
+                      translation={tn.translation}
+                      lang={tn.lang}
+                      isMe={tn.lang === appLang}
+                    />
+                  ))}
                   {!!current &&
                     (current.original || current.translation) &&
                     (() => {
-                      const fromKorean = isKoreanSpeaker(current.original, current.translation)
-                      const m = langMeta(fromKorean ? 'ko' : foreignerLang)
+                      const cl = detectLang(current.original)
                       return (
                         <Bubble
                           original={current.original}
                           translation={current.translation}
-                          fromKorean={fromKorean}
-                          flag={m.flag}
-                          langLabel={m.label}
+                          lang={cl}
+                          isMe={cl === appLang}
                           dim
                         />
                       )
@@ -393,27 +415,12 @@ const ss = StyleSheet.create({
     paddingVertical: 10,
     paddingHorizontal: 14,
   },
-  cardForeign: { backgroundColor: palette.blue[50], borderBottomRightRadius: 7 },
-  cardKo: {
-    backgroundColor: '#fff',
-    borderWidth: 0.5,
-    borderColor: palette.teal[80],
-    borderBottomLeftRadius: 7,
-  },
   speakerChip: { flexDirection: 'row', alignItems: 'center', gap: 5, marginBottom: 5 },
   flag: { fontSize: 13 },
-  langLabel: { fontSize: 10.5, fontWeight: '800', letterSpacing: 0.3, textTransform: 'uppercase' },
-  langLabelForeign: { color: 'rgba(255,255,255,.85)' },
-  langLabelKo: { color: palette.teal[40] },
+  langLabel: { fontSize: 10.5, fontWeight: '800', letterSpacing: 0.3 },
   original: { fontSize: 12.5, lineHeight: 18 },
-  originalForeign: { color: 'rgba(255,255,255,.72)' },
-  originalKo: { color: palette.zinc[500] },
   divider: { height: StyleSheet.hairlineWidth, marginVertical: 7, marginHorizontal: -2 },
-  dividerForeign: { backgroundColor: 'rgba(255,255,255,.28)' },
-  dividerKo: { backgroundColor: palette.teal[80] },
   translation: { fontSize: 15.5, fontWeight: '700', lineHeight: 22, letterSpacing: -0.1 },
-  translationForeign: { color: '#fff' },
-  translationKo: { color: palette.zinc[900] },
 
   stopBtn: {
     flexDirection: 'row',
