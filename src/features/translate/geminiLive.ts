@@ -38,12 +38,14 @@ const LANG_NAME: Record<string, string> = {
 
 function interpreterInstruction(foreignerLang: string): string {
   const name = LANG_NAME[foreignerLang] ?? 'English'
+  // 목표 언어 = 앱 설정 언어(name). 발화 언어 자동 감지:
+  // 앱 언어 발화 → 한국어, 그 외(한국어 포함 모든 언어) → 앱 언어.
   return (
-    `You are a real-time two-way interpreter between Korean and ${name}. ` +
-    `Detect the spoken language each turn. ` +
-    `If the speaker speaks ${name} (or any non-Korean language), output ONLY the natural spoken Korean translation. ` +
-    `If the speaker speaks Korean, output ONLY the natural ${name} translation. ` +
-    `Keep it conversational and concise. Output just the translation, nothing else.`
+    `You are a live two-way interpreter for a ${name}-speaking traveler in Korea. ` +
+    `Detect the spoken language of each utterance automatically. ` +
+    `If the utterance is in ${name}, translate it into natural spoken Korean. ` +
+    `If the utterance is in Korean or any other language, translate it into natural spoken ${name}. ` +
+    `Reply with ONLY the translation — no notes, no language labels, no extra words.`
   )
 }
 

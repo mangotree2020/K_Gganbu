@@ -30,7 +30,9 @@ type VoiceStatus = 'idle' | 'connecting' | 'connected' | 'error' | 'unavailable'
 type Turn = { id: number; original: string; translation: string; fromKorean: boolean }
 
 const hasHangul = (s: string) => /[가-힣]/.test(s)
-// 화자 판별: 번역문이 한국어면 외국인이 말한 것(번역 대상이 한국어). 번역 전엔 원문으로 추정.
+// 화자 판별 — 번역 방향 기준(ASR 원문보다 견고). 번역문이 한국어면 한국어 화자가
+// 아닌 상대(외국어)가 말한 것 → false. 번역문이 외국어면 한국어 화자 → true.
+// (원문 ASR은 외국어를 한글 음차로 받는 경우가 있어 번역 방향으로 판정)
 const isKoreanSpeaker = (original: string, translation: string) =>
   translation ? !hasHangul(translation) : hasHangul(original)
 
@@ -98,9 +100,9 @@ export default function VoiceInterpretScreen() {
   const t = useT()
   const lang = useLocaleStore((s) => s.lang)
   const foreignerLang = lang === 'ko' ? 'en' : lang
-  // 화자 언어 칩 메타(국기 + 언어명)
-  const koMeta = APP_LANGS.find((l) => l.code === 'ko') ?? { flag: '🇰🇷', label: '한국어' }
-  const fMeta = APP_LANGS.find((l) => l.code === foreignerLang) ?? { flag: '🌐', label: 'English' }
+  // 감지된 언어 코드 → 칩 메타(국기 + 언어명)
+  const langMeta = (code: string) =>
+    APP_LANGS.find((l) => l.code === code) ?? { flag: '🌐', label: code }
   const [status, setStatus] = useState<VoiceStatus>('idle')
   const [active, setActive] = useState(false)
   const [turns, setTurns] = useState<Turn[]>([])
@@ -242,27 +244,32 @@ export default function VoiceInterpretScreen() {
                 </View>
               ) : (
                 <>
-                  {turns.map((tn) => (
-                    <Bubble
-                      key={tn.id}
-                      original={tn.original}
-                      translation={tn.translation}
-                      fromKorean={tn.fromKorean}
-                      flag={tn.fromKorean ? koMeta.flag : fMeta.flag}
-                      langLabel={tn.fromKorean ? koMeta.label : fMeta.label}
-                    />
-                  ))}
+                  {turns.map((tn) => {
+                    // 화자 언어 = 정렬과 동일 신호(번역 방향). 한국어 화자→ko, 상대→앱 언어.
+                    const m = langMeta(tn.fromKorean ? 'ko' : foreignerLang)
+                    return (
+                      <Bubble
+                        key={tn.id}
+                        original={tn.original}
+                        translation={tn.translation}
+                        fromKorean={tn.fromKorean}
+                        flag={m.flag}
+                        langLabel={m.label}
+                      />
+                    )
+                  })}
                   {!!current &&
                     (current.original || current.translation) &&
                     (() => {
-                      const ko = isKoreanSpeaker(current.original, current.translation)
+                      const fromKorean = isKoreanSpeaker(current.original, current.translation)
+                      const m = langMeta(fromKorean ? 'ko' : foreignerLang)
                       return (
                         <Bubble
                           original={current.original}
                           translation={current.translation}
-                          fromKorean={ko}
-                          flag={ko ? koMeta.flag : fMeta.flag}
-                          langLabel={ko ? koMeta.label : fMeta.label}
+                          fromKorean={fromKorean}
+                          flag={m.flag}
+                          langLabel={m.label}
                           dim
                         />
                       )
