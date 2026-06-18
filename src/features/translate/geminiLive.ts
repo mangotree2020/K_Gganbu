@@ -65,6 +65,7 @@ function interpreterInstruction(appLang: string): string {
     `an utterance spoken in ${app} must be rendered in ${other}; ` +
     `an utterance in ANY other language must be rendered in ${app}. ` +
     `Your output language is therefore always ${app} or ${other} and nothing else, regardless of previous turns. ` +
+    `Speak slowly, calmly, and very clearly, enunciating each word with natural pauses so a non-native listener can follow easily. ` +
     `Reply with ONLY the spoken translation — no notes, no language labels, no extra words.`
   )
 }

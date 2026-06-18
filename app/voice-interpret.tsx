@@ -155,6 +155,11 @@ export default function VoiceInterpretScreen() {
     const v = storage.getNumber('voiceVolume')
     return v == null ? 1 : v
   })
+  // 통역 음성 On/Off — Off면 실시간 자동 재생 끔(자막은 유지, 다시 듣기는 가능)
+  const [voiceEnabled, setVoiceEnabledState] = useState(() => {
+    const v = storage.getBoolean('voiceEnabled')
+    return v == null ? true : v
+  })
   const scrollRef = useRef<ScrollView>(null)
 
   const sessionRef = useRef<LiveSession | null>(null)
@@ -163,6 +168,8 @@ export default function VoiceInterpretScreen() {
   const idRef = useRef(0)
   // turn id → 통역 음성 PCM (다시 듣기용)
   const audioStoreRef = useRef<Map<number, Uint8Array>>(new Map())
+  // onAudio 콜백 클로저에서 최신 On/Off 값을 읽기 위한 미러
+  const voiceEnabledRef = useRef(voiceEnabled)
 
   const teardown = () => {
     micRef.current?.stop()
@@ -181,7 +188,15 @@ export default function VoiceInterpretScreen() {
   }
   const onVolumeCommit = (v: number) => storage.set('voiceVolume', v)
 
-  // 말풍선 통역 음성 다시 듣기
+  // 통역 음성 On/Off 토글 — 즉시 반영(ref) + MMKV 저장
+  const toggleVoice = () => {
+    const next = !voiceEnabled
+    setVoiceEnabledState(next)
+    voiceEnabledRef.current = next
+    storage.set('voiceEnabled', next)
+  }
+
+  // 말풍선 통역 음성 다시 듣기 (음성 Off여도 명시적 액션이므로 재생)
   const replay = (id: number) => {
     const pcm = audioStoreRef.current.get(id)
     if (pcm) playerRef.current?.playNow(pcm)
@@ -232,7 +247,9 @@ export default function VoiceInterpretScreen() {
               setCurrent({ original: turn.original, translation: turn.translation })
             }
           },
-          onAudio: (pcm24) => playerRef.current?.play(pcm24),
+          onAudio: (pcm24) => {
+            if (voiceEnabledRef.current) playerRef.current?.play(pcm24)
+          },
         },
       )
       if (!session) {
@@ -297,14 +314,17 @@ export default function VoiceInterpretScreen() {
             </View>
 
             <View style={ss.volumeRow}>
-              <Icon
-                name="volume_up"
-                size={16}
-                color={volume === 0 ? palette.zinc[400] : palette.teal[40]}
-                filled
-              />
+              <Pressable onPress={toggleVoice} hitSlop={10} style={ss.voiceToggle}>
+                <Icon
+                  name={voiceEnabled ? 'volume_up' : 'volume_off'}
+                  size={18}
+                  color={voiceEnabled ? palette.teal[40] : palette.zinc[400]}
+                  filled
+                />
+              </Pressable>
               <Slider
-                style={ss.slider}
+                style={[ss.slider, !voiceEnabled && { opacity: 0.35 }]}
+                disabled={!voiceEnabled}
                 minimumValue={0}
                 maximumValue={1}
                 value={volume}
@@ -314,7 +334,9 @@ export default function VoiceInterpretScreen() {
                 maximumTrackTintColor={palette.zinc[200]}
                 thumbTintColor={palette.teal[40]}
               />
-              <Text style={ss.volPct}>{Math.round(volume * 100)}%</Text>
+              <Text style={[ss.volPct, !voiceEnabled && { color: palette.zinc[400] }]}>
+                {voiceEnabled ? `${Math.round(volume * 100)}%` : 'OFF'}
+              </Text>
             </View>
 
             <ScrollView
@@ -455,10 +477,11 @@ const ss = StyleSheet.create({
   volumeRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    gap: 6,
     paddingHorizontal: 4,
     marginTop: 10,
   },
+  voiceToggle: { padding: 4 },
   slider: { flex: 1, height: 32 },
   volPct: {
     fontSize: 11,
