@@ -219,7 +219,12 @@ export default function VoiceInterpretScreen() {
             if (s === 'open') {
               setStatus('connected')
               playerRef.current = createPlayer(24000, volume)
-              micRef.current = startMic((pcm) => sessionRef.current?.sendAudio(pcm))
+              micRef.current = startMic((pcm) => {
+                // 통역 음성 재생 중에는 마이크 입력을 보내지 않음(에코 루프 방지).
+                // 재생 음성이 마이크로 재유입되어 무한 통역되는 것을 차단(half-duplex).
+                if (playerRef.current?.isPlaying()) return
+                sessionRef.current?.sendAudio(pcm)
+              })
             } else if (s === 'error' || s === 'closed') {
               failToFallback()
             }
