@@ -144,6 +144,36 @@ function Bubble({
   )
 }
 
+// 설정 토글 행 — 아이콘 + 라벨 + 스위치. accent로 ON 색상 지정.
+function ToggleRow({
+  icon,
+  label,
+  value,
+  onToggle,
+  accent = palette.teal[40],
+}: {
+  icon: string
+  label: string
+  value: boolean
+  onToggle: () => void
+  accent?: string
+}) {
+  return (
+    <View style={ss.toggleRow}>
+      <Pressable onPress={onToggle} hitSlop={6} style={ss.toggleLabelGroup}>
+        <Icon name={icon} size={18} color={value ? accent : palette.zinc[400]} filled />
+        <Text style={[ss.toggleLabel, !value && { color: palette.zinc[400] }]}>{label}</Text>
+      </Pressable>
+      <Switch
+        value={value}
+        onValueChange={onToggle}
+        trackColor={{ true: `${accent}66`, false: palette.zinc[300] }}
+        thumbColor={value ? accent : '#f4f4f5'}
+      />
+    </View>
+  )
+}
+
 async function ensureMicPermission(): Promise<boolean> {
   if (Platform.OS !== 'android') return true
   try {
@@ -177,9 +207,10 @@ export default function VoiceInterpretScreen() {
   })
   // 이어폰 연결 시 에코 누설이 없으므로 동시 발화 게이트를 끈다(완전 동시 통역)
   const [headset, setHeadset] = useState(false)
-  // 이어폰 중 '내 발화 통역'을 스피커로 내보내 상대가 듣게 함
+  // 이어폰 중 '내 발화 통역'을 스피커로 내보내 상대가 듣게 함.
+  // 기본 ON: 이어폰 통역의 자연스러운 흐름(상대 말은 이어폰으로 나만, 내 말은 스피커로 상대에게)
   const [speakerMyVoice, setSpeakerMyVoice] = useState(
-    () => storage.getBoolean('speakerMyVoice') ?? false,
+    () => storage.getBoolean('speakerMyVoice') ?? true,
   )
   const scrollRef = useRef<ScrollView>(null)
 
@@ -428,91 +459,79 @@ export default function VoiceInterpretScreen() {
               </Text>
             </View>
 
-            {headset && (
-              <View style={ss.headsetPill}>
-                <Text style={ss.headsetText}>🎧 {t('voice.headsetMode')}</Text>
-              </View>
-            )}
-
-            <View style={ss.audioGroup}>
-              <View style={ss.audioBar}>
-                <Pressable onPress={toggleOtherVoice} hitSlop={8} style={ss.voiceLabelGroup}>
-                  <Icon
-                    name={otherVoice ? 'volume_up' : 'volume_off'}
-                    size={17}
-                    color={otherVoice ? palette.teal[40] : palette.zinc[400]}
-                    filled
-                  />
-                  <Text style={ss.voiceLabel}>{t('voice.soundOther')}</Text>
-                </Pressable>
-                <Switch
-                  value={otherVoice}
-                  onValueChange={toggleOtherVoice}
-                  trackColor={{ true: palette.teal[80], false: palette.zinc[300] }}
-                  thumbColor={otherVoice ? palette.teal[40] : '#f4f4f5'}
-                />
-              </View>
-
-              <View style={ss.audioBar}>
-                <Pressable onPress={toggleMyVoice} hitSlop={8} style={ss.voiceLabelGroup}>
-                  <Icon
-                    name={myVoice ? 'volume_up' : 'volume_off'}
-                    size={17}
-                    color={myVoice ? palette.teal[40] : palette.zinc[400]}
-                    filled
-                  />
-                  <Text style={ss.voiceLabel}>{t('voice.soundMine')}</Text>
-                </Pressable>
-                <Switch
-                  value={myVoice}
-                  onValueChange={toggleMyVoice}
-                  trackColor={{ true: palette.teal[80], false: palette.zinc[300] }}
-                  thumbColor={myVoice ? palette.teal[40] : '#f4f4f5'}
-                />
-              </View>
-
-              {headset && (
-                <View style={ss.audioBar}>
-                  <Pressable onPress={toggleSpeakerMyVoice} hitSlop={8} style={ss.voiceLabelGroup}>
-                    <Icon
-                      name="volume_up"
-                      size={17}
-                      color={speakerMyVoice ? palette.coral[40] : palette.zinc[400]}
-                      filled
-                    />
-                    <Text style={ss.voiceLabel}>{t('voice.myVoiceToSpeaker')}</Text>
-                  </Pressable>
-                  <Switch
-                    value={speakerMyVoice}
-                    onValueChange={toggleSpeakerMyVoice}
-                    trackColor={{ true: palette.coral[80], false: palette.zinc[300] }}
-                    thumbColor={speakerMyVoice ? palette.coral[40] : '#f4f4f5'}
-                  />
-                </View>
-              )}
-
-              <View style={ss.volumeRow}>
+            <View style={ss.settingsCard}>
+              {/* 출력 모드 헤더 — 이어폰/스피커에 따라 아이콘·색상 변경 */}
+              <View
+                style={[
+                  ss.outputHeader,
+                  { backgroundColor: headset ? palette.teal[95] : palette.amber[90] },
+                ]}>
                 <Icon
-                  name="volume_up"
+                  name={headset ? 'headphones' : 'volume_up'}
                   size={16}
-                  color={otherVoice || myVoice ? palette.teal[40] : palette.zinc[400]}
+                  color={headset ? palette.teal[40] : palette.amber[50]}
                   filled
                 />
-                <Slider
-                  style={[ss.slider, !(otherVoice || myVoice) && { opacity: 0.35 }]}
-                  disabled={!(otherVoice || myVoice)}
-                  minimumValue={0}
-                  maximumValue={1}
-                  value={volume}
-                  onValueChange={onVolumeChange}
-                  onSlidingComplete={onVolumeCommit}
-                  minimumTrackTintColor={palette.teal[40]}
-                  maximumTrackTintColor={palette.zinc[200]}
-                  thumbTintColor={palette.teal[40]}
-                />
-                <Text style={[ss.volPct, !(otherVoice || myVoice) && { color: palette.zinc[400] }]}>
-                  {Math.round(volume * 100)}%
+                <Text
+                  style={[
+                    ss.outputLabel,
+                    { color: headset ? palette.teal[40] : palette.amber[50] },
+                  ]}>
+                  {headset ? t('voice.headsetMode') : t('voice.speakerMode')}
                 </Text>
+              </View>
+
+              <View style={ss.cardBody}>
+                <ToggleRow
+                  icon={otherVoice ? 'volume_up' : 'volume_off'}
+                  label={t('voice.soundOther')}
+                  value={otherVoice}
+                  onToggle={toggleOtherVoice}
+                />
+                <View style={ss.rowDivider} />
+                <ToggleRow
+                  icon={myVoice ? 'volume_up' : 'volume_off'}
+                  label={t('voice.soundMine')}
+                  value={myVoice}
+                  onToggle={toggleMyVoice}
+                />
+                {headset && (
+                  <>
+                    <View style={ss.rowDivider} />
+                    <ToggleRow
+                      icon={speakerMyVoice ? 'megaphone' : 'headphones'}
+                      label={t('voice.myVoiceToSpeaker')}
+                      value={speakerMyVoice}
+                      onToggle={toggleSpeakerMyVoice}
+                      accent={palette.coral[40]}
+                    />
+                  </>
+                )}
+                <View style={ss.rowDivider} />
+                <View style={ss.volumeRow}>
+                  <Icon
+                    name="volume_up"
+                    size={16}
+                    color={otherVoice || myVoice ? palette.teal[40] : palette.zinc[400]}
+                    filled
+                  />
+                  <Slider
+                    style={[ss.slider, !(otherVoice || myVoice) && { opacity: 0.35 }]}
+                    disabled={!(otherVoice || myVoice)}
+                    minimumValue={0}
+                    maximumValue={1}
+                    value={volume}
+                    onValueChange={onVolumeChange}
+                    onSlidingComplete={onVolumeCommit}
+                    minimumTrackTintColor={palette.teal[40]}
+                    maximumTrackTintColor={palette.zinc[200]}
+                    thumbTintColor={palette.teal[40]}
+                  />
+                  <Text
+                    style={[ss.volPct, !(otherVoice || myVoice) && { color: palette.zinc[400] }]}>
+                    {Math.round(volume * 100)}%
+                  </Text>
+                </View>
               </View>
             </View>
 
@@ -651,34 +670,41 @@ const ss = StyleSheet.create({
     paddingVertical: 6,
   },
   statusText: { fontSize: 12, fontWeight: '600', color: palette.zinc[700] },
-  headsetPill: {
-    alignSelf: 'center',
-    marginTop: 8,
-    backgroundColor: palette.teal[95],
-    borderRadius: 999,
-    paddingHorizontal: 12,
-    paddingVertical: 5,
+
+  // 출력 설정 카드
+  settingsCard: {
+    marginTop: 12,
+    backgroundColor: '#fff',
+    borderRadius: 16,
+    borderWidth: 0.5,
+    borderColor: palette.zinc[200],
+    overflow: 'hidden',
+    ...shadows.card,
   },
-  headsetText: { fontSize: 12, fontWeight: '700', color: palette.teal[40] },
-  audioGroup: { marginTop: 12, gap: 6 },
-  volumeRow: {
+  outputHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
-    paddingHorizontal: 4,
-    marginTop: 2,
+    gap: 7,
+    paddingVertical: 9,
+    paddingHorizontal: 14,
   },
-  audioBar: {
+  outputLabel: { fontSize: 12.5, fontWeight: '800', letterSpacing: 0.2 },
+  cardBody: { paddingHorizontal: 14 },
+  toggleRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    backgroundColor: palette.zinc[100],
-    borderRadius: 12,
-    paddingVertical: 6,
-    paddingHorizontal: 14,
+    paddingVertical: 10,
   },
-  voiceLabelGroup: { flexDirection: 'row', alignItems: 'center', gap: 7 },
-  voiceLabel: { fontSize: 13, fontWeight: '700', color: palette.zinc[700] },
+  toggleLabelGroup: { flexDirection: 'row', alignItems: 'center', gap: 10, flex: 1 },
+  toggleLabel: { fontSize: 14, fontWeight: '600', color: palette.zinc[800] },
+  rowDivider: { height: StyleSheet.hairlineWidth, backgroundColor: palette.zinc[200] },
+  volumeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingVertical: 10,
+  },
   slider: { flex: 1, height: 32 },
   volPct: {
     fontSize: 11,
