@@ -1,123 +1,145 @@
-// 음성 통역 화면 (PLANNING §25) — LiveKit Room + Gemini Live Agent
-// 토큰: livekit-token Edge Function. 키/Agent 미설정 시 폴백 안내.
-// useRoomContext는 @livekit/react-native가 components-react에서 re-export (직접 의존성으로 통일)
-import { AudioSession, LiveKitRoom, registerGlobals, useRoomContext } from '@livekit/react-native'
+// 음성 통역 화면 (PLANNING §25 B안) — 기기 ↔ Gemini Live 직결 스트리밍 통역.
+// 마이크 16kHz PCM(react-native-audio-api) → Gemini Live(geminiLive.ts) → 번역 음성 24kHz + 자막.
+// LiveKit/Agent 불필요. 키는 ephemeral 토큰(gemini-live-token)으로 보호. 미설정/오류 시 텍스트 폴백.
 import { router } from 'expo-router'
 import { useEffect, useRef, useState } from 'react'
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
+import {
+  PermissionsAndroid,
+  Platform,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
-import { RoomEvent } from 'livekit-client'
 
 import { Icon } from '@/components/brand'
-import { getVoiceToken, type LiveKitGrant } from '@/features/translate/voice'
+import { startLiveTranslate, type LiveSession } from '@/features/translate/geminiLive'
+import {
+  createPlayer,
+  startMic,
+  type MicHandle,
+  type Player,
+} from '@/features/translate/voiceAudio'
 import { useT } from '@/lib/i18n'
-import { palette, shadows } from '@/theme/tokens'
+import { palette } from '@/theme/tokens'
 
-// WebRTC 전역 등록 (LiveKit RN 필수)
-registerGlobals()
+type VoiceStatus = 'idle' | 'connecting' | 'connected' | 'error' | 'unavailable'
+type Line = { id: number; text: string; mine: boolean }
 
-type Line = { id: string; text: string; final: boolean; mine: boolean }
-
-// Room 내부: transcript 수신 (원문/번역 분할 표시)
-function Transcripts({ onLines }: { onLines: (fn: (prev: Line[]) => Line[]) => void }) {
-  const room = useRoomContext()
-  useEffect(() => {
-    const handler = (
-      segments: { id: string; text: string; final: boolean }[],
-      participant?: { isLocal?: boolean },
-    ) => {
-      const mine = !!participant?.isLocal
-      onLines((prev) => {
-        const next = [...prev]
-        for (const s of segments) {
-          const idx = next.findIndex((l) => l.id === s.id)
-          const line = { id: s.id, text: s.text, final: s.final, mine }
-          if (idx >= 0) next[idx] = line
-          else next.push(line)
-        }
-        return next.slice(-30)
-      })
-    }
-    room.on(RoomEvent.TranscriptionReceived, handler as never)
-    return () => {
-      room.off(RoomEvent.TranscriptionReceived, handler as never)
-    }
-  }, [room, onLines])
-  return null
-}
-
-type VoiceStatus = 'idle' | 'connecting' | 'connected' | 'reconnecting' | 'error' | 'unavailable'
-
-// Room 연결 상태 감시 — 약한 네트워크 재연결/끊김 반영 (PLANNING §25 리스크)
-function ConnectionWatch({
-  onReconnecting,
-  onReconnected,
-  onDisconnected,
-}: {
-  onReconnecting: () => void
-  onReconnected: () => void
-  onDisconnected: () => void
-}) {
-  const room = useRoomContext()
-  useEffect(() => {
-    room.on(RoomEvent.Reconnecting, onReconnecting)
-    room.on(RoomEvent.Reconnected, onReconnected)
-    room.on(RoomEvent.Disconnected, onDisconnected)
-    return () => {
-      room.off(RoomEvent.Reconnecting, onReconnecting)
-      room.off(RoomEvent.Reconnected, onReconnected)
-      room.off(RoomEvent.Disconnected, onDisconnected)
-    }
-  }, [room, onReconnecting, onReconnected, onDisconnected])
-  return null
+async function ensureMicPermission(): Promise<boolean> {
+  if (Platform.OS !== 'android') return true
+  try {
+    const r = await PermissionsAndroid.request(PermissionsAndroid.PERMISSIONS.RECORD_AUDIO)
+    return r === PermissionsAndroid.RESULTS.GRANTED
+  } catch {
+    return false
+  }
 }
 
 export default function VoiceInterpretScreen() {
   const t = useT()
   const [status, setStatus] = useState<VoiceStatus>('idle')
-  const [grant, setGrant] = useState<LiveKitGrant | null>(null)
+  const [active, setActive] = useState(false)
   const [lines, setLines] = useState<Line[]>([])
+  const [interim, setInterim] = useState({ src: '', dst: '' })
   const scrollRef = useRef<ScrollView>(null)
+
+  const sessionRef = useRef<LiveSession | null>(null)
+  const micRef = useRef<MicHandle | null>(null)
+  const playerRef = useRef<Player | null>(null)
+  const idRef = useRef(0)
+  const srcBuf = useRef('')
+  const dstBuf = useRef('')
+
+  // 세션·오디오 정리
+  const teardown = () => {
+    micRef.current?.stop()
+    micRef.current = null
+    sessionRef.current?.close()
+    sessionRef.current = null
+    playerRef.current?.close()
+    playerRef.current = null
+    srcBuf.current = ''
+    dstBuf.current = ''
+  }
+
+  const commit = (text: string, mine: boolean) => {
+    if (!text.trim()) return
+    idRef.current += 1
+    const line = { id: idRef.current, text: text.trim(), mine }
+    setLines((prev) => [...prev, line].slice(-30))
+  }
 
   const start = async () => {
     setStatus('connecting')
+    setLines([])
+    const ok = await ensureMicPermission()
+    if (!ok) {
+      setStatus('error')
+      return
+    }
     try {
-      // 마이크 권한 just-in-time — 거부 시 startAudioSession이 throw → 폴백 안내
-      await AudioSession.startAudioSession()
-      const g = await getVoiceToken({ sourceLang: 'auto', targetLang: 'ko' })
-      if (!g) {
-        await AudioSession.stopAudioSession()
-        setStatus('unavailable') // 키/Agent 미설정 → 폴백 안내
+      const session = await startLiveTranslate(
+        { sourceLang: 'auto', targetLang: 'ko' },
+        {
+          onStatus: (s) => {
+            if (s === 'open') {
+              setStatus('connected')
+              // 마이크 캡처 시작 → Gemini로 스트리밍
+              playerRef.current = createPlayer(24000)
+              micRef.current = startMic((pcm) => sessionRef.current?.sendAudio(pcm))
+            } else if (s === 'error' || s === 'closed') {
+              failToFallback()
+            }
+          },
+          onTranscript: (text, o) => {
+            // 버퍼는 콜백 내에서만 변이(렌더 중 ref 읽지 않음) → 표시는 state로 미러링
+            const buf = o.source ? srcBuf : dstBuf
+            buf.current += text
+            if (o.final) {
+              commit(buf.current, o.source)
+              buf.current = ''
+            }
+            setInterim({ src: srcBuf.current, dst: dstBuf.current })
+          },
+          onAudio: (pcm24) => playerRef.current?.play(pcm24),
+        },
+      )
+      if (!session) {
+        setStatus('unavailable') // 키 미설정 → 폴백 안내
         return
       }
-      setGrant(g)
+      sessionRef.current = session
+      setActive(true)
     } catch {
-      // 권한 거부·토큰 발급 실패·네트워크 오류 → 'connecting' 고착 방지, 폴백 노출
-      await AudioSession.stopAudioSession().catch(() => {})
+      teardown()
       setStatus('error')
     }
   }
 
-  const stop = async () => {
-    setGrant(null)
+  const stop = () => {
+    teardown()
+    setActive(false)
     setLines([])
-    await AudioSession.stopAudioSession()
+    setInterim({ src: '', dst: '' })
     setStatus('idle')
   }
 
-  // preview 끊김/오류 → 세션 정리 후 텍스트 번역 폴백 안내로 전환
-  const failToFallback = async () => {
-    setGrant(null)
-    setLines([])
-    await AudioSession.stopAudioSession().catch(() => {})
+  // 연결 실패/끊김 → 정리 후 텍스트 번역 폴백 안내
+  const failToFallback = () => {
+    teardown()
+    setActive(false)
+    setInterim({ src: '', dst: '' })
     setStatus('error')
   }
 
-  useEffect(() => {
-    return () => {
-      AudioSession.stopAudioSession().catch(() => {})
-    }
-  }, [])
+  useEffect(() => () => teardown(), [])
+
+  const interimSrc = interim.src
+  const interimDst = interim.dst
+  const empty = lines.length === 0 && !interimSrc && !interimDst
 
   return (
     <View style={ss.container}>
@@ -137,74 +159,60 @@ export default function VoiceInterpretScreen() {
           </Pressable>
         </View>
 
-        {grant ? (
-          <LiveKitRoom
-            serverUrl={grant.url ?? undefined}
-            token={grant.token}
-            connect
-            audio
-            video={false}
-            onConnected={() => setStatus('connected')}
-            onError={() => failToFallback()}>
-            <Transcripts onLines={setLines} />
-            <ConnectionWatch
-              onReconnecting={() => setStatus('reconnecting')}
-              onReconnected={() => setStatus('connected')}
-              onDisconnected={() => failToFallback()}
-            />
-            <View style={ss.body}>
-              <View style={ss.statusPill}>
-                <Icon
-                  name="circle"
-                  size={8}
-                  color={status === 'connected' ? palette.success[50] : palette.amber[50]}
-                  filled
-                />
-                <Text style={ss.statusText}>
-                  {status === 'connected'
-                    ? t('voice.listening')
-                    : status === 'reconnecting'
-                      ? t('voice.reconnecting')
-                      : t('voice.connecting')}
-                </Text>
-              </View>
+        {active ? (
+          <View style={ss.body}>
+            <View style={ss.statusPill}>
+              <Icon
+                name="circle"
+                size={8}
+                color={status === 'connected' ? palette.success[50] : palette.amber[50]}
+                filled
+              />
+              <Text style={ss.statusText}>
+                {status === 'connected' ? t('voice.listening') : t('voice.connecting')}
+              </Text>
+            </View>
 
-              <ScrollView
-                ref={scrollRef}
-                style={{ flex: 1, marginTop: 12 }}
-                contentContainerStyle={{ gap: 8, paddingBottom: 12 }}
-                onContentSizeChange={() => scrollRef.current?.scrollToEnd({ animated: true })}>
-                {lines.length === 0 ? (
-                  // 통역 출력이 아직 없을 때 — 안내 + 항상 보이는 텍스트 번역 탈출구.
-                  // Agent가 통역을 보내면 lines가 채워져 자동으로 사라진다.
-                  <View style={{ alignItems: 'center', marginTop: 40, gap: 16 }}>
-                    <Text style={ss.hint}>{t('voice.hint')}</Text>
-                    <Pressable onPress={() => router.replace('/translate')} style={ss.toTextBtn}>
-                      <Icon name="translate" size={15} color={palette.teal[40]} filled />
-                      <Text style={ss.toTextText}>{t('voice.toText')}</Text>
-                    </Pressable>
-                  </View>
-                ) : (
-                  lines.map((l) => (
-                    <View
-                      key={l.id}
-                      style={[
-                        ss.bubble,
-                        l.mine ? ss.mine : ss.theirs,
-                        { opacity: l.final ? 1 : 0.6 },
-                      ]}>
+            <ScrollView
+              ref={scrollRef}
+              style={{ flex: 1, marginTop: 12 }}
+              contentContainerStyle={{ gap: 8, paddingBottom: 12 }}
+              onContentSizeChange={() => scrollRef.current?.scrollToEnd({ animated: true })}>
+              {empty ? (
+                // 통역 출력이 아직 없을 때 — 안내 + 항상 보이는 텍스트 번역 탈출구
+                <View style={{ alignItems: 'center', marginTop: 40, gap: 16 }}>
+                  <Text style={ss.hint}>{t('voice.hint')}</Text>
+                  <Pressable onPress={() => router.replace('/translate')} style={ss.toTextBtn}>
+                    <Icon name="translate" size={15} color={palette.teal[40]} filled />
+                    <Text style={ss.toTextText}>{t('voice.toText')}</Text>
+                  </Pressable>
+                </View>
+              ) : (
+                <>
+                  {lines.map((l) => (
+                    <View key={l.id} style={[ss.bubble, l.mine ? ss.mine : ss.theirs]}>
                       <Text style={[ss.bubbleText, l.mine && { color: '#fff' }]}>{l.text}</Text>
                     </View>
-                  ))
-                )}
-              </ScrollView>
+                  ))}
+                  {!!interimSrc && (
+                    <View style={[ss.bubble, ss.mine, { opacity: 0.6 }]}>
+                      <Text style={[ss.bubbleText, { color: '#fff' }]}>{interimSrc}</Text>
+                    </View>
+                  )}
+                  {!!interimDst && (
+                    <View style={[ss.bubble, ss.theirs, { opacity: 0.6 }]}>
+                      <Text style={ss.bubbleText}>{interimDst}</Text>
+                    </View>
+                  )}
+                </>
+              )}
+            </ScrollView>
 
-              <Pressable onPress={stop} style={ss.stopBtn}>
-                <Icon name="close" size={18} color="#fff" />
-                <Text style={ss.stopText}>{t('voice.end')}</Text>
-              </Pressable>
-            </View>
-          </LiveKitRoom>
+            <Pressable onPress={stop} style={ss.stopBtn}>
+              <Icon name="close" size={18} color="#fff" />
+              <Text style={ss.stopText}>{t('voice.end')}</Text>
+            </Pressable>
+          </View>
         ) : (
           <View style={ss.center}>
             <View style={ss.bigMic}>
@@ -354,7 +362,6 @@ const ss = StyleSheet.create({
     borderRadius: 16,
     paddingVertical: 15,
     paddingHorizontal: 28,
-    ...shadows.card,
   },
   startText: { color: '#fff', fontWeight: '700', fontSize: 15 },
   altBtn: {

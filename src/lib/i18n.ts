@@ -173,7 +173,7 @@ const STRINGS: Record<AppLang, Dict> = {
     'voice.end': 'End',
     'voice.unavailableTitle': 'Voice interpret setup needed',
     'voice.unavailableSub':
-      'Available after LiveKit·Gemini keys and the Agent worker are set up. Please use text translation for now.',
+      'Available once the Gemini Live key is set up. Please use text translation for now.',
     'voice.toText': 'Use text translation',
     'voice.realtimeTitle': 'Real-time interpreting',
     'voice.realtimeSub':
@@ -395,7 +395,7 @@ const STRINGS: Record<AppLang, Dict> = {
     'voice.end': '종료',
     'voice.unavailableTitle': '음성 통역 준비 필요',
     'voice.unavailableSub':
-      'LiveKit·Gemini 키와 Agent 워커 설정 후 사용할 수 있어요. 지금은 텍스트 번역을 이용해 주세요.',
+      'Gemini Live 키 설정 후 사용할 수 있어요. 지금은 텍스트 번역을 이용해 주세요.',
     'voice.toText': '텍스트 번역으로',
     'voice.realtimeTitle': '실시간 통역',
     'voice.realtimeSub': '말하면 즉시 번역을 들려드려요. 탭하여 시작 — 마이크 권한 필요.',
@@ -612,7 +612,7 @@ const STRINGS: Record<AppLang, Dict> = {
     'voice.end': '終了',
     'voice.unavailableTitle': '音声通訳の準備が必要',
     'voice.unavailableSub':
-      'LiveKit·GeminiキーとAgentワーカーの設定後に利用できます。今はテキスト翻訳をご利用ください。',
+      'Gemini Liveキーの設定後に利用できます。今はテキスト翻訳をご利用ください。',
     'voice.toText': 'テキスト翻訳へ',
     'voice.realtimeTitle': 'リアルタイム通訳',
     'voice.realtimeSub': '話すと即座に翻訳します。タップして開始 — マイク権限が必要です。',
@@ -828,7 +828,7 @@ const STRINGS: Record<AppLang, Dict> = {
     'voice.hint': '开始对话后，原文和翻译会显示在这里。',
     'voice.end': '结束',
     'voice.unavailableTitle': '需要设置语音翻译',
-    'voice.unavailableSub': '在设置LiveKit·Gemini密钥和Agent后即可使用。目前请使用文字翻译。',
+    'voice.unavailableSub': '设置 Gemini Live 密钥后即可使用。目前请使用文字翻译。',
     'voice.toText': '使用文字翻译',
     'voice.realtimeTitle': '实时翻译',
     'voice.realtimeSub': '说话即可听到即时翻译。点击开始 — 需要麦克风权限。',
@@ -1043,7 +1043,7 @@ const STRINGS: Record<AppLang, Dict> = {
     'voice.hint': '開始對話後，原文和翻譯會顯示在這裡。',
     'voice.end': '結束',
     'voice.unavailableTitle': '需要設定語音翻譯',
-    'voice.unavailableSub': '在設定LiveKit·Gemini金鑰和Agent後即可使用。目前請使用文字翻譯。',
+    'voice.unavailableSub': '設定 Gemini Live 金鑰後即可使用。目前請使用文字翻譯。',
     'voice.toText': '使用文字翻譯',
     'voice.realtimeTitle': '即時翻譯',
     'voice.realtimeSub': '說話即可聽到即時翻譯。點擊開始 — 需要麥克風權限。',
