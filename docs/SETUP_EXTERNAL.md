@@ -20,7 +20,7 @@
 | #19  | 시크릿+공개 | `NAVER_SEARCH_CLIENT_*` `NAVER_MAPS_CLIENT_*` / `EXPO_PUBLIC_NAVER_MAPS_CLIENT_ID` | Naver Developers + NCP    | 검색/경로 키 별개              |
 | #22  | 시크릿      | `ANTHROPIC_API_KEY` `TOUR_API_KEY`                                                 | Anthropic + 한국관광공사  | gganbu 함수                    |
 
-> 공통 선행: Edge Function 배포 — `supabase functions deploy <name>` (대상: `translate` `translate-content` `gganbu` `places` `ocr` `coupon` `partner-coupon` `naver-search` `naver-directions` `livekit-token`).
+> 공통 선행: Edge Function 배포 — `supabase functions deploy <name>` (대상: `translate` `translate-content` `gganbu` `places` `ocr` `coupon` `partner-coupon` `naver-search` `naver-directions` `livekit-token` `gemini-live-token`).
 > `translate-content`(콘텐츠 자동 번역 파이프라인)는 `translate`와 동일하게 `GOOGLE_TRANSLATION_API_KEY` 사용 — 소스 텍스트를 5개 로케일 jsonb로 채움.
 
 ---
@@ -59,20 +59,24 @@
 
 **검증**: 번역 탭에서 텍스트 입력 → 5개 언어 ↔ ko 정상 번역. 실패 시 mock 폴백 배지 표시되면 키 미설정/오류 신호.
 
-## #16 음성 통역 (Gemini Live + LiveKit)
+## #16 음성 통역 (Gemini Live 직결 — B안, 대면 대화 통역)
 
-**필요**: LiveKit 시크릿 3종 + **Gemini Live Agent 워커(이 저장소 밖, 별도 배포)** (코드: `supabase/functions/livekit-token`, 화면 `app/voice-interpret.tsx`).
+> **아키텍처 변경(2026-06-18)**: 대면 대화 통역에는 LiveKit 룸·서버 Agent가 불필요.
+> 기기가 **Gemini Live에 직접 연결**하고, 장기 키는 Edge Function의 **ephemeral 토큰**으로 보호한다.
+> (LiveKit 경로는 다자/통화형 확장 시 재활용 — `livekit-token` 함수는 보존)
 
-1. **LiveKit Cloud**: 프로젝트 생성 → API Key/Secret/URL 확보.
+**필요**: `GEMINI_API_KEY`(Gemini Live preview 접근) + 네이티브 PCM 오디오 모듈.
+
+1. **Gemini API 키** — [aistudio.google.com](https://aistudio.google.com) Live API(preview) 접근 키:
    ```bash
-   supabase secrets set LIVEKIT_API_KEY=... LIVEKIT_API_SECRET=... LIVEKIT_URL=wss://<project>.livekit.cloud
-   supabase functions deploy livekit-token
+   supabase secrets set GEMINI_API_KEY=...
+   supabase functions deploy gemini-live-token
    ```
-   `livekit-token` 함수는 LiveKit access token 발급 + 통역 방향(`targetLang`)을 룸 메타데이터로 전달.
-2. **Gemini Live Agent 워커**: LiveKit 룸에 참가해 Gemini Live API(`gemini-3.5-live-translate-preview`)로 speech↔speech 통역하는 Agent 프로세스를 별도 배포(LiveKit Agents 프레임워크). 이 워커가 **Gemini API 키**를 보유(앱·Edge Function 미노출).
-3. preview 단계 — 가용성/쿼터 변동 가능. 미설정/오류 시 앱은 자동으로 _"음성통역 준비 필요"_ 안내 + 텍스트 번역 폴백으로 degrade (코드 완료).
+   `gemini-live-token`이 v1alpha auth token(단기·1회)으로 ephemeral 토큰 발급 → 클라가 그 토큰으로 `wss://…BidiGenerateContent`에 직접 접속(장기 키 미노출).
+2. **클라이언트**: `src/features/translate/geminiLive.ts` — WS 세션 설정(translate-preview), 16kHz PCM 송신, 24kHz PCM + transcription 수신.
+3. **네이티브 오디오**: 16kHz PCM 마이크 스트림 캡처 + 출력 모듈 필요(`prebuild` 1회). 미설정/오류 시 앱은 텍스트 번역 폴백 상시 노출(코드 완료).
 
-**검증**: 키·워커 설정 후 음성통역 진입 → 마이크 권한 허용 → 양방향 통역 transcript 표시. 끊김 시 재연결/폴백 동작 확인.
+**검증**: 키·오디오 모듈 설정 후 음성통역 진입 → 마이크 허용 → 화자 원문/번역 transcript 표시 + 번역 음성 출력. 미응답 시 "텍스트 번역으로" 탈출구로 전환.
 
 ## #19 K-Map 길찾기 (Naver)
 
@@ -128,7 +132,7 @@
 
 ## 배포 후 점검 체크리스트
 
-- [ ] `supabase functions deploy` 10종 완료
+- [ ] `supabase functions deploy` 11종 완료
 - [ ] `supabase secrets list`로 시크릿 등록 확인
 - [ ] `.env`에 `EXPO_PUBLIC_*` 공개 키 입력, `EXPO_PUBLIC_USE_MOCK` 비움
 - [ ] 소셜/전화 로그인 + Guest 승계 동작
