@@ -96,6 +96,7 @@ export type Player = {
   playNow: (pcm16: Uint8Array) => void // 즉시 재생(다시 듣기)
   setVolume: (v: number) => void // 0~1 볼륨
   isPlaying: () => boolean // 통역 음성 재생 중 여부(에코 억제용 마이크 게이팅)
+  delayNext: (sec: number) => void // 다음 재생을 sec초 미룸(라우팅 전환 안정화)
   close: () => void
 }
 
@@ -135,6 +136,11 @@ export function createPlayer(sampleRate = 24000, volume = 1): Player {
       vol = Math.max(0, Math.min(1, v))
     },
     isPlaying: () => Date.now() < queueEndMs + ECHO_GUARD_SEC * 1000,
+    // 다음 재생 시작 시각을 미룸 — 라우팅/오디오 모드 전환이 안정화될 시간 확보
+    delayNext: (sec) => {
+      nextTime = Math.max(ctx.currentTime, nextTime) + sec
+      queueEndMs = Math.max(Date.now(), queueEndMs) + sec * 1000
+    },
     close: () => {
       ctx.close().catch(() => {})
     },

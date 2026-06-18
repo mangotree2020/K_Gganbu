@@ -251,10 +251,13 @@ export default function VoiceInterpretScreen() {
   const routedToSpeakerRef = useRef(false)
 
   // 출력 라우팅 전환(내 통역=스피커, 상대 통역=이어폰). 변경 시에만 네이티브 호출.
+  // 전환 직후 재생을 잠시 미뤄(delayNext) 라우팅/모드 전환이 안정화될 시간을 줘서
+  // 통역 음성 앞부분이 잘리는 것을 방지한다.
   const applySpeakerRoute = (toSpeaker: boolean) => {
     if (routedToSpeakerRef.current === toSpeaker) return
     routedToSpeakerRef.current = toSpeaker
     setSpeaker(toSpeaker)
+    playerRef.current?.delayNext(0.28)
   }
 
   // 이어폰 연결 상태 갱신(초기 조회 + 라우팅 변경 시)
@@ -353,6 +356,12 @@ export default function VoiceInterpretScreen() {
             }
           },
           onTurn: (turn) => {
+            // 선제 라우팅 — 원문(자막)이 통역 음성보다 먼저 도착하므로, 화자가 정해지는
+            // 즉시 출력 라우팅을 전환해 음성 도착 전 전환을 끝낸다(앞부분 잘림 방지).
+            if (headsetRef.current && speakerMyVoiceRef.current) {
+              const src = turn.original || turn.translation
+              if (src) applySpeakerRoute(detectLang(src) === appLang)
+            }
             if (turn.final) {
               setCurrent(null)
               if (turn.original.trim() || turn.translation.trim()) {
