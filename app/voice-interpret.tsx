@@ -257,7 +257,7 @@ export default function VoiceInterpretScreen() {
     if (routedToSpeakerRef.current === toSpeaker) return
     routedToSpeakerRef.current = toSpeaker
     setSpeaker(toSpeaker)
-    playerRef.current?.delayNext(0.28)
+    playerRef.current?.delayNext(0.45)
   }
 
   // 이어폰 연결 상태 갱신(초기 조회 + 라우팅 변경 시)
