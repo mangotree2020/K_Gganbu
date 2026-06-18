@@ -190,7 +190,11 @@ export default function VoiceInterpretScreen() {
   const [status, setStatus] = useState<VoiceStatus>('idle')
   const [active, setActive] = useState(false)
   const [turns, setTurns] = useState<Turn[]>([])
-  const [current, setCurrent] = useState<{ original: string; translation: string } | null>(null)
+  const [current, setCurrent] = useState<{
+    original: string
+    translation: string
+    lang: string
+  } | null>(null)
   // 통역 음성 볼륨(0~1) — MMKV에 저장해 세션 간 유지
   const [volume, setVolumeState] = useState(() => {
     const v = storage.getNumber('voiceVolume')
@@ -218,6 +222,10 @@ export default function VoiceInterpretScreen() {
   const micRef = useRef<MicHandle | null>(null)
   const playerRef = useRef<Player | null>(null)
   const idRef = useRef(0)
+  // 직전에 명확히 감지된 발화 언어 — 감지 실패(미상) 시 직전 언어를 유지해
+  // 말풍선 색·국기·라우팅이 🌐로 튀지 않게 한다(대화 연속성).
+  const lastLangRef = useRef('')
+  const resolveLang = (s: string): string => detectLang(s) || lastLangRef.current || appLang
   // turn id → 통역 음성 PCM (다시 듣기용)
   const audioStoreRef = useRef<Map<number, Uint8Array>>(new Map())
   // 이력 저장용 — 콜백/언마운트에서 최신값 읽기
@@ -363,13 +371,17 @@ export default function VoiceInterpretScreen() {
             // 즉시 출력 라우팅을 전환해 음성 도착 전 전환을 끝낸다(앞부분 잘림 방지).
             if (headsetRef.current && speakerMyVoiceRef.current) {
               const src = turn.original || turn.translation
-              if (src) applySpeakerRoute(detectLang(src) === appLang)
+              if (src) applySpeakerRoute(resolveLang(src) === appLang)
             }
             if (turn.final) {
               setCurrent(null)
               if (turn.original.trim() || turn.translation.trim()) {
                 idRef.current += 1
                 const orig = turn.original.trim()
+                // 명확히 감지되면 직전 언어 갱신, 미상이면 직전 언어 유지
+                const detected = detectLang(orig)
+                if (detected) lastLangRef.current = detected
+                const lang = detected || lastLangRef.current || appLang
                 if (turn.audio) audioStoreRef.current.set(idRef.current, turn.audio)
                 setTurns((prev) =>
                   [
@@ -378,19 +390,23 @@ export default function VoiceInterpretScreen() {
                       id: idRef.current,
                       original: orig,
                       translation: turn.translation.trim(),
-                      lang: detectLang(orig),
+                      lang,
                       hasAudio: !!turn.audio,
                     },
                   ].slice(-40),
                 )
               }
             } else {
-              setCurrent({ original: turn.original, translation: turn.translation })
+              setCurrent({
+                original: turn.original,
+                translation: turn.translation,
+                lang: resolveLang(turn.original),
+              })
             }
           },
           onAudio: (pcm24, sourceText) => {
-            // 화자 판단: 원문이 앱 언어면 내 발화 통역, 아니면 상대 발화 통역
-            const isMine = detectLang(sourceText) === appLang
+            // 화자 판단: 원문이 앱 언어면 내 발화 통역, 아니면 상대 발화 통역(미상이면 직전 유지)
+            const isMine = resolveLang(sourceText) === appLang
             const enabled = isMine ? myVoiceRef.current : otherVoiceRef.current
             if (!enabled) return
             // 이어폰 + 토글 ON: 내 통역은 스피커(상대에게), 상대 통역은 이어폰(나에게)
@@ -592,20 +608,15 @@ export default function VoiceInterpretScreen() {
                       onReplay={tn.hasAudio ? () => replay(tn.id) : undefined}
                     />
                   ))}
-                  {!!current &&
-                    (current.original || current.translation) &&
-                    (() => {
-                      const cl = detectLang(current.original)
-                      return (
-                        <Bubble
-                          original={current.original}
-                          translation={current.translation}
-                          lang={cl}
-                          isMe={cl === appLang}
-                          dim
-                        />
-                      )
-                    })()}
+                  {!!current && (current.original || current.translation) && (
+                    <Bubble
+                      original={current.original}
+                      translation={current.translation}
+                      lang={current.lang}
+                      isMe={current.lang === appLang}
+                      dim
+                    />
+                  )}
                 </>
               )}
             </ScrollView>
