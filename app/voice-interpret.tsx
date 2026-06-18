@@ -307,14 +307,13 @@ export default function VoiceInterpretScreen() {
               setStatus('connected')
               playerRef.current = createPlayer(24000, volume)
               micRef.current = startMic((pcm) => {
-                // 이어폰이면 에코 누설이 없으므로 게이트를 끄고 항상 전송(완전 동시 발화).
-                // 스피커 모드에서만: 통역 재생 중 입력 음량(RMS)이 임계 이상이면 통과(실제
-                // 발화), 작으면 차단(에코 누설). AEC를 JS로 켤 수 없는 환경의 근사.
-                if (
-                  !headsetRef.current &&
-                  playerRef.current?.isPlaying() &&
-                  rms16(pcm) < SPEECH_RMS_GATE
-                )
+                // 에코 게이트는 '지금 소리가 스피커로 나가는 구간'에서만 적용한다(케이스별):
+                // - 스피커 모드(이어폰 없음): 항상 스피커 → 게이트 ON
+                // - 이어폰 + 내 통역 스피커 출력 ON + 내 통역 재생 중(routedToSpeaker): 스피커 → ON
+                // - 이어폰으로만 나가는 구간(상대 통역 등): 누설 없음 → 게이트 OFF(완전 동시 발화)
+                const speakerOut =
+                  !headsetRef.current || (speakerMyVoiceRef.current && routedToSpeakerRef.current)
+                if (speakerOut && playerRef.current?.isPlaying() && rms16(pcm) < SPEECH_RMS_GATE)
                   return
                 sessionRef.current?.sendAudio(pcm)
               })
