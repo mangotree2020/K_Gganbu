@@ -34,8 +34,9 @@ import { palette, shadows } from '@/theme/tokens'
 type VoiceStatus = 'idle' | 'connecting' | 'connected' | 'error' | 'unavailable'
 
 // 동시 발화 게이트 임계 — 통역 재생 중 이 RMS 이상의 입력만 통과(실제 발화 vs 에코 누설).
-// 스피커 볼륨이 크면 누설도 커져 구분이 약해짐 → 이어폰 권장.
-const SPEECH_RMS_GATE = 0.06
+// 기기 실측 결과 스피커 누설 피크가 ~0.044라, 그 위인 0.05로 설정(누설 차단 + 발화 통과).
+// 낮출수록 동시 발화 감지↑·에코 차단↓. 스피커 볼륨이 크면 누설도 커짐 → 이어폰 권장.
+const SPEECH_RMS_GATE = 0.05
 // lang: 감지된 발화 언어 코드. 화자(언어)별 색상·정렬·칩에 사용.
 // hasAudio: 통역 음성 보유 여부(다시 듣기 버튼 표시용. PCM은 audioStoreRef에 보관).
 type Turn = { id: number; original: string; translation: string; lang: string; hasAudio: boolean }
