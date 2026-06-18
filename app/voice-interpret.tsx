@@ -10,6 +10,7 @@ import {
   Pressable,
   ScrollView,
   StyleSheet,
+  Switch,
   Text,
   View,
 } from 'react-native'
@@ -313,15 +314,31 @@ export default function VoiceInterpretScreen() {
               </Text>
             </View>
 
-            <View style={ss.volumeRow}>
-              <Pressable onPress={toggleVoice} hitSlop={10} style={ss.voiceToggle}>
+            <View style={ss.audioBar}>
+              <Pressable onPress={toggleVoice} hitSlop={8} style={ss.voiceLabelGroup}>
                 <Icon
                   name={voiceEnabled ? 'volume_up' : 'volume_off'}
-                  size={18}
+                  size={17}
                   color={voiceEnabled ? palette.teal[40] : palette.zinc[400]}
                   filled
                 />
+                <Text style={ss.voiceLabel}>{t('voice.sound')}</Text>
               </Pressable>
+              <Switch
+                value={voiceEnabled}
+                onValueChange={toggleVoice}
+                trackColor={{ true: palette.teal[80], false: palette.zinc[300] }}
+                thumbColor={voiceEnabled ? palette.teal[40] : '#f4f4f5'}
+              />
+            </View>
+
+            <View style={ss.volumeRow}>
+              <Icon
+                name="volume_up"
+                size={16}
+                color={voiceEnabled ? palette.teal[40] : palette.zinc[400]}
+                filled
+              />
               <Slider
                 style={[ss.slider, !voiceEnabled && { opacity: 0.35 }]}
                 disabled={!voiceEnabled}
@@ -335,7 +352,7 @@ export default function VoiceInterpretScreen() {
                 thumbTintColor={palette.teal[40]}
               />
               <Text style={[ss.volPct, !voiceEnabled && { color: palette.zinc[400] }]}>
-                {voiceEnabled ? `${Math.round(volume * 100)}%` : 'OFF'}
+                {Math.round(volume * 100)}%
               </Text>
             </View>
 
@@ -481,7 +498,18 @@ const ss = StyleSheet.create({
     paddingHorizontal: 4,
     marginTop: 10,
   },
-  voiceToggle: { padding: 4 },
+  audioBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: palette.zinc[100],
+    borderRadius: 12,
+    paddingVertical: 6,
+    paddingHorizontal: 14,
+    marginTop: 12,
+  },
+  voiceLabelGroup: { flexDirection: 'row', alignItems: 'center', gap: 7 },
+  voiceLabel: { fontSize: 13, fontWeight: '700', color: palette.zinc[700] },
   slider: { flex: 1, height: 32 },
   volPct: {
     fontSize: 11,

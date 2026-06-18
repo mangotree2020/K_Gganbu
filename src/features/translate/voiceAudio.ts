@@ -61,7 +61,9 @@ export type Player = {
 // 24kHz PCM16 스트림 재생 — 버퍼를 시간순으로 이어붙여 끊김 없이 출력.
 // 볼륨은 샘플 진폭에 직접 곱해 적용(GainNode 비의존 — 어느 환경에서나 동작).
 export function createPlayer(sampleRate = 24000, volume = 1): Player {
-  const ctx = new AudioContext()
+  // 컨텍스트 샘플레이트를 입력(24kHz)과 일치시킴. 기기 기본(보통 48kHz)으로 두면
+  // 24kHz 버퍼가 ~2배 빠르게 재생되어 음성이 빠르고 부자연스러워짐(기기 로그로 48kHz→24kHz 확인).
+  const ctx = new AudioContext({ sampleRate })
   let nextTime = 0
   let vol = volume
   const render = (pcm16: Uint8Array, immediate: boolean) => {
