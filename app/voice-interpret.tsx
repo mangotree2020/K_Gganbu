@@ -34,7 +34,12 @@ import {
 import { APP_LANGS, useLocaleStore, useT, type AppLang } from '@/lib/i18n'
 import { palette, shadows } from '@/theme/tokens'
 
-type VoiceStatus = 'idle' | 'connecting' | 'connected' | 'error' | 'unavailable'
+type VoiceStatus = 'idle' | 'connecting' | 'connected' | 'reconnecting' | 'error' | 'unavailable'
+
+// 세션이 비정상 종료되면 자동 재연결 시도(대화 유지). 초과 시 에러 화면.
+// 일시적 끊김(터널·순간 약화)을 견디도록 5회 × 1.5초 ≈ 7.5초 동안 재시도.
+const MAX_RECONNECT = 5
+const RECONNECT_DELAY_MS = 1500
 
 // 동시 발화 게이트 임계 — 통역 재생 중 이 RMS 이상의 입력만 통과(실제 발화 vs 에코 누설).
 // 기기 실측 결과 스피커 누설 피크가 ~0.044라, 그 위인 0.05로 설정(누설 차단 + 발화 통과).
@@ -222,6 +227,11 @@ export default function VoiceInterpretScreen() {
   const micRef = useRef<MicHandle | null>(null)
   const playerRef = useRef<Player | null>(null)
   const idRef = useRef(0)
+  // 자동 재연결 상태 — 의도적 종료(stop/X)와 비정상 종료를 구분
+  const intentionalCloseRef = useRef(false)
+  const reconnectingRef = useRef(false)
+  const reconnectAttemptRef = useRef(0)
+  const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   // 직전에 명확히 감지된 발화 언어 — 감지 실패(미상) 시 직전 언어를 유지해
   // 말풍선 색·국기·라우팅이 🌐로 튀지 않게 한다(대화 연속성).
   const lastLangRef = useRef('')
@@ -280,6 +290,13 @@ export default function VoiceInterpretScreen() {
   }
 
   const teardown = () => {
+    // 의도적 종료 — 자동 재연결 중단
+    intentionalCloseRef.current = true
+    reconnectingRef.current = false
+    if (reconnectTimerRef.current) {
+      clearTimeout(reconnectTimerRef.current)
+      reconnectTimerRef.current = null
+    }
     micRef.current?.stop()
     micRef.current = null
     sessionRef.current?.close()
@@ -332,17 +349,32 @@ export default function VoiceInterpretScreen() {
     if (pcm) playerRef.current?.playNow(pcm)
   }
 
-  const start = async () => {
-    setStatus('connecting')
-    setTurns([])
-    setCurrent(null)
-    if (!(await ensureMicPermission())) {
-      setStatus('error')
+  // 세션 비정상 종료 시 자동 재연결(의도적 종료 제외). 초과 시 에러 화면.
+  // reconnectingRef로 중복 진입 차단(close()가 다시 closed 콜백을 부르는 경우 대비).
+  const scheduleReconnect = () => {
+    if (intentionalCloseRef.current || reconnectingRef.current) return
+    reconnectingRef.current = true
+    sessionRef.current?.close()
+    sessionRef.current = null
+    if (reconnectAttemptRef.current >= MAX_RECONNECT) {
+      reconnectingRef.current = false
+      failToFallback()
       return
     }
-    // 이어폰 연결 여부 초기 조회 + 라우팅 변경 구독(연결/해제 시 게이트 자동 전환)
-    refreshHeadset()
-    routeSubRef.current = observeRouteChange(refreshHeadset)
+    reconnectAttemptRef.current += 1
+    setStatus('reconnecting')
+    if (reconnectTimerRef.current) clearTimeout(reconnectTimerRef.current)
+    reconnectTimerRef.current = setTimeout(() => {
+      reconnectingRef.current = false
+      connect().then((ok) => {
+        if (!ok && !intentionalCloseRef.current) scheduleReconnect()
+      })
+    }, RECONNECT_DELAY_MS)
+  }
+
+  // 세션 연결 — start(신규)와 자동 재연결이 공유. 성공 시 true.
+  // mic/player는 이미 있으면 유지(재연결 시 대화·재생 큐 보존).
+  async function connect(): Promise<boolean> {
     try {
       const session = await startLiveTranslate(
         { appLang },
@@ -350,20 +382,21 @@ export default function VoiceInterpretScreen() {
           onStatus: (s) => {
             if (s === 'open') {
               setStatus('connected')
-              playerRef.current = createPlayer(24000, volume)
-              micRef.current = startMic((pcm) => {
-                // 에코 게이트는 '지금 소리가 스피커로 나가는 구간'에서만 적용한다(케이스별):
-                // - 스피커 모드(이어폰 없음): 항상 스피커 → 게이트 ON
-                // - 이어폰 + 내 통역 스피커 출력 ON + 내 통역 재생 중(routedToSpeaker): 스피커 → ON
-                // - 이어폰으로만 나가는 구간(상대 통역 등): 누설 없음 → 게이트 OFF(완전 동시 발화)
-                const speakerOut =
-                  !headsetRef.current || (speakerMyVoiceRef.current && routedToSpeakerRef.current)
-                if (speakerOut && playerRef.current?.isPlaying() && rms16(pcm) < SPEECH_RMS_GATE)
-                  return
-                sessionRef.current?.sendAudio(pcm)
-              })
+              reconnectAttemptRef.current = 0
+              if (!playerRef.current) playerRef.current = createPlayer(24000, volume)
+              if (!micRef.current) {
+                micRef.current = startMic((pcm) => {
+                  // 에코 게이트는 '지금 소리가 스피커로 나가는 구간'에서만 적용:
+                  // 스피커 모드 또는 (이어폰+내 통역 스피커 재생 중)일 때만 RMS 게이트.
+                  const speakerOut =
+                    !headsetRef.current || (speakerMyVoiceRef.current && routedToSpeakerRef.current)
+                  if (speakerOut && playerRef.current?.isPlaying() && rms16(pcm) < SPEECH_RMS_GATE)
+                    return
+                  sessionRef.current?.sendAudio(pcm)
+                })
+              }
             } else if (s === 'error' || s === 'closed') {
-              failToFallback()
+              scheduleReconnect()
             }
           },
           onTurn: (turn) => {
@@ -375,7 +408,8 @@ export default function VoiceInterpretScreen() {
             }
             if (turn.final) {
               setCurrent(null)
-              if (turn.original.trim() || turn.translation.trim()) {
+              // 통역이 비면(언어 감지 실패 등) 그 turn은 건너뛴다 — 빈/불완전 말풍선 방지
+              if (turn.translation.trim()) {
                 idRef.current += 1
                 const orig = turn.original.trim()
                 // 명확히 감지되면 직전 언어 갱신, 미상이면 직전 언어 유지
@@ -415,16 +449,30 @@ export default function VoiceInterpretScreen() {
           },
         },
       )
-      if (!session) {
-        setStatus('unavailable')
-        return
-      }
+      if (!session) return false
       sessionRef.current = session
-      setActive(true)
+      return true
     } catch {
-      teardown()
-      setStatus('error')
+      return false
     }
+  }
+
+  const start = async () => {
+    intentionalCloseRef.current = false
+    reconnectAttemptRef.current = 0
+    setStatus('connecting')
+    setTurns([])
+    setCurrent(null)
+    if (!(await ensureMicPermission())) {
+      setStatus('error')
+      return
+    }
+    // 이어폰 연결 여부 초기 조회 + 라우팅 변경 구독(연결/해제 시 게이트 자동 전환)
+    refreshHeadset()
+    routeSubRef.current = observeRouteChange(refreshHeadset)
+    const ok = await connect()
+    if (ok) setActive(true)
+    else setStatus('unavailable')
   }
 
   const stop = () => {
@@ -483,7 +531,11 @@ export default function VoiceInterpretScreen() {
                 filled
               />
               <Text style={ss.statusText}>
-                {status === 'connected' ? t('voice.listening') : t('voice.connecting')}
+                {status === 'connected'
+                  ? t('voice.listening')
+                  : status === 'reconnecting'
+                    ? t('voice.reconnecting')
+                    : t('voice.connecting')}
               </Text>
               {headset && <Icon name="headphones" size={13} color={palette.teal[40]} filled />}
             </View>
