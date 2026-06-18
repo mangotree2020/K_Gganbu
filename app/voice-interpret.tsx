@@ -175,7 +175,15 @@ export default function VoiceInterpretScreen() {
                 contentContainerStyle={{ gap: 8, paddingBottom: 12 }}
                 onContentSizeChange={() => scrollRef.current?.scrollToEnd({ animated: true })}>
                 {lines.length === 0 ? (
-                  <Text style={ss.hint}>{t('voice.hint')}</Text>
+                  // 통역 출력이 아직 없을 때 — 안내 + 항상 보이는 텍스트 번역 탈출구.
+                  // Agent가 통역을 보내면 lines가 채워져 자동으로 사라진다.
+                  <View style={{ alignItems: 'center', marginTop: 40, gap: 16 }}>
+                    <Text style={ss.hint}>{t('voice.hint')}</Text>
+                    <Pressable onPress={() => router.replace('/translate')} style={ss.toTextBtn}>
+                      <Icon name="translate" size={15} color={palette.teal[40]} filled />
+                      <Text style={ss.toTextText}>{t('voice.toText')}</Text>
+                    </Pressable>
+                  </View>
                 ) : (
                   lines.map((l) => (
                     <View
@@ -284,7 +292,19 @@ const ss = StyleSheet.create({
     paddingVertical: 6,
   },
   statusText: { fontSize: 12, fontWeight: '600', color: palette.zinc[700] },
-  hint: { fontSize: 13, color: palette.zinc[400], textAlign: 'center', marginTop: 40 },
+  hint: { fontSize: 13, color: palette.zinc[400], textAlign: 'center' },
+  toTextBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    borderWidth: 1,
+    borderColor: palette.teal[80],
+    backgroundColor: palette.teal[95],
+    borderRadius: 999,
+    paddingVertical: 9,
+    paddingHorizontal: 16,
+  },
+  toTextText: { fontSize: 13, fontWeight: '700', color: palette.teal[40] },
   bubble: { maxWidth: '88%', borderRadius: 16, paddingVertical: 9, paddingHorizontal: 13 },
   mine: { alignSelf: 'flex-end', backgroundColor: palette.blue[50], borderBottomRightRadius: 6 },
   theirs: {
