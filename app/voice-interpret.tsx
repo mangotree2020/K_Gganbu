@@ -21,7 +21,7 @@ import { Icon } from '@/components/brand'
 import { storage } from '@/lib/mmkv'
 import { startLiveTranslate, type LiveSession } from '@/features/translate/geminiLive'
 import { saveSession } from '@/features/translate/history'
-import { resetSpeaker, setSpeaker } from '../modules/expo-speaker-route'
+import { addRouteChangedListener, resetSpeaker, setSpeaker } from '../modules/expo-speaker-route'
 import {
   createPlayer,
   isHeadsetConnected,
@@ -249,16 +249,35 @@ export default function VoiceInterpretScreen() {
   const speakerMyVoiceRef = useRef(speakerMyVoice)
   // 현재 출력이 스피커로 라우팅됐는지(중복 호출 방지)
   const routedToSpeakerRef = useRef(false)
+  // 라우팅 전환 중 — 전환 완료(onRouteChanged) 전까지 통역 음성을 버퍼링
+  const routePendingRef = useRef(false)
+  const pendingAudioRef = useRef<Uint8Array[]>([])
+  const routeTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const routeEventSubRef = useRef<{ remove: () => void } | null>(null)
+
+  // 전환 완료 → 버퍼링된 통역 음성 일괄 재생(이미 안정화된 경로로 나가 앞부분 보존)
+  const flushRoutePending = () => {
+    if (!routePendingRef.current) return
+    routePendingRef.current = false
+    if (routeTimeoutRef.current) {
+      clearTimeout(routeTimeoutRef.current)
+      routeTimeoutRef.current = null
+    }
+    const chunks = pendingAudioRef.current
+    pendingAudioRef.current = []
+    for (const c of chunks) playerRef.current?.play(c)
+  }
 
   // 출력 라우팅 전환(내 통역=스피커, 상대 통역=이어폰). 변경 시에만 네이티브 호출.
-  // 전환 직후 재생을 잠시 미뤄(delayNext) 라우팅/모드 전환이 안정화될 시간을 줘서
-  // 통역 음성 앞부분이 잘리는 것을 방지한다.
+  // 전환 완료(onRouteChanged 이벤트)까지 음성을 버퍼링 → 출력 경로가 실제로 바뀐 뒤
+  // 재생해 앞부분 잘림을 방지. 이벤트 누락 대비 500ms fallback.
   const applySpeakerRoute = (toSpeaker: boolean) => {
     if (routedToSpeakerRef.current === toSpeaker) return
     routedToSpeakerRef.current = toSpeaker
+    routePendingRef.current = true
     setSpeaker(toSpeaker)
-    // 전환 직후 무음 재생으로 출력 경로를 깨워 통역 음성 앞부분 잘림 방지
-    playerRef.current?.primeSilence(0.8)
+    if (routeTimeoutRef.current) clearTimeout(routeTimeoutRef.current)
+    routeTimeoutRef.current = setTimeout(flushRoutePending, 500)
   }
 
   // 이어폰 연결 상태 갱신(초기 조회 + 라우팅 변경 시)
@@ -278,6 +297,14 @@ export default function VoiceInterpretScreen() {
     playerRef.current = null
     routeSubRef.current?.remove()
     routeSubRef.current = null
+    routeEventSubRef.current?.remove()
+    routeEventSubRef.current = null
+    if (routeTimeoutRef.current) {
+      clearTimeout(routeTimeoutRef.current)
+      routeTimeoutRef.current = null
+    }
+    pendingAudioRef.current = []
+    routePendingRef.current = false
     routedToSpeakerRef.current = false
     resetSpeaker() // 오디오 라우팅 원복
     audioStoreRef.current.clear()
@@ -333,6 +360,8 @@ export default function VoiceInterpretScreen() {
     // 이어폰 연결 여부 초기 조회 + 라우팅 변경 구독(연결/해제 시 게이트 자동 전환)
     refreshHeadset()
     routeSubRef.current = observeRouteChange(refreshHeadset)
+    // 출력 전환 완료 이벤트 구독 → 버퍼링된 통역 음성 flush
+    routeEventSubRef.current = addRouteChangedListener(flushRoutePending)
     try {
       const session = await startLiveTranslate(
         { appLang },
@@ -393,7 +422,9 @@ export default function VoiceInterpretScreen() {
             if (!enabled) return
             // 이어폰 + 토글 ON: 내 통역은 스피커(상대에게), 상대 통역은 이어폰(나에게)
             if (headsetRef.current && speakerMyVoiceRef.current) applySpeakerRoute(isMine)
-            playerRef.current?.play(pcm24)
+            // 라우팅 전환 중이면 버퍼링(전환 완료 후 flush) — 앞부분 잘림 방지
+            if (routePendingRef.current) pendingAudioRef.current.push(pcm24)
+            else playerRef.current?.play(pcm24)
           },
         },
       )

@@ -96,7 +96,6 @@ export type Player = {
   playNow: (pcm16: Uint8Array) => void // 즉시 재생(다시 듣기)
   setVolume: (v: number) => void // 0~1 볼륨
   isPlaying: () => boolean // 통역 음성 재생 중 여부(에코 억제용 마이크 게이팅)
-  primeSilence: (sec: number) => void // 무음을 재생해 오디오 경로 wake-up + 다음 재생 지연
   close: () => void
 }
 
@@ -136,13 +135,6 @@ export function createPlayer(sampleRate = 24000, volume = 1): Player {
       vol = Math.max(0, Math.min(1, v))
     },
     isPlaying: () => Date.now() < queueEndMs + ECHO_GUARD_SEC * 1000,
-    // 무음 버퍼를 실제로 큐에 재생 — 블루투스 A2DP 등 idle 상태의 출력 경로를 미리
-    // 깨워 첫 통역 음성의 앞부분 잘림을 방지(무음이 잘려도 실제 음성은 보존). render가
-    // nextTime/queueEndMs를 무음 길이만큼 밀어 다음 실제 재생도 그 뒤에 이어진다.
-    primeSilence: (sec) => {
-      const len = Math.floor(sampleRate * sec)
-      if (len > 0) render(new Uint8Array(len * 2), false)
-    },
     close: () => {
       ctx.close().catch(() => {})
     },

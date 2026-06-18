@@ -1,9 +1,11 @@
 // 출력 라우팅 전환 네이티브 모듈 — 이어폰 중 내 발화 통역만 스피커로.
-import { requireNativeModule } from 'expo-modules-core'
+// onRouteChanged 이벤트로 출력 전환 완료를 알려 JS가 재생 타이밍을 맞춘다.
+import { requireNativeModule, type EventSubscription } from 'expo-modules-core'
 
 type SpeakerRouteNative = {
   setSpeaker: (on: boolean) => boolean
   reset: () => void
+  addListener: (name: string, cb: (payload: unknown) => void) => EventSubscription
 }
 
 let native: SpeakerRouteNative | null = null
@@ -27,6 +29,16 @@ export function resetSpeaker(): void {
     native?.reset()
   } catch {
     // 무시
+  }
+}
+
+// 출력 전환 완료 이벤트 구독 — 라우팅이 실제로 바뀐 시점에 콜백.
+export function addRouteChangedListener(cb: () => void): { remove: () => void } {
+  try {
+    const sub = native?.addListener('onRouteChanged', () => cb())
+    return { remove: () => sub?.remove() }
+  } catch {
+    return { remove: () => {} }
   }
 }
 
