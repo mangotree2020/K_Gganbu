@@ -1,6 +1,6 @@
 import '../global.css'
 
-import { Stack, router } from 'expo-router'
+import { Stack, router, useSegments } from 'expo-router'
 import * as SplashScreen from 'expo-splash-screen'
 import { StatusBar } from 'expo-status-bar'
 import { useEffect } from 'react'
@@ -35,6 +35,7 @@ export default function RootLayout() {
 function RootLayoutNav() {
   const { isAuthenticated, isLoading } = useAuth()
   const onboardingDone = useOnboardingStore((s) => s.completed)
+  const segments = useSegments()
 
   useEffect(() => {
     if (!isLoading) {
@@ -42,15 +43,24 @@ function RootLayoutNav() {
     }
   }, [isLoading])
 
+  // 인증·온보딩 상태에 따른 권위적 라우팅 가드(expo-router segments 기반).
+  // 인증+온보딩 완료인데 아직 (auth)/(onboarding) 그룹에 있으면 본화면으로 보낸다 —
+  // OAuth 콜백 딥링크가 네비를 (auth)로 리셋해도 가드가 즉시 (tabs)로 복귀시킨다.
   useEffect(() => {
     if (isLoading) return
+    const group = segments[0]
+    const inAuth = group === '(auth)'
+    const inOnboarding = group === '(onboarding)'
     if (!isAuthenticated) {
-      router.replace('/(auth)/landing')
+      if (!inAuth) router.replace('/(auth)/landing')
     } else if (!onboardingDone) {
       // 인증됐지만 온보딩 미완료 → 언어 선택부터
-      router.replace('/(onboarding)/language')
+      if (!inOnboarding) router.replace('/(onboarding)/language')
+    } else if (inAuth || inOnboarding) {
+      // 인증·온보딩 완료인데 인증/온보딩 화면에 머물러 있으면 앱 본화면으로
+      router.replace('/(tabs)')
     }
-  }, [isAuthenticated, isLoading, onboardingDone])
+  }, [isAuthenticated, isLoading, onboardingDone, segments])
 
   return (
     <>
@@ -58,6 +68,8 @@ function RootLayoutNav() {
       <Stack screenOptions={{ headerShown: false }}>
         <Stack.Screen name="(auth)" />
         <Stack.Screen name="(onboarding)" />
+        {/* OAuth 콜백 딥링크 착지 — 404 대신 로딩 표시(gesture/animation 없이 즉시 처리) */}
+        <Stack.Screen name="auth-callback" options={{ gestureEnabled: false, animation: 'none' }} />
         <Stack.Screen name="(tabs)" />
         <Stack.Screen name="translate" options={{ presentation: 'modal' }} />
         <Stack.Screen name="emergency" options={{ presentation: 'modal' }} />
