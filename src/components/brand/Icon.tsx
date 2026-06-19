@@ -92,6 +92,13 @@ import {
   Building2,
   Info,
   ExternalLink,
+  Cloud,
+  CloudSun,
+  CloudRain,
+  CloudSnow,
+  CloudFog,
+  CloudLightning,
+  Droplets,
   type LucideIcon,
 } from 'lucide-react-native'
 
@@ -211,6 +218,15 @@ const MAP: Record<string, LucideIcon> = {
   wind: Wind,
   thermostat_auto: Thermometer,
   buildings: Building2,
+  // 날씨 컨디션 (Open-Meteo WMO 코드 매핑용)
+  weather_clear: Sun,
+  weather_partly: CloudSun,
+  weather_cloudy: Cloud,
+  weather_rain: CloudRain,
+  weather_snow: CloudSnow,
+  weather_fog: CloudFog,
+  weather_storm: CloudLightning,
+  humidity: Droplets,
 }
 
 export type IconProps = {
