@@ -62,11 +62,13 @@ type SocialBtnProps = {
   icon: React.ReactNode
   label: string
   onPress?: () => void
+  testID?: string
 }
 
-function SocialBtn({ bg, textColor, borderColor, icon, label, onPress }: SocialBtnProps) {
+function SocialBtn({ bg, textColor, borderColor, icon, label, onPress, testID }: SocialBtnProps) {
   return (
     <TouchableOpacity
+      testID={testID}
       onPress={onPress}
       activeOpacity={0.82}
       style={{
@@ -153,6 +155,7 @@ export default function LoginScreen() {
           {/* 소셜 로그인 버튼 */}
           <View style={{ gap: 10, marginBottom: 16 }}>
             <SocialBtn
+              testID="social-google"
               bg="#fff"
               textColor="#18181B"
               borderColor="#E4E4E7"
@@ -161,6 +164,7 @@ export default function LoginScreen() {
               onPress={() => oauthSignIn('google')}
             />
             <SocialBtn
+              testID="social-apple"
               bg="#000"
               textColor="#fff"
               icon={<AppleIcon color="#fff" />}
@@ -168,6 +172,7 @@ export default function LoginScreen() {
               onPress={() => oauthSignIn('apple')}
             />
             <SocialBtn
+              testID="social-phone"
               bg="#0EA5E9"
               textColor="#fff"
               icon={<MessageSquare size={18} color="#fff" />}
@@ -194,6 +199,7 @@ export default function LoginScreen() {
                 </View>
               }
               label="Continue with LINE"
+              testID="social-line"
               onPress={() =>
                 Alert.alert(
                   'LINE login',

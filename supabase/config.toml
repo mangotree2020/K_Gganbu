@@ -4,8 +4,30 @@ project_id = "ltdajglszqkgneegjryb"
 enable_signup = true
 # Guest-first (PLANNING §6) — 가입 없이 핵심 기능 사용
 enable_anonymous_sign_ins = true
+# 앱 딥링크 스킴(app.json scheme=travel-app). OAuth 콜백이 이 URL로 돌아온다.
+site_url = "travel-app://"
+# OAuth 콜백 허용 목록 — 이 화이트리스트에 없으면 Supabase가 리다이렉트를 거부한다.
+# (queries.ts의 redirectTo = createURL('auth-callback') = travel-app://auth-callback)
+additional_redirect_urls = ["travel-app://auth-callback", "travel-app://"]
 
 [auth.email]
 enable_signup = true
 # 개발 단계: 이메일 확인 비활성 (실제 SMTP 연동 전까지 즉시 가입)
 enable_confirmations = false
+
+# 소셜 로그인 provider — 실제 client_id/secret은 Supabase 시크릿(env)으로 주입.
+# 적용: `supabase config push` (호스티드 프로젝트) 또는 대시보드 Auth > Providers에서 동일 값 설정.
+# Google: Google Cloud Console에서 OAuth 클라이언트(Web) 생성 후 client_id/secret 발급,
+#         승인된 리디렉션 URI에 https://<project-ref>.supabase.co/auth/v1/callback 등록.
+[auth.external.google]
+enabled = true
+client_id = "env(SUPABASE_AUTH_GOOGLE_CLIENT_ID)"
+secret = "env(SUPABASE_AUTH_GOOGLE_SECRET)"
+# 모바일(네이티브) OAuth는 nonce 검증을 건너뛴다(브라우저 세션 기반 콜백).
+skip_nonce_check = true
+
+# Apple: Apple Developer에서 Service ID·Key 생성 필요(iOS는 Sign in with Apple 필수 — §23).
+[auth.external.apple]
+enabled = true
+client_id = "env(SUPABASE_AUTH_APPLE_CLIENT_ID)"
+secret = "env(SUPABASE_AUTH_APPLE_SECRET)"

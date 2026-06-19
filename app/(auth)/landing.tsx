@@ -246,6 +246,7 @@ export default function LandingScreen() {
           </TouchableOpacity>
 
           <TouchableOpacity
+            testID="guest-button"
             onPress={() => signInAnonymous()}
             disabled={guestPending}
             activeOpacity={0.7}
