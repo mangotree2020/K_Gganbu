@@ -10,11 +10,8 @@ const cors = {
 
 type LatLng = { latitude: number; longitude: number }
 
-// NCP API Gateway 도메인 후보 (신/구) — 계정에 맞는 쪽이 성공
-const ENDPOINTS = [
-  'https://maps.apigw.ntruss.com/map-direction/v1/driving',
-  'https://naveropenapi.apigw.ntruss.com/map-direction/v1/driving',
-]
+// NCP API Gateway 도메인 — 신형만 사용(구형 naveropenapi.apigw.ntruss.com은 2026-06-25 종료로 제거)
+const ENDPOINTS = ['https://maps.apigw.ntruss.com/map-direction/v1/driving']
 
 // 직선 보간 mock 경로 (키 미설정/실패 폴백)
 function mockRoute(start: LatLng, goal: LatLng) {
