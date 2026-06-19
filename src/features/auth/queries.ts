@@ -6,6 +6,7 @@ import * as WebBrowser from 'expo-web-browser'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from './store'
 import { toAuthUser } from './mapper'
+import { parseAuthCallback } from './callback'
 import type { LoginFormData, PhoneFormData, RegisterFormData } from './types'
 
 // OAuth 콜백 redirect URI (expo-linking — expo-crypto 의존 없음)
@@ -111,13 +112,8 @@ export function useOAuthSignIn() {
         return
       }
 
-      // 신규 로그인 — 콜백 hash 토큰으로 세션 설정
-      const url = new URL(result.url)
-      const params = new URLSearchParams(url.hash.replace(/^#/, ''))
-      const access_token = params.get('access_token')
-      const refresh_token = params.get('refresh_token')
-      if (!access_token || !refresh_token) throw new Error('세션 토큰을 받지 못했습니다')
-
+      // 신규 로그인 — 콜백 URL(hash/query)에서 토큰 추출 후 세션 설정
+      const { access_token, refresh_token } = parseAuthCallback(result.url)
       const { error: sessionError } = await supabase.auth.setSession({
         access_token,
         refresh_token,
