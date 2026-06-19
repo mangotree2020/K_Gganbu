@@ -42,25 +42,46 @@ const MAX_RECONNECT = 5
 const RECONNECT_DELAY_MS = 1500
 
 // 동시 발화 게이트 임계 — 통역 재생 중 이 RMS 이상의 입력만 통과(실제 발화 vs 에코 누설).
+// 적용 범위: '이어폰 + 내 통역 스피커 출력' 구간 한정(누설이 제한적이라 동시 발화 허용 목적).
+// 스피커 모드(이어폰 미사용)는 누설이 임계를 넘겨 되먹임을 일으키므로 게이트가 아닌
+// 완전 half-duplex(재생 중 마이크 전체 차단)로 처리한다.
 // 기기 실측 결과 스피커 누설 피크가 ~0.044라, 그 위인 0.05로 설정(누설 차단 + 발화 통과).
-// 낮출수록 동시 발화 감지↑·에코 차단↓. 스피커 볼륨이 크면 누설도 커짐 → 이어폰 권장.
 const SPEECH_RMS_GATE = 0.05
 // lang: 감지된 발화 언어 코드. 화자(언어)별 색상·정렬·칩에 사용.
 // hasAudio: 통역 음성 보유 여부(다시 듣기 버튼 표시용. PCM은 audioStoreRef에 보관).
 type Turn = { id: number; original: string; translation: string; lang: string; hasAudio: boolean }
 
-// 발화 언어 감지(스크립트 기반) — 가나>한글>한자>라틴 우선순위.
-// 일본어는 가나+한자가 섞이므로 가나를 먼저 확인(한자만이면 중국어).
-// 한글·라틴 혼용 시 더 많은 쪽으로 판정(ASR이 영어를 한글 음차로 섞는 경우 보정).
+// 발화 언어 감지 — Gemini 감지 코드(normalizeLang)가 없을 때만 쓰는 스크립트 기반 폴백.
+// 스크립트로 확실히 갈리는 언어만 처리한다. 라틴 세부 구분(en/id)·한자 번체 구분(zh-TW)은
+// 스크립트만으로는 불확실하므로 폴백에서 시도하지 않고 Gemini 코드에 맡긴다(en/zh-CN로 근사).
 const detectLang = (s: string): string => {
-  if (/[぀-ヿ]/.test(s)) return 'ja' // 히라가나·가타카나
+  if (/[぀-ヿ]/.test(s)) return 'ja' // 가나(일본어) — 한자보다 먼저
+  if (/[฀-๿]/.test(s)) return 'th' // 태국 문자
+  if (/[đơưăĐƠƯĂ]|[Ạ-ỿ]/.test(s)) return 'vi' // 베트남 전용 발음부호
   const han = (s.match(/[가-힣]/g) || []).length
   const lat = (s.match(/[a-zA-Z]/g) || []).length
   if (han && lat) return lat >= han * 2 ? 'en' : 'ko' // 라틴이 한글의 2배↑면 영어
   if (han) return 'ko'
-  if (/[一-鿿]/.test(s)) return 'zh-CN' // 한자만(가나 없음) → 중국어
-  if (lat) return 'en'
+  if (/[一-鿿]/.test(s)) return 'zh-CN' // 한자 → 중국어(번체 구분은 Gemini 코드로)
+  if (lat) return 'en' // 라틴 → 영어(인니어 구분은 Gemini 코드로)
   return '' // 미상
+}
+
+// Gemini가 준 BCP-47 감지 코드(예: 'vi-VN','id-ID','cmn-Hant-TW','zh','en-US')를
+// 앱 내부 코드(en/ko/ja/zh-CN/zh-TW/th/vi/id)로 정규화. 미지원 코드는 ''(폴백 유도).
+const normalizeLang = (code?: string): string => {
+  if (!code) return ''
+  const c = code.toLowerCase()
+  if (c.startsWith('ko')) return 'ko'
+  if (c.startsWith('ja')) return 'ja'
+  if (c.startsWith('th')) return 'th'
+  if (c.startsWith('vi')) return 'vi'
+  if (c.startsWith('id') || c.startsWith('in')) return 'id' // 인니어 구표기 'in'
+  if (c.startsWith('en')) return 'en'
+  // 중국어 계열(zh/cmn/yue) — 번체 신호(hant/tw/hk/mo)면 대만, 아니면 간체
+  if (c.startsWith('zh') || c.startsWith('cmn') || c.startsWith('yue'))
+    return /hant|tw|hk|mo/.test(c) ? 'zh-TW' : 'zh-CN'
+  return ''
 }
 
 // 언어별 색상 톤 — 화자 구분용. accent: 칩·보더·내 말풍선 채움, tint: 상대 말풍선 배경
@@ -69,12 +90,23 @@ const LANG_TONE: Record<string, { accent: string; tint: string }> = {
   ja: { accent: palette.coral[40], tint: palette.coral[95] },
   en: { accent: palette.blue[40], tint: palette.blue[95] },
   'zh-CN': { accent: palette.amber[50], tint: palette.amber[90] },
-  'zh-TW': { accent: palette.amber[50], tint: palette.amber[90] },
+  'zh-TW': { accent: palette.rose[40], tint: palette.rose[95] }, // 간체(amber)와 구분
+  th: { accent: palette.violet[40], tint: palette.violet[95] },
+  vi: { accent: palette.success[50], tint: palette.success[90] },
+  id: { accent: palette.indigo[40], tint: palette.indigo[95] },
 }
 const toneOf = (lang: string) =>
   LANG_TONE[lang] ?? { accent: palette.zinc[700], tint: palette.zinc[100] }
+// 통역 화자는 UI 5개 언어(APP_LANGS) 외에도 감지됨(Gemini Live 70+ 언어).
+// APP_LANGS에 없는 언어의 국기·라벨을 보강한다(미보강 시 detectLang 폴백으로 엉뚱한 국기 노출).
+const EXTRA_LANG_META: Record<string, { flag: string; label: string }> = {
+  th: { flag: '🇹🇭', label: 'ไทย' },
+  vi: { flag: '🇻🇳', label: 'Tiếng Việt' },
+  id: { flag: '🇮🇩', label: 'Bahasa' },
+}
 const langMeta = (code: string) =>
-  APP_LANGS.find((l) => l.code === code) ?? { flag: '🌐', label: code || '?' }
+  APP_LANGS.find((l) => l.code === code) ??
+  EXTRA_LANG_META[code] ?? { flag: '🌐', label: code || '?' }
 
 // 대화 말풍선 — 화자(언어)별 색상·좌우 정렬. 언어 칩 + 원문 + 구분선 + 통역.
 // isMe: 앱 사용자(앱 언어) 발화 → 우측·진한 톤. 상대 → 좌측·언어별 연한 톤.
@@ -235,7 +267,10 @@ export default function VoiceInterpretScreen() {
   // 직전에 명확히 감지된 발화 언어 — 감지 실패(미상) 시 직전 언어를 유지해
   // 말풍선 색·국기·라우팅이 🌐로 튀지 않게 한다(대화 연속성).
   const lastLangRef = useRef('')
-  const resolveLang = (s: string): string => detectLang(s) || lastLangRef.current || appLang
+  // 언어 판정 우선순위: Gemini 감지 코드 > 스크립트 휴리스틱 > 직전 언어 > 앱 언어.
+  // Gemini가 코드를 안 줄 때(preview)도 동작하도록 detectLang을 폴백으로 유지.
+  const resolveLang = (s: string, geminiCode?: string): string =>
+    normalizeLang(geminiCode) || detectLang(s) || lastLangRef.current || appLang
   // turn id → 통역 음성 PCM (다시 듣기용)
   const audioStoreRef = useRef<Map<number, Uint8Array>>(new Map())
   // 이력 저장용 — 콜백/언마운트에서 최신값 읽기
@@ -386,12 +421,20 @@ export default function VoiceInterpretScreen() {
               if (!playerRef.current) playerRef.current = createPlayer(24000, volume)
               if (!micRef.current) {
                 micRef.current = startMic((pcm) => {
-                  // 에코 게이트는 '지금 소리가 스피커로 나가는 구간'에서만 적용:
-                  // 스피커 모드 또는 (이어폰+내 통역 스피커 재생 중)일 때만 RMS 게이트.
-                  const speakerOut =
-                    !headsetRef.current || (speakerMyVoiceRef.current && routedToSpeakerRef.current)
-                  if (speakerOut && playerRef.current?.isPlaying() && rms16(pcm) < SPEECH_RMS_GATE)
-                    return
+                  if (playerRef.current?.isPlaying()) {
+                    // 스피커 모드(이어폰 미사용): 내 발화·상대 발화가 모두 큰 볼륨으로 스피커에
+                    // 나가 누설 RMS가 임계를 넘으면 RMS 게이트를 통과해 무한 재번역됨.
+                    // → 통역 재생 중 마이크 입력을 전부 차단하는 원본 half-duplex로 되먹임을 차단.
+                    if (!headsetRef.current) return
+                    // 이어폰 + 내 통역 스피커 출력 중: 누설이 제한적이라 임계 이하만 차단해
+                    // 동시 발화를 허용(이어폰 경로 기존 로직 유지 — 변경하지 않음).
+                    if (
+                      speakerMyVoiceRef.current &&
+                      routedToSpeakerRef.current &&
+                      rms16(pcm) < SPEECH_RMS_GATE
+                    )
+                      return
+                  }
                   sessionRef.current?.sendAudio(pcm)
                 })
               }
@@ -404,7 +447,7 @@ export default function VoiceInterpretScreen() {
             // 즉시 출력 라우팅을 전환해 음성 도착 전 전환을 끝낸다(앞부분 잘림 방지).
             if (headsetRef.current && speakerMyVoiceRef.current) {
               const src = turn.original || turn.translation
-              if (src) applySpeakerRoute(resolveLang(src) === appLang)
+              if (src) applySpeakerRoute(resolveLang(src, turn.lang) === appLang)
             }
             if (turn.final) {
               setCurrent(null)
@@ -412,8 +455,8 @@ export default function VoiceInterpretScreen() {
               if (turn.translation.trim()) {
                 idRef.current += 1
                 const orig = turn.original.trim()
-                // 명확히 감지되면 직전 언어 갱신, 미상이면 직전 언어 유지
-                const detected = detectLang(orig)
+                // Gemini 감지 코드 우선, 없으면 스크립트 감지. 명확하면 직전 언어 갱신.
+                const detected = normalizeLang(turn.lang) || detectLang(orig)
                 if (detected) lastLangRef.current = detected
                 const lang = detected || lastLangRef.current || appLang
                 if (turn.audio) audioStoreRef.current.set(idRef.current, turn.audio)
@@ -434,13 +477,13 @@ export default function VoiceInterpretScreen() {
               setCurrent({
                 original: turn.original,
                 translation: turn.translation,
-                lang: resolveLang(turn.original),
+                lang: resolveLang(turn.original, turn.lang),
               })
             }
           },
-          onAudio: (pcm24, sourceText) => {
+          onAudio: (pcm24, sourceText, sourceLang) => {
             // 화자 판단: 원문이 앱 언어면 내 발화 통역, 아니면 상대 발화 통역(미상이면 직전 유지)
-            const isMine = resolveLang(sourceText) === appLang
+            const isMine = resolveLang(sourceText, sourceLang) === appLang
             const enabled = isMine ? myVoiceRef.current : otherVoiceRef.current
             if (!enabled) return
             // 이어폰 + 토글 ON: 내 통역은 스피커(상대에게), 상대 통역은 이어폰(나에게)

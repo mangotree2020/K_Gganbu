@@ -60,6 +60,10 @@ export const palette = {
   cruise: { base: '#1D4ED8', 90: '#DBEAFE' },
   error: { 50: '#DC2626' },
   success: { 50: '#16A34A', 90: '#DCFCE7' },
+  // 음성통역 화자(언어) 구분용 보조 톤 — 기존 브랜드 색과 겹치지 않는 hue (accent=채움/보더, tint=배경)
+  violet: { 40: '#7C3AED', 95: '#F5F3FF' },
+  rose: { 40: '#E11D48', 95: '#FFF1F2' },
+  indigo: { 40: '#4F46E5', 95: '#EEF2FF' },
 } as const
 
 // 그라데이션 — LinearGradient colors 배열 (start {x:0,y:0} → end 방향은 사용처에서 지정)

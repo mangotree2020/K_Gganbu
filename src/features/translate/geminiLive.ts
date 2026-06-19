@@ -8,12 +8,19 @@ export type LiveStatus = 'connecting' | 'open' | 'closed' | 'error'
 
 // 한 turn = 화자 원문 + 통역 결과 (대화형 말풍선용)
 // audio: 통역 음성 24kHz PCM 전체(turn 확정 시) — 말풍선 '다시 듣기'용
-export type Turn = { original: string; translation: string; final: boolean; audio?: Uint8Array }
+// lang: Gemini가 감지한 소스 언어 코드(BCP-47, inputTranscription.languageCode). 없을 수 있음.
+export type Turn = {
+  original: string
+  translation: string
+  final: boolean
+  audio?: Uint8Array
+  lang?: string
+}
 
 export type LiveCallbacks = {
   onTurn?: (turn: Turn) => void
-  // 24kHz PCM 통역 음성. sourceText: 현재 turn 원문(화자 판단용 — 화자별 음성 On/Off)
-  onAudio?: (pcm24: Uint8Array, sourceText: string) => void
+  // 24kHz PCM 통역 음성. sourceText: 현재 turn 원문, sourceLang: 감지 언어 코드(화자 판단용)
+  onAudio?: (pcm24: Uint8Array, sourceText: string, sourceLang: string) => void
   onStatus?: (s: LiveStatus) => void
 }
 
@@ -147,9 +154,10 @@ export async function startLiveTranslate(
   const ws = new WebSocket(url)
   ws.binaryType = 'arraybuffer'
 
-  // 현재 turn 누적 버퍼 (원문/통역/음성)
+  // 현재 turn 누적 버퍼 (원문/통역/음성/감지 언어)
   let origBuf = ''
   let transBuf = ''
+  let langBuf = '' // Gemini 감지 소스 언어 코드(inputTranscription.languageCode)
   let audioChunks: Uint8Array[] = []
 
   ws.onopen = () => {
@@ -185,11 +193,13 @@ export async function startLiveTranslate(
       if (!sc) return
 
       if (sc.inputTranscription?.text) origBuf += sc.inputTranscription.text
+      // 감지 언어 코드 — 청크마다 올 수 있어 비지 않은 최신값 유지
+      if (sc.inputTranscription?.languageCode) langBuf = sc.inputTranscription.languageCode
       if (sc.outputTranscription?.text) transBuf += sc.outputTranscription.text
       for (const p of sc.modelTurn?.parts ?? []) {
         if (p.inlineData?.data) {
           const pcm = fromB64(p.inlineData.data)
-          cb.onAudio?.(pcm, origBuf) // 실시간 재생(원문 함께 — 화자 판단)
+          cb.onAudio?.(pcm, origBuf, langBuf) // 실시간 재생(원문·감지언어 함께 — 화자 판단)
           audioChunks.push(pcm) // turn 단위 누적(다시 듣기용)
         }
       }
@@ -202,10 +212,12 @@ export async function startLiveTranslate(
           translation: transBuf,
           final,
           audio: final && audioChunks.length ? concatPcm(audioChunks) : undefined,
+          lang: langBuf,
         })
         if (final) {
           origBuf = ''
           transBuf = ''
+          langBuf = ''
           audioChunks = []
         }
       }
