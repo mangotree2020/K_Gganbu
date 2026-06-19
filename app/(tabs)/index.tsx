@@ -2,14 +2,19 @@
 // 디자인 기능(섹션 See all·카드·타일·코어액션)을 실제 라우트로 배선해 작동하도록 함.
 import { LinearGradient } from 'expo-linear-gradient'
 import { router } from 'expo-router'
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import Svg, { Circle, G, Path, Rect } from 'react-native-svg'
 
 import { Icon, Pill } from '@/components/brand'
 import { FallbackBadge } from '@/components/FallbackBadge'
+import { HeroBackdrop } from '@/components/HeroBackdrop'
 import { usePlaces, type Poi } from '@/features/map/queries'
+import { useGganbuGreeting } from '@/features/gganbu/useGganbuGreeting'
+import { conditionIcon, conditionLabelKey, useWeather } from '@/features/weather/queries'
+import { useCityLabel } from '@/features/weather/useCityLabel'
+import { useCurrentLocation } from '@/hooks/useCurrentLocation'
 import { useLocaleStore, useT } from '@/lib/i18n'
 import { gradients, palette, shadows } from '@/theme/tokens'
 
@@ -183,6 +188,33 @@ function CitySilhouette() {
         <Rect x={340} y={205} width={20} height={45} />
       </G>
     </Svg>
+  )
+}
+
+// 현지 날짜·시간 라이브 표시 — 기기 현지 시간을 앱 언어로 포맷, 분 단위로 갱신.
+function LiveDateTime({ lang }: { lang: string }) {
+  const [now, setNow] = useState(() => new Date())
+  useEffect(() => {
+    const id = setInterval(() => setNow(new Date()), 15000) // 15초마다 갱신
+    return () => clearInterval(id)
+  }, [])
+  let date = ''
+  let time = ''
+  try {
+    date = new Intl.DateTimeFormat(lang, {
+      weekday: 'short',
+      month: 'short',
+      day: 'numeric',
+    }).format(now)
+    time = new Intl.DateTimeFormat(lang, { hour: 'numeric', minute: '2-digit' }).format(now)
+  } catch {
+    date = now.toDateString()
+    time = now.toTimeString().slice(0, 5)
+  }
+  return (
+    <Text style={ss.dateTime}>
+      {date} · {time}
+    </Text>
   )
 }
 
@@ -369,6 +401,29 @@ export default function HomeScreen() {
   const pois = placesData?.pois
   const poisMock = placesData?.provider === 'mock'
 
+  // 실시간 위치·날씨·도시명
+  const { coords } = useCurrentLocation()
+  const { data: weather } = useWeather(coords)
+  const city = useCityLabel(coords, lang)
+  // AI 깐부 인사 — 앱 시작 시 greeting, 이후 장소·시간·날씨 맞춤 메시지 30초 순환(변경 시 TTS)
+  const shortCity = city?.split(',').pop()?.trim() || 'Busan'
+  const gganbuMsg = useGganbuGreeting({
+    lang,
+    city: shortCity,
+    condition: weather?.condition,
+    hour: new Date().getHours(),
+  })
+  // hero 배경용 관광지 사진 — 이미지 있는 POI만(최대 6장 순환).
+  // useMemo로 참조 고정: 매 렌더마다 새 배열이면 HeroBackdrop 인터벌이 리셋돼 10초 회전이 끊김.
+  const heroPhotos = useMemo(
+    () =>
+      (pois ?? [])
+        .map((p) => p.imageUrl)
+        .filter((u): u is string => !!u)
+        .slice(0, 6),
+    [pois],
+  )
+
   useEffect(() => {
     const id = setInterval(() => setPromptIdx((i) => (i + 1) % AI_PROMPTS.length), 3500)
     return () => clearInterval(id)
@@ -378,19 +433,33 @@ export default function HomeScreen() {
     <View style={ss.container}>
       <ScrollView showsVerticalScrollIndicator={false}>
         {/* ── HERO ── */}
-        <LinearGradient
-          colors={gradients.morning}
-          locations={[0, 0.45, 1]}
-          start={{ x: 0.15, y: 0 }}
-          end={{ x: 0.4, y: 1 }}
-          style={ss.hero}>
-          <CitySilhouette />
+        <View style={ss.hero}>
+          {/* 현재 위치 관광지 사진 배경(동적 순환) + 브랜드 틴트 + 폴백 실루엣 + 가독성 스크림 */}
+          {heroPhotos.length > 0 && <HeroBackdrop photos={heroPhotos} />}
+          <LinearGradient
+            colors={gradients.morning}
+            locations={[0, 0.45, 1]}
+            start={{ x: 0.15, y: 0 }}
+            end={{ x: 0.4, y: 1 }}
+            style={[StyleSheet.absoluteFill, heroPhotos.length > 0 ? { opacity: 0.28 } : null]}
+          />
+          {heroPhotos.length === 0 && <CitySilhouette />}
+          {heroPhotos.length > 0 && (
+            // 상단(인사말·날씨) 가독성 — 위는 어둡게, 아래로 투명
+            <LinearGradient
+              colors={['rgba(0,0,0,0.5)', 'rgba(0,0,0,0.18)', 'transparent']}
+              locations={[0, 0.45, 0.85]}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 0.3, y: 1 }}
+              style={StyleSheet.absoluteFill}
+            />
+          )}
           <SafeAreaView edges={['top']}>
             {/* 상단 행 */}
             <View style={ss.heroTop}>
               <Pressable style={ss.locationPill} hitSlop={4}>
                 <Icon name="location_on" size={12} color="#fff" filled />
-                <Text style={ss.locationText}>Haeundae, Busan</Text>
+                <Text style={ss.locationText}>{city ?? 'Busan'}</Text>
                 <Icon name="expand_more" size={14} color="#fff" />
               </Pressable>
               <View style={{ flexDirection: 'row', gap: 8 }}>
@@ -409,14 +478,34 @@ export default function HomeScreen() {
             </View>
 
             {/* 인사말 */}
-            <Text style={ss.greeting}>{t('home.greeting')},</Text>
-            <Text style={ss.greetingSub}>{t('home.letsGo')}</Text>
+            <Text style={gganbuMsg.isGreeting ? ss.greeting : ss.gganbuMsg} numberOfLines={2}>
+              {gganbuMsg.text}
+            </Text>
+            <LiveDateTime lang={lang} />
             <View style={ss.weatherRow}>
-              <Icon name="thermostat" size={14} color="#fff" />
-              <Text style={ss.weatherText}>19° {t('home.weatherClear')}</Text>
+              <Icon
+                name={weather ? conditionIcon[weather.condition] : 'weather_clear'}
+                size={15}
+                color="#fff"
+                filled
+              />
+              <Text style={ss.weatherText}>
+                {weather ? `${weather.tempC}° ${t(conditionLabelKey[weather.condition])}` : '—'}
+              </Text>
               <Text style={ss.weatherDot}>·</Text>
-              <Icon name="waves" size={14} color="#fff" filled />
-              <Text style={ss.weatherText}>{t('home.wave')} 0.6m</Text>
+              {weather?.waveM != null ? (
+                <>
+                  <Icon name="waves" size={14} color="#fff" filled />
+                  <Text style={ss.weatherText}>
+                    {t('home.wave')} {weather.waveM}m
+                  </Text>
+                </>
+              ) : (
+                <>
+                  <Icon name="wind" size={14} color="#fff" />
+                  <Text style={ss.weatherText}>{weather?.windKph ?? 0}km/h</Text>
+                </>
+              )}
             </View>
 
             {/* 검색 바 */}
@@ -468,7 +557,7 @@ export default function HomeScreen() {
               ))}
             </View>
           </SafeAreaView>
-        </LinearGradient>
+        </View>
 
         {/* ── AI 카드 ── */}
         <View style={{ paddingHorizontal: 16, paddingTop: 14 }}>
@@ -697,8 +786,23 @@ const ss = StyleSheet.create({
     borderColor: '#fff',
   },
   iconBadgeText: { color: '#fff', fontSize: 9, fontWeight: '800' },
-  greeting: { color: '#fff', fontSize: 26, fontWeight: '800', letterSpacing: -0.6 },
-  greetingSub: { color: 'rgba(255,255,255,.85)', fontSize: 22, fontWeight: '700', marginTop: -2 },
+  greeting: {
+    color: '#fff',
+    fontSize: 26,
+    fontWeight: '800',
+    letterSpacing: -0.6,
+    lineHeight: 30,
+    minHeight: 52, // gganbuMsg와 동일 높이로 메시지 전환 시 점프 방지
+  },
+  gganbuMsg: {
+    color: '#fff',
+    fontSize: 20,
+    fontWeight: '800',
+    letterSpacing: -0.3,
+    lineHeight: 26,
+    minHeight: 52, // 1~2줄 변동 시 레이아웃 점프 방지
+  },
+  dateTime: { color: 'rgba(255,255,255,.92)', fontSize: 14, fontWeight: '600', marginTop: 3 },
   weatherRow: {
     flexDirection: 'row',
     alignItems: 'center',
