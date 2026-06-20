@@ -3,7 +3,16 @@
 import { LinearGradient } from 'expo-linear-gradient'
 import { router } from 'expo-router'
 import { useEffect, useMemo, useState } from 'react'
-import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native'
+import {
+  Dimensions,
+  Image,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+} from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import Svg, { Circle, G, Path, Rect } from 'react-native-svg'
 
@@ -55,12 +64,33 @@ const PLACES = [
   },
 ]
 
-const AI_PROMPTS = [
-  '6 hours at the port — what now?',
-  'Where do locals actually eat near Haeundae?',
-  'Rainy afternoon — indoor plan?',
-  'Translate this menu for a peanut allergy',
-]
+const SCREEN_W = Dimensions.get('window').width
+
+// Today's Pick AI 추천 점수 — 오늘 날씨·시간(식사·저녁) 컨텍스트 반영.
+// (성별·국적·여행 일정은 데이터 가용 시 가중치 확장 — 현재는 onboarding/auth 범위 내 미보유)
+function pickScore(cat: string, condition: string | undefined, hour: number): number {
+  let s = 0
+  const indoor = ['culture', 'stay', 'shopping', 'cafe'].includes(cat)
+  const outdoor = ['sights', 'beach', 'leisure', 'village'].includes(cat)
+  const bad =
+    condition === 'rain' || condition === 'snow' || condition === 'storm' || condition === 'fog'
+  if (bad ? indoor : outdoor) s += 3
+  const meal = (hour >= 11 && hour < 14) || (hour >= 17 && hour < 20)
+  if (meal && (cat === 'food' || cat === 'seafood')) s += 2
+  if (hour >= 18 && (cat === 'food' || cat === 'culture')) s += 1 // 저녁 분위기
+  return s
+}
+
+// 좌표 거리(km) 간이 계산(Haversine)
+function distKm(lat0: number, lng0: number, lat: number, lng: number): number {
+  const R = 6371
+  const dLat = ((lat - lat0) * Math.PI) / 180
+  const dLng = ((lng - lng0) * Math.PI) / 180
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos((lat0 * Math.PI) / 180) * Math.cos((lat * Math.PI) / 180) * Math.sin(dLng / 2) ** 2
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
+}
 
 // 퀵 타일 (BigTile) — 디자인 톤/아이콘/라우트
 const TILES = [
@@ -70,7 +100,7 @@ const TILES = [
     titleKey: 'translate.title',
     subKey: 'home.tileTranslateSub',
     tone: 'teal',
-    route: '/translate',
+    route: '/(tabs)/translate',
   },
   {
     id: 'coupons',
@@ -302,12 +332,14 @@ function PlaceCard({
   sub,
   rating,
   badge,
+  imageUrl,
 }: {
   cat: string
   name: string
   sub: string
   rating?: number
   badge?: string
+  imageUrl?: string | null
 }) {
   return (
     <Pressable
@@ -318,7 +350,15 @@ function PlaceCard({
         })
       }
       style={[ss.placeCard, shadows.card]}>
-      <PlaceThumb category={cat} height={92} />
+      {imageUrl ? (
+        <Image
+          source={{ uri: imageUrl }}
+          style={{ width: '100%', height: 92 }}
+          resizeMode="cover"
+        />
+      ) : (
+        <PlaceThumb category={cat} height={92} />
+      )}
       <View style={{ padding: 8, paddingBottom: 10 }}>
         <Text style={ss.placeName} numberOfLines={1}>
           {name}
@@ -396,7 +436,6 @@ const REVIEWS = [
 export default function HomeScreen() {
   const t = useT()
   const lang = useLocaleStore((s) => s.lang)
-  const [promptIdx, setPromptIdx] = useState(0)
   const { data: placesData } = usePlaces(lang, 12)
   const pois = placesData?.pois
   const poisMock = placesData?.provider === 'mock'
@@ -405,14 +444,27 @@ export default function HomeScreen() {
   const { coords } = useCurrentLocation()
   const { data: weather } = useWeather(coords)
   const city = useCityLabel(coords, lang)
+  const hour = new Date().getHours()
   // AI 깐부 인사 — 앱 시작 시 greeting, 이후 장소·시간·날씨 맞춤 메시지 30초 순환(변경 시 TTS)
   const shortCity = city?.split(',').pop()?.trim() || 'Busan'
   const gganbuMsg = useGganbuGreeting({
     lang,
     city: shortCity,
     condition: weather?.condition,
-    hour: new Date().getHours(),
+    hour,
   })
+  // Today's Pick — AI가 오늘 날씨·위치·시간 고려해 동적 추천. 1시간마다 featured 회전.
+  // 좌우 스와이프로 추천 내역 확인(추천 리스트). 카드 배경 = 추천 장소 실사진.
+  const todaysPicks = useMemo(() => {
+    const withImg = (pois ?? []).filter((p) => p.imageUrl)
+    if (!withImg.length) return []
+    const ranked = withImg
+      .map((p) => ({ p, score: pickScore(p.cat, weather?.condition, hour) }))
+      .sort((a, b) => b.score - a.score)
+      .map((x) => x.p)
+    const off = hour % ranked.length // 1시간마다 추천 변경(시간으로 회전)
+    return [...ranked.slice(off), ...ranked.slice(0, off)].slice(0, 6)
+  }, [pois, weather?.condition, hour])
   // hero 배경용 관광지 사진 — 이미지 있는 POI만(최대 6장 순환).
   // useMemo로 참조 고정: 매 렌더마다 새 배열이면 HeroBackdrop 인터벌이 리셋돼 10초 회전이 끊김.
   const heroPhotos = useMemo(
@@ -423,11 +475,6 @@ export default function HomeScreen() {
         .slice(0, 6),
     [pois],
   )
-
-  useEffect(() => {
-    const id = setInterval(() => setPromptIdx((i) => (i + 1) % AI_PROMPTS.length), 3500)
-    return () => clearInterval(id)
-  }, [])
 
   return (
     <View style={ss.container}>
@@ -516,7 +563,7 @@ export default function HomeScreen() {
                 placeholderTextColor={palette.zinc[500]}
                 style={ss.searchInput}
               />
-              <Pressable style={ss.translateBtn} onPress={() => router.push('/translate')}>
+              <Pressable style={ss.translateBtn} onPress={() => router.push('/(tabs)/translate')}>
                 <Icon name="translate" size={14} color="#fff" filled />
                 <Text style={ss.translateBtnText}> KO</Text>
               </Pressable>
@@ -529,7 +576,7 @@ export default function HomeScreen() {
                   icon: 'translate',
                   label: t('home.translateNow'),
                   sub: t('home.translateNowSub'),
-                  route: '/translate',
+                  route: '/(tabs)/translate',
                 },
                 {
                   icon: 'smart_toy',
@@ -559,30 +606,7 @@ export default function HomeScreen() {
           </SafeAreaView>
         </View>
 
-        {/* ── AI 카드 ── */}
-        <View style={{ paddingHorizontal: 16, paddingTop: 14 }}>
-          <Pressable
-            onPress={() => router.push('/(tabs)/ai' as never)}
-            style={[ss.aiCard, shadows.pop]}>
-            <LinearGradient
-              colors={['#38BDF8', '#0EA5E9', '#0D9488']}
-              locations={[0, 0.6, 1]}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 1 }}
-              style={[ss.aiAvatar, shadows.blue]}>
-              <Icon name="auto_awesome" size={24} color="#fff" filled />
-            </LinearGradient>
-            <View style={{ flex: 1 }}>
-              <Text style={ss.aiTitle}>{t('home.askAiTitle')}</Text>
-              <Text style={ss.aiPrompt} numberOfLines={1}>
-                &quot;{AI_PROMPTS[promptIdx]}&quot;
-              </Text>
-            </View>
-            <View style={ss.aiArrow}>
-              <Icon name="north_east" size={18} color={palette.blue[30]} />
-            </View>
-          </Pressable>
-        </View>
+        {/* AI 카드는 플로팅 AI 깐부 버튼과 중복되어 제거(요청). */}
 
         {/* ── 퀵 타일 ── */}
         <ScrollView
@@ -594,42 +618,80 @@ export default function HomeScreen() {
           ))}
         </ScrollView>
 
-        {/* ── Today's pick ── */}
-        <View style={{ paddingHorizontal: 16, paddingTop: 22 }}>
-          <SectionHeader title={t('home.todayPick')} sub={t('home.curatedByAi')} />
-          <Pressable
-            onPress={() =>
-              router.push({
-                pathname: '/place',
-                params: {
-                  cat: 'village',
-                  name: 'Gamcheon Culture Village',
-                  sub: 'Heritage · 8.2km',
-                  rating: '4.9',
-                },
-              })
-            }
-            style={[ss.pickCard, shadows.card]}>
-            <PlaceThumb category="village" height={180} />
-            <View style={ss.pickTrending}>
-              <Icon name="local_fire_department" size={13} color={palette.coral[50]} filled />
-              <Text style={ss.pickTrendingText}> Trending</Text>
-            </View>
-            <View style={ss.pickScrim} />
-            <View style={ss.pickOverlay}>
-              <Text style={ss.pickName}>Gamcheon Culture Village</Text>
-              <View style={[ss.row, { gap: 8, marginTop: 2 }]}>
-                <View style={ss.row}>
-                  <Icon name="star" size={12} color={palette.amber[50]} filled />
-                  <Text style={ss.pickMeta}> 4.9 · 18k reviews</Text>
-                </View>
-                <View style={ss.row}>
-                  <Icon name="directions_walk" size={12} color="#fff" />
-                  <Text style={ss.pickMeta}> 8.2km</Text>
+        {/* ── Today's pick — AI 동적 추천(날씨·위치·시간), 1시간마다 변경, 좌우 스와이프 내역 ── */}
+        <View style={{ paddingTop: 22 }}>
+          <View style={{ paddingHorizontal: 16 }}>
+            <SectionHeader title={t('home.todayPick')} sub={t('home.curatedByAi')} />
+          </View>
+          {todaysPicks.length > 0 ? (
+            <ScrollView
+              horizontal
+              pagingEnabled
+              showsHorizontalScrollIndicator={false}
+              snapToInterval={SCREEN_W - 22}
+              decelerationRate="fast"
+              contentContainerStyle={{ paddingHorizontal: 16, gap: 10 }}>
+              {todaysPicks.map((p, i) => (
+                <Pressable
+                  key={p.id}
+                  onPress={() =>
+                    router.push({
+                      pathname: '/place',
+                      params: { cat: p.cat, name: p.name, sub: p.address ?? 'Busan' },
+                    })
+                  }
+                  style={[ss.pickCard, { width: SCREEN_W - 32 }, shadows.card]}>
+                  <Image
+                    source={{ uri: p.imageUrl as string }}
+                    style={{ width: '100%', height: 180 }}
+                    resizeMode="cover"
+                  />
+                  <View style={ss.pickTrending}>
+                    <Icon name="auto_awesome" size={12} color={palette.blue[50]} filled />
+                    <Text style={ss.pickTrendingText}>
+                      {' '}
+                      {i === 0 ? t('home.aiPickNow') : t('home.aiPick')}
+                    </Text>
+                  </View>
+                  <View style={ss.pickScrim} />
+                  <View style={ss.pickOverlay}>
+                    <Text style={ss.pickName} numberOfLines={1}>
+                      {p.name}
+                    </Text>
+                    <View style={[ss.row, { gap: 10, marginTop: 2 }]}>
+                      <View style={ss.row}>
+                        <Icon name="location_on" size={12} color="#fff" filled />
+                        <Text style={ss.pickMeta} numberOfLines={1}>
+                          {' '}
+                          {p.address ?? 'Busan'}
+                        </Text>
+                      </View>
+                      {p.lat != null && p.lng != null && (
+                        <View style={ss.row}>
+                          <Icon name="directions_walk" size={12} color="#fff" />
+                          <Text style={ss.pickMeta}>
+                            {' '}
+                            {distKm(coords.latitude, coords.longitude, p.lat, p.lng).toFixed(1)}km
+                          </Text>
+                        </View>
+                      )}
+                    </View>
+                  </View>
+                </Pressable>
+              ))}
+            </ScrollView>
+          ) : (
+            <View style={{ paddingHorizontal: 16 }}>
+              <View style={[ss.pickCard, shadows.card]}>
+                <PlaceThumb category="village" height={180} />
+                <View style={ss.pickScrim} />
+                <View style={ss.pickOverlay}>
+                  <Text style={ss.pickName}>Gamcheon Culture Village</Text>
                 </View>
               </View>
             </View>
-          </Pressable>
+          )}
+          {todaysPicks.length > 1 && <Text style={ss.pickHint}>{t('home.aiPickHint')}</Text>}
         </View>
 
         {/* ── Nearby now (실 POI + 폴백) ── */}
@@ -652,7 +714,13 @@ export default function HomeScreen() {
             contentContainerStyle={{ paddingHorizontal: 16, gap: 12 }}>
             {pois && pois.length > 0
               ? pois.map((p: Poi) => (
-                  <PlaceCard key={p.id} cat={p.cat} name={p.name} sub={p.address ?? 'Busan'} />
+                  <PlaceCard
+                    key={p.id}
+                    cat={p.cat}
+                    name={p.name}
+                    sub={p.address ?? 'Busan'}
+                    imageUrl={p.imageUrl}
+                  />
                 ))
               : PLACES.map((p) => (
                   <PlaceCard
@@ -733,6 +801,19 @@ export default function HomeScreen() {
           </View>
         </View>
       </ScrollView>
+
+      {/* 플로팅 AI 깐부 버튼 (PLANNING §9, 디자인 docs/AI Gganbu.png) — 알약형 + 로봇 아이콘 + 라벨.
+          전체폭 래퍼 + flex-end로 우측 정렬(absolute+right만으로는 전폭 늘어나는 문제 회피). */}
+      <View style={ss.gganbuFabWrap} pointerEvents="box-none">
+        <Pressable
+          onPress={() => router.push('/(tabs)/ai' as never)}
+          android_ripple={{ color: 'rgba(255,255,255,0.25)', borderless: false }}
+          style={ss.gganbuFab}>
+          {/* 외곽선 로봇(눈·안테나 보이도록) — filled면 눈 구멍이 메워져 가독성 저하 */}
+          <Icon name="smart_toy" size={23} color="#fff" strokeWidth={2.2} />
+          <Text style={ss.gganbuFabText}>AI Gganbu</Text>
+        </Pressable>
+      </View>
     </View>
   )
 }
@@ -740,6 +821,27 @@ export default function HomeScreen() {
 const ss = StyleSheet.create({
   container: { flex: 1, backgroundColor: palette.zinc[50] },
   row: { flexDirection: 'row', alignItems: 'center' },
+
+  // 플로팅 AI 깐부 버튼 — 알약형 솔리드 블루 + 로봇 아이콘 + 라벨 (docs/AI Gganbu.png)
+  gganbuFabWrap: {
+    position: 'absolute',
+    left: 0,
+    right: 16,
+    bottom: 18,
+    alignItems: 'flex-end', // 알약을 우측 정렬(내용 너비로 shrink)
+  },
+  gganbuFab: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    height: 50,
+    paddingLeft: 16,
+    paddingRight: 18,
+    borderRadius: 999,
+    backgroundColor: palette.blue[50],
+    ...shadows.blue,
+  },
+  gganbuFabText: { color: '#fff', fontSize: 15, fontWeight: '800', letterSpacing: -0.2 },
 
   hero: { paddingHorizontal: 18, paddingBottom: 14, overflow: 'hidden' },
   heroTop: {
@@ -956,6 +1058,13 @@ const ss = StyleSheet.create({
   pickOverlay: { position: 'absolute', left: 14, right: 14, bottom: 10 },
   pickName: { color: '#fff', fontSize: 17, fontWeight: '800', letterSpacing: -0.3 },
   pickMeta: { color: 'rgba(255,255,255,.94)', fontSize: 11 },
+  pickHint: {
+    fontSize: 10.5,
+    color: palette.zinc[400],
+    fontWeight: '600',
+    textAlign: 'center',
+    marginTop: 8,
+  },
 
   placeCard: {
     width: 156,
