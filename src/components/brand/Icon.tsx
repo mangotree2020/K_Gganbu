@@ -1,4 +1,5 @@
 // Icon — 디자인의 Material Symbols 이름을 lucide-react-native 아이콘으로 매핑
+import { Text, View } from 'react-native'
 import {
   Plus,
   CableCar,
@@ -237,6 +238,40 @@ export type IconProps = {
   strokeWidth?: number
 }
 
+// 통역(번역) 글리프 — 한글/영어를 나타내는 "한A" 텍스트 아이콘. 모든 화면 통역 아이콘 통일.
+function TranslateGlyph({ size, color }: { size: number; color: string }) {
+  return (
+    <View
+      style={{
+        width: size,
+        height: size,
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+      }}>
+      <Text
+        style={{
+          fontSize: size * 0.62,
+          fontWeight: '900',
+          color,
+          includeFontPadding: false,
+        }}>
+        한
+      </Text>
+      <Text
+        style={{
+          fontSize: size * 0.52,
+          fontWeight: '900',
+          color,
+          includeFontPadding: false,
+          marginLeft: size * 0.04,
+        }}>
+        A
+      </Text>
+    </View>
+  )
+}
+
 export function Icon({
   name,
   size = 20,
@@ -244,6 +279,8 @@ export function Icon({
   filled = false,
   strokeWidth,
 }: IconProps) {
+  // 통역 아이콘은 한/영(한A) 글리프로 통일
+  if (name === 'translate') return <TranslateGlyph size={size} color={color} />
   const Cmp = MAP[name] ?? Circle
   return (
     <Cmp
