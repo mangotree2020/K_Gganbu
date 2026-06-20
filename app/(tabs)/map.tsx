@@ -34,6 +34,7 @@ import {
   type NaverMapHandle,
   type NaverMarker,
 } from '@/features/map/NaverMap'
+import { usePlaceReviews } from '@/features/review/queries'
 import { useCurrentLocation } from '@/hooks/useCurrentLocation'
 import { useLocaleStore, useT } from '@/lib/i18n'
 import { palette, shadows } from '@/theme/tokens'
@@ -96,49 +97,8 @@ const MAP_TYPE_ICON: Record<MapType, string> = {
   hybrid: 'layers',
 }
 
-// 리뷰 — 한국인(Naver)/외국인(Google) 두 관점을 각자의 언어로 대표 표시(샘플, 탭하면 실 리뷰).
-// 실 리뷰 API 연동 전까지 관점별 대표 톤을 보여주는 mock(좌:한국인 한국어, 우:외국인 영어).
-const NAVER_REVIEW = {
-  score: 4.6,
-  text: '로컬 분위기 좋고 가성비 최고! 웨이팅 있어도 재방문 의사 있어요.',
-}
-const GOOGLE_REVIEW = {
-  score: 4.5,
-  text: 'Hidden gem — staff spoke some English and the view was amazing.',
-}
-
-// 개별 리뷰 목록(샘플) — 선택 장소에 대한 한국인/외국인 리뷰가 섞여 표시(스크롤로 더 보기).
-const SAMPLE_REVIEWS: { who: string; flag: string; score: number; text: string; time: string }[] = [
-  {
-    who: '민지',
-    flag: '🇰🇷',
-    score: 5,
-    text: '현지인 맛집 인증! 주말엔 웨이팅 있으니 일찍 가세요.',
-    time: '2일 전',
-  },
-  {
-    who: 'Emily',
-    flag: '🇺🇸',
-    score: 5,
-    text: 'Loved the atmosphere. English menu helped a lot!',
-    time: '3d ago',
-  },
-  {
-    who: 'たけし',
-    flag: '🇯🇵',
-    score: 4,
-    text: '景色が最高でした。写真スポットとしておすすめ。',
-    time: '1週間前',
-  },
-  {
-    who: '相赫',
-    flag: '🇰🇷',
-    score: 4,
-    text: '가성비 좋아요. 주차가 조금 불편한 점만 빼면 만족.',
-    time: '1주 전',
-  },
-  { who: 'Liwei', flag: '🇨🇳', score: 5, text: '风景很美，交通也方便，推荐！', time: '2周前' },
-]
+// 리뷰는 선택 장소별 실데이터(Google Places, 언어별 분리)로 usePlaceReviews에서 조회.
+// 키 미설정/실패 시 queries.ts의 MOCK_REVIEWS 폴백(mock-first).
 
 // 두 좌표 간 거리(m) — Haversine. 관광지 카드 거리순 정렬·표시용.
 function distanceM(a: LatLng, b: { lat: number; lng: number }): number {
@@ -237,6 +197,13 @@ export default function MapScreen() {
     () => sortedPlaces.find((p) => p.id === selectedId) ?? sortedPlaces[0],
     [sortedPlaces, selectedId],
   )
+
+  // 선택 장소의 실 리뷰(Google Places, 한국인/외국인 분리). 실패 시 mock 폴백.
+  const { data: reviews } = usePlaceReviews(
+    place ? { id: place.id, name: place.name, lat: place.lat, lng: place.lng } : null,
+    lang,
+  )
+  const reviewsMock = reviews?.provider === 'mock'
 
   // 검색 결과로 지도 이동
   const goToSearchResult = (r: NaverPoi) => {
@@ -721,8 +688,16 @@ export default function MapScreen() {
               })}
             </ScrollView>
 
-            {/* 리뷰 — 두 관점 요약 + 개별 리뷰 목록 */}
-            <Text style={ss.sectionTitle}>{t('map.reviews')}</Text>
+            {/* 리뷰 — 두 관점 요약(실데이터, 언어별 분리) + 개별 리뷰 목록 */}
+            <View style={ss.sectionTitleRow}>
+              <Text style={ss.sectionTitle}>{t('map.reviews')}</Text>
+              {reviews?.rating != null && (
+                <Text style={ss.reviewOverall}>
+                  ★ {reviews.rating.toFixed(1)} · {reviews.total}
+                </Text>
+              )}
+              {reviewsMock && <FallbackBadge label="Sample" />}
+            </View>
             <View style={ss.reviewRow}>
               {/* 카드 전체가 아닌 우측 상단 아이콘 탭 시에만 지도 앱 호출 */}
               <View style={[ss.reviewCard, { borderColor: '#03C75A' }]}>
@@ -738,23 +713,31 @@ export default function MapScreen() {
                     <Icon name="open_in_new" size={15} color="#03C75A" />
                   </Pressable>
                 </View>
-                <View style={ss.reviewStars}>
-                  {[1, 2, 3, 4, 5].map((i) => (
-                    <Icon
-                      key={i}
-                      name="star"
-                      size={11}
-                      color={
-                        i <= Math.round(NAVER_REVIEW.score) ? palette.amber[50] : palette.zinc[200]
-                      }
-                      filled
-                    />
-                  ))}
-                  <Text style={ss.reviewScore}>{NAVER_REVIEW.score.toFixed(1)}</Text>
-                </View>
-                <Text style={ss.reviewQuote} numberOfLines={2}>
-                  “{NAVER_REVIEW.text}”
-                </Text>
+                {reviews?.korean ? (
+                  <>
+                    <View style={ss.reviewStars}>
+                      {[1, 2, 3, 4, 5].map((i) => (
+                        <Icon
+                          key={i}
+                          name="star"
+                          size={11}
+                          color={
+                            i <= Math.round(reviews.korean!.score)
+                              ? palette.amber[50]
+                              : palette.zinc[200]
+                          }
+                          filled
+                        />
+                      ))}
+                      <Text style={ss.reviewScore}>{reviews.korean.score.toFixed(1)}</Text>
+                    </View>
+                    <Text style={ss.reviewQuote} numberOfLines={2}>
+                      “{reviews.korean.text}”
+                    </Text>
+                  </>
+                ) : (
+                  <Text style={ss.reviewNone}>{t('map.reviewNone')}</Text>
+                )}
               </View>
               <View style={[ss.reviewCard, { borderColor: '#4285F4' }]}>
                 <View style={ss.reviewCardHead}>
@@ -769,27 +752,35 @@ export default function MapScreen() {
                     <Icon name="open_in_new" size={15} color="#4285F4" />
                   </Pressable>
                 </View>
-                <View style={ss.reviewStars}>
-                  {[1, 2, 3, 4, 5].map((i) => (
-                    <Icon
-                      key={i}
-                      name="star"
-                      size={11}
-                      color={
-                        i <= Math.round(GOOGLE_REVIEW.score) ? palette.amber[50] : palette.zinc[200]
-                      }
-                      filled
-                    />
-                  ))}
-                  <Text style={ss.reviewScore}>{GOOGLE_REVIEW.score.toFixed(1)}</Text>
-                </View>
-                <Text style={ss.reviewQuote} numberOfLines={2}>
-                  “{GOOGLE_REVIEW.text}”
-                </Text>
+                {reviews?.foreign ? (
+                  <>
+                    <View style={ss.reviewStars}>
+                      {[1, 2, 3, 4, 5].map((i) => (
+                        <Icon
+                          key={i}
+                          name="star"
+                          size={11}
+                          color={
+                            i <= Math.round(reviews.foreign!.score)
+                              ? palette.amber[50]
+                              : palette.zinc[200]
+                          }
+                          filled
+                        />
+                      ))}
+                      <Text style={ss.reviewScore}>{reviews.foreign.score.toFixed(1)}</Text>
+                    </View>
+                    <Text style={ss.reviewQuote} numberOfLines={2}>
+                      “{reviews.foreign.text}”
+                    </Text>
+                  </>
+                ) : (
+                  <Text style={ss.reviewNone}>{t('map.reviewNone')}</Text>
+                )}
               </View>
             </View>
             {/* 개별 리뷰 (한국인/외국인 혼합, 스크롤로 더 보기) */}
-            {SAMPLE_REVIEWS.map((r, i) => (
+            {(reviews?.reviews ?? []).map((r, i) => (
               <View key={i} style={ss.reviewItem}>
                 <View style={ss.reviewAvatar}>
                   <Text style={ss.reviewAvatarFlag}>{r.flag}</Text>
@@ -1058,6 +1049,8 @@ const ss = StyleSheet.create({
   reviewStars: { flexDirection: 'row', alignItems: 'center', gap: 1 },
   reviewScore: { fontSize: 11, fontWeight: '800', color: palette.zinc[700], marginLeft: 4 },
   reviewQuote: { fontSize: 11.5, color: palette.zinc[600], lineHeight: 16 },
+  reviewNone: { fontSize: 11, color: palette.zinc[400], marginTop: 6, fontStyle: 'italic' },
+  reviewOverall: { fontSize: 12, fontWeight: '700', color: palette.amber[50] },
   platformBadge: {
     width: 22,
     height: 22,
