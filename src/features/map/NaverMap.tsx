@@ -20,13 +20,18 @@ type Props = {
   selectedId?: string
   onMarkerPress?: (id: string) => void
   onAuthError?: (msg: string) => void
+  onReady?: () => void // 지도 init 완료 시(내 위치 마커 초기 표시용)
   language?: string // 앱 설정 언어 (AppLang). 지도 라벨 언어로 사용
 }
+
+export type MapType = 'normal' | 'satellite' | 'hybrid'
 
 export type NaverMapHandle = {
   moveTo: (lat: number, lng: number, zoom?: number) => void
   drawRoute: (path: { latitude: number; longitude: number }[]) => void
   clearRoute: () => void
+  setMapType: (type: MapType) => void
+  setMyLocation: (lat: number, lng: number, zoom?: number) => void
 }
 
 const CLIENT_ID = process.env.EXPO_PUBLIC_NAVER_MAPS_CLIENT_ID ?? ''
@@ -66,13 +71,30 @@ function buildHtml(lat: number, lng: number, markers: NaverMarker[], lang: Naver
       if(!window.naver || !naver.maps){ post({type:'auth_error',message:'naver.maps 미로딩'}); return; }
       map = new naver.maps.Map('map', {
         center: new naver.maps.LatLng(${lat}, ${lng}),
-        zoom: 13,
+        zoom: 16, // 도보 이동 기준 측척(거리 단위)
         logoControl: true,
         mapDataControl: false,
-        scaleControl: false,
+        scaleControl: true, // 측척 바 표시
       });
       post({type:'ready'});
       setMarkers(${JSON.stringify(markers)});
+    }
+    // 지도 유형 전환 (일반/위성/하이브리드)
+    function setMapType(type){
+      if(!map || !naver.maps.MapTypeId) return;
+      var m = { normal: naver.maps.MapTypeId.NORMAL, satellite: naver.maps.MapTypeId.SATELLITE, hybrid: naver.maps.MapTypeId.HYBRID };
+      map.setMapTypeId(m[type] || naver.maps.MapTypeId.NORMAL);
+    }
+    // 내 위치 표시 — 파란 점 마커 갱신 + 해당 위치로 이동
+    var myLoc = null;
+    function setMyLocation(lat, lng, zoom){
+      if(!map) return;
+      if(myLoc) myLoc.setMap(null);
+      myLoc = new naver.maps.Marker({
+        position: new naver.maps.LatLng(lat, lng), map: map, zIndex: 1000,
+        icon: { content: '<div style="width:18px;height:18px;border-radius:50%;background:#2563EB;border:3px solid #fff;box-shadow:0 0 0 3px rgba(37,99,235,.3),0 1px 4px rgba(0,0,0,.4)"></div>', anchor: new naver.maps.Point(9, 9) },
+      });
+      map.morph(new naver.maps.LatLng(lat, lng), zoom || 16);
     }
     function clearMarkers(){ markers.forEach(function(m){ m.setMap(null); }); markers = []; }
     function setMarkers(list){
@@ -116,7 +138,7 @@ function buildHtml(lat: number, lng: number, markers: NaverMarker[], lang: Naver
 }
 
 export const NaverMap = forwardRef<NaverMapHandle, Props>(function NaverMap(
-  { latitude, longitude, markers, onMarkerPress, onAuthError, language },
+  { latitude, longitude, markers, onMarkerPress, onAuthError, onReady, language },
   ref,
 ) {
   const webRef = useRef<WebView>(null)
@@ -138,12 +160,21 @@ export const NaverMap = forwardRef<NaverMapHandle, Props>(function NaverMap(
     clearRoute: () => {
       webRef.current?.injectJavaScript(`clearRoute(); true;`)
     },
+    setMapType: (type) => {
+      webRef.current?.injectJavaScript(`setMapType(${JSON.stringify(type)}); true;`)
+    },
+    setMyLocation: (lat, lng, zoom) => {
+      webRef.current?.injectJavaScript(
+        `setMyLocation(${lat}, ${lng}, ${zoom ?? 'undefined'}); true;`,
+      )
+    },
   }))
 
   const onMessage = (e: WebViewMessageEvent) => {
     try {
       const msg = JSON.parse(e.nativeEvent.data)
       if (msg.type === 'marker' && msg.id) onMarkerPress?.(msg.id)
+      else if (msg.type === 'ready') onReady?.()
       else if (msg.type === 'auth_error') onAuthError?.(msg.message ?? 'Naver auth error')
     } catch {
       // ignore

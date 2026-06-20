@@ -2,8 +2,10 @@ import Slider from '@react-native-community/slider'
 import { useMemo, useRef, useState } from 'react'
 import {
   ActivityIndicator,
+  Animated,
   Image,
   Linking,
+  PanResponder,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -18,13 +20,137 @@ import { FallbackBadge } from '@/components/FallbackBadge'
 import { PlaceThumb } from '@/components/PlaceThumb'
 import { useFavorites, useToggleFavorite } from '@/features/favorites/queries'
 import { GoogleMap, type GoogleMapHandle } from '@/features/map/GoogleMap'
-import { fetchRoute, useMapPois, type LatLng, type Poi } from '@/features/map/queries'
-import { NaverMap, type NaverMapHandle, type NaverMarker } from '@/features/map/NaverMap'
+import {
+  fetchRoute,
+  useMapPois,
+  useNaverSearch,
+  type LatLng,
+  type NaverPoi,
+  type Poi,
+} from '@/features/map/queries'
+import {
+  NaverMap,
+  type MapType,
+  type NaverMapHandle,
+  type NaverMarker,
+} from '@/features/map/NaverMap'
 import { useCurrentLocation } from '@/hooks/useCurrentLocation'
 import { useLocaleStore, useT } from '@/lib/i18n'
 import { palette, shadows } from '@/theme/tokens'
 
 type ProviderId = 'naver' | 'blend' | 'google'
+
+// 도보 이동 기준 줌(거리 단위) — 검색/내 위치/장소 선택 시 공통 사용
+const WALK_ZOOM = 16
+
+// 하단 시트 스냅 높이 — MINI(헤드만), HALF(헤드+카드 절반=초기), FULL(콘텐츠 다수)
+const SHEET_MINI = 134
+const SHEET_HALF = 230 // 헤드 + 가로 추천카드 절반 정도 보임
+const SHEET_FULL = 580
+const SHEET_SNAPS = [SHEET_MINI, SHEET_HALF, SHEET_FULL]
+
+// 카테고리 필터 — 네이버/구글 지도 수준의 다양한 분류(TourAPI 콘텐츠 타입 기반)
+const CATS: { key: string; labelKey: string; icon: string; color: string }[] = [
+  { key: 'food', labelKey: 'map.catFood', icon: 'restaurant', color: palette.coral[50] },
+  { key: 'sights', labelKey: 'map.catSights', icon: 'photo_camera', color: palette.teal[40] },
+  { key: 'culture', labelKey: 'map.catCulture', icon: 'festival', color: palette.amber[50] },
+  { key: 'stay', labelKey: 'map.catStay', icon: 'hotel', color: palette.blue[50] },
+  { key: 'shopping', labelKey: 'map.catShopping', icon: 'shopping_bag', color: palette.rose[40] },
+  {
+    key: 'leisure',
+    labelKey: 'map.catLeisure',
+    icon: 'directions_walk',
+    color: palette.success[50],
+  },
+  { key: 'festival', labelKey: 'map.catFestival', icon: 'celebration', color: palette.violet[40] },
+  { key: 'course', labelKey: 'map.catCourse', icon: 'route', color: palette.indigo[40] },
+]
+// 카테고리 키 → 현지화 라벨(없으면 키 그대로)
+const catLabel = (t: (k: string) => string, cat: string): string => {
+  const c = CATS.find((x) => x.key === cat)
+  return c ? t(c.labelKey) : cat
+}
+
+// 카테고리 → TourAPI contentTypeId (Kor/외국어 서비스가 ID가 달라 분기). 필터 시 해당 타입만 조회.
+const CAT_CONTENT_TYPE: Record<string, { ko: string; foreign: string }> = {
+  sights: { ko: '12', foreign: '76' },
+  culture: { ko: '14', foreign: '78' },
+  festival: { ko: '15', foreign: '85' },
+  course: { ko: '25', foreign: '77' },
+  leisure: { ko: '28', foreign: '75' },
+  stay: { ko: '32', foreign: '80' },
+  shopping: { ko: '38', foreign: '79' },
+  food: { ko: '39', foreign: '82' },
+}
+const contentTypeFor = (cat: string | null, lang: string): string | undefined => {
+  if (!cat) return undefined
+  const m = CAT_CONTENT_TYPE[cat]
+  return m ? (lang === 'ko' ? m.ko : m.foreign) : undefined
+}
+
+// 지도 유형 순환 + 아이콘
+const MAP_TYPES: MapType[] = ['normal', 'satellite', 'hybrid']
+const MAP_TYPE_ICON: Record<MapType, string> = {
+  normal: 'map',
+  satellite: 'layers',
+  hybrid: 'layers',
+}
+
+// 리뷰 — 한국인(Naver)/외국인(Google) 두 관점을 각자의 언어로 대표 표시(샘플, 탭하면 실 리뷰).
+// 실 리뷰 API 연동 전까지 관점별 대표 톤을 보여주는 mock(좌:한국인 한국어, 우:외국인 영어).
+const NAVER_REVIEW = {
+  score: 4.6,
+  text: '로컬 분위기 좋고 가성비 최고! 웨이팅 있어도 재방문 의사 있어요.',
+}
+const GOOGLE_REVIEW = {
+  score: 4.5,
+  text: 'Hidden gem — staff spoke some English and the view was amazing.',
+}
+
+// 개별 리뷰 목록(샘플) — 선택 장소에 대한 한국인/외국인 리뷰가 섞여 표시(스크롤로 더 보기).
+const SAMPLE_REVIEWS: { who: string; flag: string; score: number; text: string; time: string }[] = [
+  {
+    who: '민지',
+    flag: '🇰🇷',
+    score: 5,
+    text: '현지인 맛집 인증! 주말엔 웨이팅 있으니 일찍 가세요.',
+    time: '2일 전',
+  },
+  {
+    who: 'Emily',
+    flag: '🇺🇸',
+    score: 5,
+    text: 'Loved the atmosphere. English menu helped a lot!',
+    time: '3d ago',
+  },
+  {
+    who: 'たけし',
+    flag: '🇯🇵',
+    score: 4,
+    text: '景色が最高でした。写真スポットとしておすすめ。',
+    time: '1週間前',
+  },
+  {
+    who: '相赫',
+    flag: '🇰🇷',
+    score: 4,
+    text: '가성비 좋아요. 주차가 조금 불편한 점만 빼면 만족.',
+    time: '1주 전',
+  },
+  { who: 'Liwei', flag: '🇨🇳', score: 5, text: '风景很美，交通也方便，推荐！', time: '2周前' },
+]
+
+// 두 좌표 간 거리(m) — Haversine. 관광지 카드 거리순 정렬·표시용.
+function distanceM(a: LatLng, b: { lat: number; lng: number }): number {
+  const R = 6371000
+  const dLat = ((b.lat - a.latitude) * Math.PI) / 180
+  const dLng = ((b.lng - a.longitude) * Math.PI) / 180
+  const la1 = (a.latitude * Math.PI) / 180
+  const la2 = (b.lat * Math.PI) / 180
+  const h = Math.sin(dLat / 2) ** 2 + Math.cos(la1) * Math.cos(la2) * Math.sin(dLng / 2) ** 2
+  return R * 2 * Math.atan2(Math.sqrt(h), Math.sqrt(1 - h))
+}
+const fmtDistance = (m: number) => (m < 1000 ? `${Math.round(m)}m` : `${(m / 1000).toFixed(1)}km`)
 
 const PROVIDERS: { id: ProviderId; label: string; subKey: string; color: string }[] = [
   { id: 'naver', label: 'Naver', subKey: 'map.subNaver', color: '#03C75A' },
@@ -34,9 +160,17 @@ const PROVIDERS: { id: ProviderId; label: string; subKey: string; color: string 
 
 // 카테고리 → 마커 색
 const CAT_COLOR: Record<string, string> = {
+  food: palette.coral[50],
+  sights: palette.teal[40],
+  culture: palette.amber[50],
+  stay: palette.blue[50],
+  shopping: palette.rose[40],
+  leisure: palette.success[50],
+  festival: palette.violet[40],
+  course: palette.indigo[40],
+  // 구 카테고리/폴백
   seafood: palette.coral[50],
   cafe: palette.amber[50],
-  sights: palette.teal[40],
   village: palette.cruise.base,
   beach: palette.blue[50],
 }
@@ -56,21 +190,124 @@ export default function MapScreen() {
   } | null>(null)
   const [routing, setRouting] = useState(false)
 
+  // 검색 (Naver 지역검색 → 결과로 지도 이동)
+  const [searchQuery, setSearchQuery] = useState('')
+  const [submittedQuery, setSubmittedQuery] = useState('')
+  const { data: searchResults, isFetching: searching } = useNaverSearch(
+    submittedQuery,
+    submittedQuery.length > 0,
+  )
+  // 카테고리 필터 (null = 전체, 단일 선택 → 해당 카테고리만 재조회)
+  const [showFilter, setShowFilter] = useState(false)
+  const [catFilter, setCatFilter] = useState<string | null>(null)
+  // 지도 유형 (일반/위성/하이브리드)
+  const [mapType, setMapTypeState] = useState<MapType>('normal')
+  // 하단 시트 높이 — 초기 HALF(카드 절반 보임). sheetBaseRef는 현재 스냅 추적.
+  const sheetH = useState(() => new Animated.Value(SHEET_HALF))[0]
+  const sheetBaseRef = useRef(SHEET_HALF)
+
   const { coords, loading: locLoading } = useCurrentLocation()
-  const { data: poisData } = useMapPois(lang, 20)
+  // 카테고리 선택 시 해당 contentTypeId로 재조회(필터가 마커·리스트에 실제 반영)
+  const { data: poisData, isFetching: poisFetching } = useMapPois(
+    lang,
+    40,
+    contentTypeFor(catFilter, lang),
+  )
   const places = useMemo(() => poisData?.pois ?? [], [poisData])
   const poisMock = poisData?.provider === 'mock'
+  // 현재 위치로부터 거리순 정렬 + 거리(m) 부착. 좌표 없는 항목은 뒤로.
+  const sortedPlaces = useMemo(() => {
+    const here = { latitude: coords.latitude, longitude: coords.longitude }
+    return places
+      .map((p) => ({
+        ...p,
+        dist:
+          p.lat != null && p.lng != null ? distanceM(here, { lat: p.lat, lng: p.lng }) : Infinity,
+      }))
+      .sort((a, b) => a.dist - b.dist)
+  }, [places, coords.latitude, coords.longitude])
 
   const googleRef = useRef<GoogleMapHandle>(null)
   const naverRef = useRef<NaverMapHandle>(null)
 
-  // 선택 기본값 = 첫 장소 (effect 없이 파생)
-  const selectedId = selected ?? places[0]?.id ?? null
+  // 선택 기본값 = 가장 가까운 장소 (effect 없이 파생)
+  const selectedId = selected ?? sortedPlaces[0]?.id ?? null
 
   const place = useMemo(
-    () => places.find((p) => p.id === selectedId) ?? places[0],
-    [places, selectedId],
+    () => sortedPlaces.find((p) => p.id === selectedId) ?? sortedPlaces[0],
+    [sortedPlaces, selectedId],
   )
+
+  // 검색 결과로 지도 이동
+  const goToSearchResult = (r: NaverPoi) => {
+    naverRef.current?.moveTo(r.lat, r.lng, WALK_ZOOM)
+    googleRef.current?.moveTo(r.lat, r.lng, WALK_ZOOM)
+    setSubmittedQuery('') // 결과 목록 닫기
+    setSearchQuery(r.name)
+  }
+  const onSearchSubmit = () => {
+    const q = searchQuery.trim()
+    if (q) setSubmittedQuery(q)
+  }
+
+  // 카테고리 필터 토글
+  // 단일 선택 — 같은 칩 다시 누르면 전체로 해제. 선택 변경 시 기존 선택 초기화(다른 카테고리 재조회).
+  const toggleCat = (key: string) => {
+    setCatFilter((prev) => (prev === key ? null : key))
+    setSelected(null)
+  }
+
+  // 내 위치로 이동 + 파란 점 표시
+  const goToMyLocation = () => {
+    naverRef.current?.setMyLocation(coords.latitude, coords.longitude, WALK_ZOOM)
+    googleRef.current?.setMyLocation(coords.latitude, coords.longitude, WALK_ZOOM)
+  }
+  // 지도 유형 순환 (일반→위성→하이브리드)
+  const cycleMapType = () => {
+    const next = MAP_TYPES[(MAP_TYPES.indexOf(mapType) + 1) % MAP_TYPES.length]
+    setMapTypeState(next)
+    naverRef.current?.setMapType(next)
+    googleRef.current?.setMapType(next)
+  }
+
+  // 시트 드래그 — grabber에서 위로 끌면 펼침, 아래로 끌면 접힘(탭하면 토글).
+  // ref는 제스처 콜백에서만 읽으므로(렌더 아님) refs 룰 비활성화.
+  /* eslint-disable react-hooks/refs */
+  const sheetPan = useMemo(
+    () =>
+      PanResponder.create({
+        onStartShouldSetPanResponder: () => true, // 탭도 캡처(탭 토글 지원)
+        onMoveShouldSetPanResponder: (_e, g) => Math.abs(g.dy) > 4,
+        onPanResponderMove: (_e, g) => {
+          const h = Math.max(SHEET_MINI, Math.min(SHEET_FULL, sheetBaseRef.current - g.dy))
+          sheetH.setValue(h)
+        },
+        onPanResponderRelease: (_e, g) => {
+          let snap: number
+          if (Math.abs(g.dy) < 5) {
+            // 탭 — 다음 스냅으로 순환(MINI→HALF→FULL→MINI)
+            const idx = SHEET_SNAPS.indexOf(sheetBaseRef.current)
+            snap = SHEET_SNAPS[(idx + 1) % SHEET_SNAPS.length]
+          } else {
+            // 드래그 — 끝 위치에서 최근접 스냅
+            const target = sheetBaseRef.current - g.dy
+            snap = SHEET_SNAPS.reduce(
+              (best, s) => (Math.abs(s - target) < Math.abs(best - target) ? s : best),
+              SHEET_SNAPS[0],
+            )
+          }
+          sheetBaseRef.current = snap
+          Animated.spring(sheetH, {
+            toValue: snap,
+            useNativeDriver: false,
+            bounciness: 2,
+            speed: 16,
+          }).start()
+        },
+      }),
+    [sheetH],
+  )
+  /* eslint-enable react-hooks/refs */
 
   // 즐겨찾기 (BACKLOG #20)
   const { data: favorites } = useFavorites()
@@ -93,7 +330,7 @@ export default function MapScreen() {
   // 지도 마커 데이터 (Naver/Google WebView 공용 — 구조 동일)
   const mapMarkers: NaverMarker[] = useMemo(
     () =>
-      places
+      sortedPlaces
         .filter((p) => p.lat && p.lng)
         .map((p) => ({
           id: p.id,
@@ -102,7 +339,7 @@ export default function MapScreen() {
           color: catColor(p.cat),
           label: p.name,
         })),
-    [places],
+    [sortedPlaces],
   )
 
   const selectPlace = (p: Poi) => {
@@ -114,8 +351,8 @@ export default function MapScreen() {
       googleRef.current?.clearRoute()
     }
     if (p.lat && p.lng) {
-      googleRef.current?.moveTo(p.lat, p.lng, 15)
-      naverRef.current?.moveTo(p.lat, p.lng, 15)
+      googleRef.current?.moveTo(p.lat, p.lng, WALK_ZOOM)
+      naverRef.current?.moveTo(p.lat, p.lng, WALK_ZOOM)
     }
   }
 
@@ -170,6 +407,9 @@ export default function MapScreen() {
               const p = places.find((x) => x.id === id)
               if (p) selectPlace(p)
             }}
+            onReady={() =>
+              googleRef.current?.setMyLocation(coords.latitude, coords.longitude, WALK_ZOOM)
+            }
             onAuthError={(m) => setMapError(m)}
           />
         )}
@@ -190,6 +430,9 @@ export default function MapScreen() {
                 const p = places.find((x) => x.id === id)
                 if (p) selectPlace(p)
               }}
+              onReady={() =>
+                naverRef.current?.setMyLocation(coords.latitude, coords.longitude, WALK_ZOOM)
+              }
               onAuthError={(m) => setMapError(m)}
             />
           </View>
@@ -210,9 +453,82 @@ export default function MapScreen() {
               placeholder={t('map.search')}
               placeholderTextColor={palette.zinc[500]}
               style={ss.searchInput}
+              value={searchQuery}
+              onChangeText={setSearchQuery}
+              onSubmitEditing={onSearchSubmit}
+              returnKeyType="search"
             />
-            <Icon name="tune" size={18} color={palette.zinc[500]} />
+            {searchQuery.length > 0 && (
+              <Pressable
+                onPress={() => {
+                  setSearchQuery('')
+                  setSubmittedQuery('')
+                }}
+                hitSlop={8}>
+                <Icon name="close" size={16} color={palette.zinc[400]} />
+              </Pressable>
+            )}
+            <Pressable onPress={() => setShowFilter((v) => !v)} hitSlop={8}>
+              <Icon
+                name="tune"
+                size={18}
+                color={showFilter || catFilter ? palette.blue[50] : palette.zinc[500]}
+              />
+            </Pressable>
           </View>
+
+          {/* 검색 결과 드롭다운 */}
+          {submittedQuery.length > 0 && (
+            <View style={ss.searchResults}>
+              {searching ? (
+                <View style={ss.searchRow}>
+                  <ActivityIndicator size="small" color={palette.blue[50]} />
+                </View>
+              ) : searchResults && searchResults.length > 0 ? (
+                searchResults.map((r) => (
+                  <Pressable key={r.id} style={ss.searchRow} onPress={() => goToSearchResult(r)}>
+                    <Icon name="location_on" size={15} color={palette.coral[50]} filled />
+                    <View style={{ flex: 1 }}>
+                      <Text style={ss.searchName} numberOfLines={1}>
+                        {r.name}
+                      </Text>
+                      <Text style={ss.searchAddr} numberOfLines={1}>
+                        {r.address}
+                      </Text>
+                    </View>
+                  </Pressable>
+                ))
+              ) : (
+                <View style={ss.searchRow}>
+                  <Text style={ss.searchAddr}>{t('map.noResults')}</Text>
+                </View>
+              )}
+            </View>
+          )}
+
+          {/* 카테고리 필터 칩 */}
+          {showFilter && (
+            <View style={ss.filterRow}>
+              {CATS.map((c) => {
+                const on = catFilter === c.key
+                return (
+                  <Pressable
+                    key={c.key}
+                    onPress={() => toggleCat(c.key)}
+                    style={[
+                      ss.filterChip,
+                      on && { backgroundColor: c.color, borderColor: c.color },
+                    ]}>
+                    <Icon name={c.icon} size={12} color={on ? '#fff' : c.color} filled={on} />
+                    <Text style={[ss.filterChipText, on && { color: '#fff' }]}>
+                      {t(c.labelKey)}
+                    </Text>
+                  </Pressable>
+                )
+              })}
+            </View>
+          )}
+
           <View style={ss.toggle}>
             {PROVIDERS.map((o) => {
               const on = o.id === provider
@@ -280,44 +596,64 @@ export default function MapScreen() {
             </View>
           </View>
         )}
+
+        {/* 우측 FAB — 내 위치(GPS) / 지도 유형 */}
+        <View style={ss.fabCol} pointerEvents="box-none">
+          <Pressable style={ss.fab} onPress={goToMyLocation} hitSlop={6}>
+            <Icon name="my_location" size={20} color={palette.blue[50]} />
+          </Pressable>
+          <Pressable style={ss.fab} onPress={cycleMapType} hitSlop={6}>
+            <Icon
+              name={MAP_TYPE_ICON[mapType]}
+              size={20}
+              color={mapType === 'normal' ? palette.zinc[700] : palette.blue[50]}
+              filled={mapType !== 'normal'}
+            />
+            <Text style={ss.fabLabel}>{t(`map.type.${mapType}`)}</Text>
+          </Pressable>
+        </View>
       </View>
 
-      {/* 하단 시트 — 선택 장소 (실데이터) */}
-      <View style={ss.sheet}>
-        <View style={ss.grabber} />
+      {/* 하단 시트 — 선택 장소 (드래그로 접기/펼치기) */}
+      <Animated.View style={[ss.sheet, { height: sheetH }]}>
+        <View style={ss.grabberZone} {...sheetPan.panHandlers}>
+          <View style={ss.grabber} />
+        </View>
         {place ? (
-          <>
+          <ScrollView
+            showsVerticalScrollIndicator
+            contentContainerStyle={{ paddingBottom: 28 }}
+            keyboardShouldPersistTaps="handled">
+            {/* 컴팩트 선택 장소 헤드 */}
             <View style={ss.placeHead}>
               <View style={ss.placeThumb}>
                 {place.imageUrl ? (
-                  <Image source={{ uri: place.imageUrl }} style={{ width: 56, height: 56 }} />
+                  <Image source={{ uri: place.imageUrl }} style={{ width: 46, height: 46 }} />
                 ) : (
-                  <PlaceThumb category={place.cat} height={56} />
+                  <PlaceThumb category={place.cat} height={46} />
                 )}
               </View>
               <View style={{ flex: 1 }}>
                 <Text style={ss.placeName} numberOfLines={1}>
                   {place.name}
                 </Text>
-                <Text style={ss.placeSub} numberOfLines={2}>
+                <Text style={ss.placeSub} numberOfLines={1}>
                   {place.address ?? 'Busan'}
                 </Text>
               </View>
-              {/* 즐겨찾기 토글 (BACKLOG #20) */}
               <Pressable style={ss.favBtn} onPress={onToggleFav} hitSlop={6}>
                 <Icon
                   name="bookmark"
-                  size={20}
+                  size={18}
                   color={isFav ? palette.coral[50] : palette.zinc[400]}
                   filled={isFav}
                 />
               </Pressable>
-              {/* 길찾기 버튼 (현재 위치 → 이 장소) */}
               <Pressable style={ss.dirBtn} onPress={startNavigation} disabled={routing}>
                 {routing ? (
                   <ActivityIndicator color="#fff" size="small" />
                 ) : (
-                  <Icon name="navigation" size={20} color="#fff" filled />
+                  <Icon name="navigation" size={18} color="#fff" filled />
                 )}
               </Pressable>
             </View>
@@ -338,68 +674,154 @@ export default function MapScreen() {
               </View>
             )}
 
-            {/* 두 관점 — 외부 지도 앱으로 열기 */}
-            <View style={ss.compareRow}>
-              <Pressable
-                style={[ss.compareBtn, { borderColor: '#03C75A' }]}
-                onPress={() => openExternal('naver')}>
-                <View style={[ss.platformBadge, { backgroundColor: '#03C75A' }]}>
-                  <Text style={ss.platformBadgeText}>N</Text>
-                </View>
-                <View style={{ flex: 1 }}>
-                  <Text style={ss.compareTitle}>Naver 지도</Text>
-                  <Text style={ss.compareMeta}>한국인 시선 · 리뷰</Text>
-                </View>
-                <Icon name="open_in_new" size={16} color="#03C75A" />
-              </Pressable>
-              <Pressable
-                style={[ss.compareBtn, { borderColor: '#4285F4' }]}
-                onPress={() => openExternal('google')}>
-                <View style={[ss.platformBadge, { backgroundColor: '#4285F4' }]}>
-                  <Text style={ss.platformBadgeText}>G</Text>
-                </View>
-                <View style={{ flex: 1 }}>
-                  <Text style={ss.compareTitle}>Google Maps</Text>
-                  <Text style={ss.compareMeta}>Foreigner view</Text>
-                </View>
-                <Icon name="open_in_new" size={16} color="#4285F4" />
-              </Pressable>
+            {/* 주변 추천 — 현재 위치로부터 거리순 (가로 카드, 좌우 스와이프) */}
+            <View style={ss.sectionTitleRow}>
+              <Text style={ss.sectionTitle}>
+                {catFilter ? catLabel(t, catFilter) : t('map.nearbyByDistance')}
+              </Text>
+              {poisFetching && <ActivityIndicator size="small" color={palette.blue[50]} />}
             </View>
-          </>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={{ gap: 10, paddingBottom: 4 }}>
+              {sortedPlaces.map((p) => {
+                const on = p.id === selectedId
+                return (
+                  <Pressable
+                    key={p.id}
+                    onPress={() => selectPlace(p)}
+                    style={[
+                      ss.attrCardH,
+                      on && { borderColor: catColor(p.cat), borderWidth: 1.5 },
+                    ]}>
+                    <View style={ss.attrThumbH}>
+                      {p.imageUrl ? (
+                        <Image source={{ uri: p.imageUrl }} style={{ width: 150, height: 92 }} />
+                      ) : (
+                        <PlaceThumb category={p.cat} height={92} />
+                      )}
+                    </View>
+                    <View style={{ padding: 8, paddingTop: 6 }}>
+                      <Text style={ss.attrName} numberOfLines={1}>
+                        {p.name}
+                      </Text>
+                      <View style={ss.attrMetaRow}>
+                        <View style={[ss.catDot, { backgroundColor: catColor(p.cat) }]} />
+                        <Text style={ss.attrMeta} numberOfLines={1}>
+                          {catLabel(t, p.cat)}
+                        </Text>
+                        {p.dist !== Infinity && (
+                          <Text style={ss.attrDist}> · {fmtDistance(p.dist)}</Text>
+                        )}
+                      </View>
+                    </View>
+                  </Pressable>
+                )
+              })}
+            </ScrollView>
+
+            {/* 리뷰 — 두 관점 요약 + 개별 리뷰 목록 */}
+            <Text style={ss.sectionTitle}>{t('map.reviews')}</Text>
+            <View style={ss.reviewRow}>
+              {/* 카드 전체가 아닌 우측 상단 아이콘 탭 시에만 지도 앱 호출 */}
+              <View style={[ss.reviewCard, { borderColor: '#03C75A' }]}>
+                <View style={ss.reviewCardHead}>
+                  <View style={[ss.platformBadge, { backgroundColor: '#03C75A' }]}>
+                    <Text style={ss.platformBadgeText}>N</Text>
+                  </View>
+                  <Text style={ss.reviewCardTitle}>{t('map.reviewKorean')}</Text>
+                  <Pressable
+                    onPress={() => openExternal('naver')}
+                    hitSlop={10}
+                    style={ss.reviewExtBtn}>
+                    <Icon name="open_in_new" size={15} color="#03C75A" />
+                  </Pressable>
+                </View>
+                <View style={ss.reviewStars}>
+                  {[1, 2, 3, 4, 5].map((i) => (
+                    <Icon
+                      key={i}
+                      name="star"
+                      size={11}
+                      color={
+                        i <= Math.round(NAVER_REVIEW.score) ? palette.amber[50] : palette.zinc[200]
+                      }
+                      filled
+                    />
+                  ))}
+                  <Text style={ss.reviewScore}>{NAVER_REVIEW.score.toFixed(1)}</Text>
+                </View>
+                <Text style={ss.reviewQuote} numberOfLines={2}>
+                  “{NAVER_REVIEW.text}”
+                </Text>
+              </View>
+              <View style={[ss.reviewCard, { borderColor: '#4285F4' }]}>
+                <View style={ss.reviewCardHead}>
+                  <View style={[ss.platformBadge, { backgroundColor: '#4285F4' }]}>
+                    <Text style={ss.platformBadgeText}>G</Text>
+                  </View>
+                  <Text style={ss.reviewCardTitle}>{t('map.reviewForeign')}</Text>
+                  <Pressable
+                    onPress={() => openExternal('google')}
+                    hitSlop={10}
+                    style={ss.reviewExtBtn}>
+                    <Icon name="open_in_new" size={15} color="#4285F4" />
+                  </Pressable>
+                </View>
+                <View style={ss.reviewStars}>
+                  {[1, 2, 3, 4, 5].map((i) => (
+                    <Icon
+                      key={i}
+                      name="star"
+                      size={11}
+                      color={
+                        i <= Math.round(GOOGLE_REVIEW.score) ? palette.amber[50] : palette.zinc[200]
+                      }
+                      filled
+                    />
+                  ))}
+                  <Text style={ss.reviewScore}>{GOOGLE_REVIEW.score.toFixed(1)}</Text>
+                </View>
+                <Text style={ss.reviewQuote} numberOfLines={2}>
+                  “{GOOGLE_REVIEW.text}”
+                </Text>
+              </View>
+            </View>
+            {/* 개별 리뷰 (한국인/외국인 혼합, 스크롤로 더 보기) */}
+            {SAMPLE_REVIEWS.map((r, i) => (
+              <View key={i} style={ss.reviewItem}>
+                <View style={ss.reviewAvatar}>
+                  <Text style={ss.reviewAvatarFlag}>{r.flag}</Text>
+                </View>
+                <View style={{ flex: 1 }}>
+                  <View style={ss.reviewItemTop}>
+                    <Text style={ss.reviewWho}>{r.who}</Text>
+                    <View style={ss.reviewStars}>
+                      {[1, 2, 3, 4, 5].map((s) => (
+                        <Icon
+                          key={s}
+                          name="star"
+                          size={9}
+                          color={s <= r.score ? palette.amber[50] : palette.zinc[200]}
+                          filled
+                        />
+                      ))}
+                    </View>
+                    <Text style={ss.reviewTime}>{r.time}</Text>
+                  </View>
+                  <Text style={ss.reviewItemText}>{r.text}</Text>
+                </View>
+              </View>
+            ))}
+          </ScrollView>
         ) : (
           <View style={{ paddingVertical: 24, alignItems: 'center' }}>
             <ActivityIndicator color={palette.blue[50]} />
             <Text style={ss.loadingText}>Loading nearby places…</Text>
           </View>
         )}
-
-        {/* 장소 리스트 (실데이터) */}
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={{ gap: 10, paddingVertical: 10 }}>
-          {places.map((p) => {
-            const on = p.id === selectedId
-            return (
-              <Pressable
-                key={p.id}
-                onPress={() => selectPlace(p)}
-                style={[ss.miniCard, on && { borderColor: catColor(p.cat), borderWidth: 1.5 }]}>
-                <View style={{ width: 88, height: 56, borderRadius: 10, overflow: 'hidden' }}>
-                  {p.imageUrl ? (
-                    <Image source={{ uri: p.imageUrl }} style={{ width: 88, height: 56 }} />
-                  ) : (
-                    <PlaceThumb category={p.cat} height={56} />
-                  )}
-                </View>
-                <Text style={ss.miniName} numberOfLines={1}>
-                  {p.name}
-                </Text>
-              </Pressable>
-            )
-          })}
-        </ScrollView>
-      </View>
+      </Animated.View>
     </View>
   )
 }
@@ -454,14 +876,60 @@ const ss = StyleSheet.create({
   locLoading: {
     position: 'absolute',
     bottom: 16,
-    right: 16,
+    left: 16,
     backgroundColor: 'rgba(255,255,255,.95)',
     borderRadius: 999,
     padding: 8,
     ...shadows.card,
   },
 
-  blendSlider: { position: 'absolute', left: 16, right: 16, bottom: 14 },
+  // 우측 FAB 컬럼 — 내 위치 / 지도 유형
+  fabCol: { position: 'absolute', right: 14, bottom: 18, gap: 10, alignItems: 'center' },
+  fab: {
+    width: 46,
+    height: 46,
+    borderRadius: 14,
+    backgroundColor: 'rgba(255,255,255,.97)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    ...shadows.card,
+  },
+  fabLabel: { fontSize: 7.5, fontWeight: '700', color: palette.zinc[600], marginTop: 1 },
+
+  // 검색 결과 드롭다운
+  searchResults: {
+    backgroundColor: 'rgba(255,255,255,.98)',
+    borderRadius: 16,
+    paddingVertical: 4,
+    ...shadows.card,
+  },
+  searchRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 9,
+  },
+  searchName: { fontSize: 13, fontWeight: '700', color: palette.zinc[900] },
+  searchAddr: { fontSize: 11, color: palette.zinc[500], marginTop: 1 },
+
+  // 카테고리 필터 칩
+  filterRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, alignSelf: 'flex-start' },
+  filterChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    borderWidth: 1,
+    borderColor: palette.zinc[300],
+    backgroundColor: 'rgba(255,255,255,.96)',
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    ...shadows.card,
+  },
+  filterChipText: { fontSize: 11, fontWeight: '700', color: palette.zinc[700] },
+
+  blendSlider: { position: 'absolute', left: 16, right: 72, bottom: 14 },
   blendSliderInner: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -482,22 +950,67 @@ const ss = StyleSheet.create({
     marginTop: -20,
     paddingHorizontal: 16,
     paddingBottom: 8,
-    maxHeight: 320,
+    overflow: 'hidden', // 접힘 시 하단 콘텐츠 클리핑
     ...shadows.pop,
   },
+  grabberZone: { paddingTop: 10, paddingBottom: 14, alignItems: 'center' }, // 드래그/탭 히트 영역
   grabber: {
-    width: 36,
-    height: 4,
-    borderRadius: 4,
-    backgroundColor: palette.zinc[300],
-    alignSelf: 'center',
-    marginTop: 8,
-    marginBottom: 4,
+    width: 44,
+    height: 5,
+    borderRadius: 5,
+    backgroundColor: palette.zinc[400],
   },
-  placeHead: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 10 },
-  placeThumb: { width: 56, height: 56, borderRadius: 14, overflow: 'hidden' },
+  placeHead: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 6 },
+  placeThumb: { width: 46, height: 46, borderRadius: 12, overflow: 'hidden' },
   placeName: { fontSize: 15, fontWeight: '800', color: palette.zinc[900], letterSpacing: -0.2 },
-  placeSub: { fontSize: 11, color: palette.zinc[500], marginTop: 2, lineHeight: 15 },
+  placeSub: { fontSize: 11, color: palette.zinc[500], marginTop: 1, lineHeight: 15 },
+
+  // 섹션 제목 (주변 추천 / 리뷰)
+  sectionTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  sectionTitle: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: palette.zinc[700],
+    marginTop: 12,
+    marginBottom: 6,
+  },
+  // 추천 관광지 세로 카드
+  // 가로 추천 카드 (좌우 스와이프)
+  attrCardH: {
+    width: 150,
+    borderWidth: 1,
+    borderColor: palette.zinc[200],
+    borderRadius: 14,
+    overflow: 'hidden',
+    backgroundColor: '#fff',
+  },
+  attrThumbH: { width: 150, height: 92, overflow: 'hidden' },
+  attrName: { fontSize: 13, fontWeight: '700', color: palette.zinc[900], letterSpacing: -0.1 },
+  attrMetaRow: { flexDirection: 'row', alignItems: 'center', marginTop: 3 },
+  catDot: { width: 7, height: 7, borderRadius: 999, marginRight: 5 },
+  attrMeta: { fontSize: 11, color: palette.zinc[500], fontWeight: '600' },
+  attrDist: { fontSize: 11, color: palette.blue[40], fontWeight: '700' },
+  // 개별 리뷰 항목
+  reviewItem: {
+    flexDirection: 'row',
+    gap: 9,
+    paddingVertical: 9,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: palette.zinc[200],
+  },
+  reviewAvatar: {
+    width: 30,
+    height: 30,
+    borderRadius: 999,
+    backgroundColor: palette.zinc[100],
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  reviewAvatarFlag: { fontSize: 16 },
+  reviewItemTop: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  reviewWho: { fontSize: 12, fontWeight: '700', color: palette.zinc[900] },
+  reviewTime: { fontSize: 10, color: palette.zinc[400], marginLeft: 'auto' },
+  reviewItemText: { fontSize: 12, color: palette.zinc[700], marginTop: 2, lineHeight: 17 },
   loadingText: { fontSize: 12, color: palette.zinc[500], marginTop: 8 },
   dirBtn: {
     width: 42,
@@ -528,18 +1041,23 @@ const ss = StyleSheet.create({
   },
   routeText: { flex: 1, fontSize: 12.5, fontWeight: '700', color: palette.blue[30] },
 
-  compareRow: { flexDirection: 'row', gap: 10, marginTop: 4 },
-  compareBtn: {
+  // 리뷰 — 한국인/외국인 좌우 카드
+  reviewRow: { flexDirection: 'row', gap: 10 },
+  reviewCard: {
     flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
     borderWidth: 1,
     borderRadius: 14,
-    paddingHorizontal: 12,
+    paddingHorizontal: 11,
     paddingVertical: 10,
     backgroundColor: '#fff',
+    gap: 5,
   },
+  reviewCardHead: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  reviewExtBtn: { padding: 2 }, // 우측 상단 외부지도 아이콘(이것만 탭 시 지도 앱 호출)
+  reviewCardTitle: { flex: 1, fontSize: 11, fontWeight: '800', color: palette.zinc[800] },
+  reviewStars: { flexDirection: 'row', alignItems: 'center', gap: 1 },
+  reviewScore: { fontSize: 11, fontWeight: '800', color: palette.zinc[700], marginLeft: 4 },
+  reviewQuote: { fontSize: 11.5, color: palette.zinc[600], lineHeight: 16 },
   platformBadge: {
     width: 22,
     height: 22,
@@ -548,22 +1066,4 @@ const ss = StyleSheet.create({
     justifyContent: 'center',
   },
   platformBadgeText: { color: '#fff', fontSize: 10, fontWeight: '800' },
-  compareTitle: { fontSize: 12, fontWeight: '700', color: palette.zinc[900] },
-  compareMeta: { fontSize: 10, color: palette.zinc[500] },
-
-  miniCard: {
-    width: 88,
-    borderRadius: 12,
-    borderWidth: 0.5,
-    borderColor: palette.zinc[200],
-    overflow: 'hidden',
-    backgroundColor: '#fff',
-  },
-  miniName: {
-    fontSize: 10.5,
-    fontWeight: '600',
-    color: palette.zinc[800],
-    paddingHorizontal: 6,
-    paddingVertical: 5,
-  },
 })

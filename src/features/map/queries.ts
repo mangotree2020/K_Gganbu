@@ -1,5 +1,5 @@
 // 장소(POI) — TourAPI Edge Function 호출 + mock 폴백 (mock-first)
-import { useQuery } from '@tanstack/react-query'
+import { keepPreviousData, useQuery } from '@tanstack/react-query'
 import { supabase } from '@/lib/supabase'
 
 export type Poi = {
@@ -14,20 +14,33 @@ export type Poi = {
 }
 
 // TourAPI contentTypeId → 앱 카테고리(PlaceThumb) 매핑
+// TourAPI contentTypeId(Kor/Eng 서비스) → 앱 카테고리. 네이버/구글 지도 수준의 다양한 필터 지원.
 function toCat(contentTypeId?: string): string {
   switch (contentTypeId) {
-    case '39':
-    case '82':
-      return 'seafood' // 음식점
-    case '12':
-    case '76':
-      return 'sights' // 관광지
-    case '14':
-    case '78':
-      return 'cafe' // 문화시설
-    case '15':
-    case '85':
-      return 'village' // 축제/행사
+    case '39': // 음식점(Kor)
+    case '82': // 음식점(Eng)
+      return 'food'
+    case '12': // 관광지(Kor)
+    case '76': // 관광지(Eng)
+      return 'sights'
+    case '14': // 문화시설(Kor)
+    case '78': // 문화시설(Eng)
+      return 'culture'
+    case '15': // 축제공연행사(Kor)
+    case '85': // 축제공연행사(Eng)
+      return 'festival'
+    case '28': // 레포츠(Kor)
+    case '75': // 레포츠(Eng)
+      return 'leisure'
+    case '32': // 숙박(Kor)
+    case '80': // 숙박(Eng)
+      return 'stay'
+    case '38': // 쇼핑(Kor)
+    case '79': // 쇼핑(Eng)
+      return 'shopping'
+    case '25': // 여행코스(Kor)
+    case '77': // 여행코스(Eng)
+      return 'course'
     default:
       return 'sights'
   }
@@ -111,15 +124,17 @@ export function usePlaces(lang = 'en', rows = 12) {
   })
 }
 
-// 지도 마커용 — 좌표가 있는 POI만 (TourAPI 실데이터, PLANNING §17)
-export function useMapPois(lang = 'en', rows = 20) {
+// 지도 마커용 — 좌표가 있는 POI만 (TourAPI 실데이터, PLANNING §17).
+// contentTypeId 지정 시 해당 카테고리만 조회(필터용).
+export function useMapPois(lang = 'en', rows = 20, contentTypeId?: string) {
   return useQuery({
-    queryKey: ['map-pois', lang, rows],
+    queryKey: ['map-pois', lang, rows, contentTypeId ?? 'all'],
     staleTime: 24 * 60 * 60 * 1000,
+    placeholderData: keepPreviousData, // 카테고리 전환 시 이전 결과 유지(깜빡임 방지)
     queryFn: async (): Promise<PoiResult> => {
       try {
         const { data, error } = await supabase.functions.invoke('places', {
-          body: { lang, areaCode: 6, rows },
+          body: { lang, areaCode: 6, rows, contentTypeId },
         })
         if (error) throw error
         const places = (data?.places ?? []) as Record<string, string>[]

@@ -21,6 +21,7 @@ type Props = {
   selectedId?: string
   onMarkerPress?: (id: string) => void
   onAuthError?: (msg: string) => void
+  onReady?: () => void // 지도 init 완료 시(내 위치 마커 초기 표시용)
   language?: string // 앱 설정 언어 (AppLang). 지도 라벨 언어로 사용
 }
 
@@ -28,6 +29,8 @@ export type GoogleMapHandle = {
   moveTo: (lat: number, lng: number, zoom?: number) => void
   drawRoute: (path: { latitude: number; longitude: number }[]) => void
   clearRoute: () => void
+  setMapType: (type: 'normal' | 'satellite' | 'hybrid') => void
+  setMyLocation: (lat: number, lng: number, zoom?: number) => void
 }
 
 const API_KEY = process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY ?? ''
@@ -53,15 +56,34 @@ function buildHtml(lat: number, lng: number, markers: GoogleMarker[], lang: stri
       if(!window.google || !google.maps){ post({type:'auth_error',message:'google.maps 미로딩'}); return; }
       map = new google.maps.Map(document.getElementById('map'), {
         center: { lat: ${lat}, lng: ${lng} },
-        zoom: 13,
+        zoom: 16, // 도보 이동 기준 측척
         disableDefaultUI: true,
         clickableIcons: false,
         gestureHandling: 'greedy',
+        scaleControl: true, // 측척 바 표시
       });
       post({type:'ready'});
       setMarkers(${JSON.stringify(markers)});
     }
     window.initMap = initMap;
+    // 지도 유형 전환 (일반/위성/하이브리드)
+    function setMapType(type){
+      if(!map) return;
+      var m = { normal: 'roadmap', satellite: 'satellite', hybrid: 'hybrid' };
+      map.setMapTypeId(m[type] || 'roadmap');
+    }
+    // 내 위치 표시 — 파란 점 마커 갱신 + 이동
+    var myLoc = null;
+    function setMyLocation(lat, lng, zoom){
+      if(!map) return;
+      if(myLoc) myLoc.setMap(null);
+      myLoc = new google.maps.Marker({
+        position: { lat: lat, lng: lng }, map: map, zIndex: 1000,
+        icon: { path: google.maps.SymbolPath.CIRCLE, fillColor: '#2563EB', fillOpacity: 1, strokeColor: '#ffffff', strokeWeight: 3, scale: 7 },
+      });
+      map.panTo({ lat: lat, lng: lng });
+      map.setZoom(zoom || 16);
+    }
     function clearMarkers(){ markers.forEach(function(m){ m.setMap(null); }); markers = []; }
     function setMarkers(list){
       clearMarkers();
@@ -107,7 +129,7 @@ function buildHtml(lat: number, lng: number, markers: GoogleMarker[], lang: stri
 }
 
 export const GoogleMap = forwardRef<GoogleMapHandle, Props>(function GoogleMap(
-  { latitude, longitude, markers, onMarkerPress, onAuthError, language },
+  { latitude, longitude, markers, onMarkerPress, onAuthError, onReady, language },
   ref,
 ) {
   const webRef = useRef<WebView>(null)
@@ -129,12 +151,21 @@ export const GoogleMap = forwardRef<GoogleMapHandle, Props>(function GoogleMap(
     clearRoute: () => {
       webRef.current?.injectJavaScript(`clearRoute(); true;`)
     },
+    setMapType: (type) => {
+      webRef.current?.injectJavaScript(`setMapType(${JSON.stringify(type)}); true;`)
+    },
+    setMyLocation: (lat, lng, zoom) => {
+      webRef.current?.injectJavaScript(
+        `setMyLocation(${lat}, ${lng}, ${zoom ?? 'undefined'}); true;`,
+      )
+    },
   }))
 
   const onMessage = (e: WebViewMessageEvent) => {
     try {
       const msg = JSON.parse(e.nativeEvent.data)
       if (msg.type === 'marker' && msg.id) onMarkerPress?.(msg.id)
+      else if (msg.type === 'ready') onReady?.()
       else if (msg.type === 'auth_error') onAuthError?.(msg.message ?? 'Google auth error')
     } catch {
       // ignore
