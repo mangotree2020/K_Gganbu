@@ -71,7 +71,7 @@ function RootLayoutNav() {
         {/* OAuth 콜백 딥링크 착지 — 404 대신 로딩 표시(gesture/animation 없이 즉시 처리) */}
         <Stack.Screen name="auth-callback" options={{ gestureEnabled: false, animation: 'none' }} />
         <Stack.Screen name="(tabs)" />
-        <Stack.Screen name="translate" options={{ presentation: 'modal' }} />
+        {/* translate는 (tabs)/translate 탭 화면으로 이동 — 탭바 유지(PLANNING §19) */}
         <Stack.Screen name="emergency" options={{ presentation: 'modal' }} />
         <Stack.Screen name="place" options={{ presentation: 'modal' }} />
         <Stack.Screen name="cruise" options={{ presentation: 'modal' }} />

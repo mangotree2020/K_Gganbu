@@ -686,7 +686,9 @@ export default function VoiceInterpretScreen() {
               {empty ? (
                 <View style={{ alignItems: 'center', marginTop: 40, gap: 16 }}>
                   <Text style={ss.hint}>{t('voice.hint')}</Text>
-                  <Pressable onPress={() => router.replace('/translate')} style={ss.toTextBtn}>
+                  <Pressable
+                    onPress={() => router.replace('/(tabs)/translate')}
+                    style={ss.toTextBtn}>
                     <Icon name="translate" size={15} color={palette.teal[40]} filled />
                     <Text style={ss.toTextText}>{t('voice.toText')}</Text>
                   </Pressable>
@@ -730,7 +732,7 @@ export default function VoiceInterpretScreen() {
               <>
                 <Text style={ss.bigTitle}>{t('voice.unavailableTitle')}</Text>
                 <Text style={ss.bigSub}>{t('voice.unavailableSub')}</Text>
-                <Pressable onPress={() => router.replace('/translate')} style={ss.altBtn}>
+                <Pressable onPress={() => router.replace('/(tabs)/translate')} style={ss.altBtn}>
                   <Icon name="translate" size={16} color="#fff" filled />
                   <Text style={ss.altText}>{t('voice.toText')}</Text>
                 </Pressable>
@@ -751,7 +753,9 @@ export default function VoiceInterpretScreen() {
                 {status === 'error' && (
                   <>
                     <Text style={ss.err}>{t('voice.error')}</Text>
-                    <Pressable onPress={() => router.replace('/translate')} style={ss.altBtn}>
+                    <Pressable
+                      onPress={() => router.replace('/(tabs)/translate')}
+                      style={ss.altBtn}>
                       <Icon name="translate" size={16} color="#fff" filled />
                       <Text style={ss.altText}>{t('voice.toText')}</Text>
                     </Pressable>
