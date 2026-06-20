@@ -102,7 +102,7 @@ export default function ProfileScreen() {
     if (r.id === 'language') setLangOpen(true)
     else if (r.id === 'notifications') toggleNotifications()
     else if (r.id === 'itineraries') router.push('/itinerary' as never)
-    else if (r.id === 'tickets') router.push('/tickets' as never)
+    else if (r.id === 'tickets') router.push('/(tabs)/coupons?seg=tickets' as never)
     else if (r.id === 'reviews') router.push('/reviews' as never)
     else if (r.id === 'saved-places') router.push('/favorites')
     else if (r.id === 'saved-coupons') router.push('/saved-coupons')

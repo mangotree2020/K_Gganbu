@@ -1,21 +1,34 @@
+// CouTix — 쿠폰 + 티켓 통합 화면(PLANNING §6 "티켓/쿠폰 지갑"). 상단 세그먼트로 전환.
+import { useQuery } from '@tanstack/react-query'
 import { LinearGradient } from 'expo-linear-gradient'
-import { router } from 'expo-router'
-import { useState } from 'react'
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
+import { router, useLocalSearchParams } from 'expo-router'
+import { useMemo, useState } from 'react'
+import { Linking, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 
 import { Icon, Pill } from '@/components/brand'
 import { FallbackBadge } from '@/components/FallbackBadge'
 import { PlaceThumb } from '@/components/PlaceThumb'
 import { useCoupons, type CouponCard } from '@/features/coupon/queries'
+import { getTickets, type Ticket } from '@/features/ticket/services'
 import { useRequireAccount } from '@/features/auth/loginPrompt'
 import { useT } from '@/lib/i18n'
+import { USE_MOCK } from '@/lib/config'
 import { palette, shadows } from '@/theme/tokens'
 
+type Seg = 'coupons' | 'tickets'
+
+// 세그먼트별 헤더 그라데이션 — 쿠폰(coral)/티켓(blue·teal)
+const HEADER_GRAD: Record<Seg, [string, string, string]> = {
+  coupons: ['#FB923C', '#F97316', '#EA580C'],
+  tickets: ['#0EA5E9', '#0284C7', '#0D9488'],
+}
+
+// ===== 쿠폰 =====
 // 실데이터(CouponCard)와 mock(number id)을 함께 수용
 type Coupon = Omit<CouponCard, 'id'> & { id: string | number }
 
-const ITEMS: Coupon[] = [
+const COUPON_ITEMS: Coupon[] = [
   {
     id: 1,
     name: 'Halmae Gukbap',
@@ -84,7 +97,7 @@ const ITEMS: Coupon[] = [
   },
 ]
 
-const FILTERS = [
+const COUPON_FILTERS = [
   { id: 'all', key: 'coupon.all' },
   { id: 'food', key: 'coupon.food' },
   { id: 'cafe', key: 'coupon.cafe' },
@@ -92,11 +105,44 @@ const FILTERS = [
   { id: 'activity', key: 'coupon.activity' },
 ]
 
-export default function CouponsScreen() {
+// ===== 티켓 =====
+const TICKET_FILTERS = [
+  { id: 'all', key: 'ticket.all' },
+  { id: 'attraction', key: 'ticket.attraction' },
+  { id: 'tour', key: 'ticket.tour' },
+  { id: 'show', key: 'ticket.show' },
+  { id: 'transport', key: 'ticket.transport' },
+]
+
+const TICKET_CAT_KEY: Record<string, string> = {
+  attraction: 'ticket.attraction',
+  tour: 'ticket.tour',
+  show: 'ticket.show',
+  transport: 'ticket.transport',
+}
+
+export default function CouTixScreen() {
   const t = useT()
   const requireAccount = useRequireAccount()
-  const [filter, setFilter] = useState('all')
+  const params = useLocalSearchParams<{ seg?: string }>()
+  const [seg, setSeg] = useState<Seg>(params.seg === 'tickets' ? 'tickets' : 'coupons')
+  const [couponFilter, setCouponFilter] = useState('all')
+  const [ticketFilter, setTicketFilter] = useState('all')
+
   const { data: dbCoupons } = useCoupons()
+  const { data: ticketData } = useQuery({ queryKey: ['tickets'], queryFn: getTickets })
+
+  // ----- 쿠폰 데이터(실데이터 없으면 mock 폴백) -----
+  const couponSource: Coupon[] = dbCoupons?.length ? dbCoupons : COUPON_ITEMS
+  const couponIsMock = !dbCoupons?.length
+  const couponShown =
+    couponFilter === 'all' ? couponSource : couponSource.filter((i) => i.filter === couponFilter)
+
+  // ----- 티켓 데이터 -----
+  const ticketShown = useMemo(() => {
+    const list = ticketData ?? []
+    return ticketFilter === 'all' ? list : list.filter((x) => x.category === ticketFilter)
+  }, [ticketData, ticketFilter])
 
   // 쿠폰 저장(QR 발급)은 계정 귀속 — Guest면 로그인 유도 후 이어서 발급 (BACKLOG #8)
   const openCoupon = (c: Coupon) =>
@@ -106,16 +152,20 @@ export default function CouponsScreen() {
         params: { id: String(c.id), name: c.name, disc: c.disc },
       }),
     )
-  // 실데이터 없으면 mock 폴백 (네트워크/빈 DB)
-  const source: Coupon[] = dbCoupons?.length ? dbCoupons : ITEMS
-  const isMock = !dbCoupons?.length
-  const shown = filter === 'all' ? source : source.filter((i) => i.filter === filter)
+  const bookTicket = (x: Ticket) => Linking.openURL(x.outlinkUrl).catch(() => {})
+  const ticketPrice = (x: Ticket) => `₩${x.price.toLocaleString()}`
+
+  const isMock = seg === 'coupons' ? couponIsMock : USE_MOCK
+  const filters = seg === 'coupons' ? COUPON_FILTERS : TICKET_FILTERS
+  const activeFilter = seg === 'coupons' ? couponFilter : ticketFilter
+  const setActiveFilter = seg === 'coupons' ? setCouponFilter : setTicketFilter
+  const accent = seg === 'coupons' ? palette.coral[50] : palette.blue[50]
 
   return (
     <View style={ss.container}>
-      {/* 헤더 */}
+      {/* 헤더 — 세그먼트별 색 전환 */}
       <LinearGradient
-        colors={['#FB923C', '#F97316', '#EA580C']}
+        colors={HEADER_GRAD[seg]}
         locations={[0, 0.55, 1]}
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 1 }}
@@ -126,31 +176,54 @@ export default function CouponsScreen() {
               <Text style={{ fontSize: 22 }}>🎟</Text>
             </View>
             <View style={{ flex: 1 }}>
-              <Text style={ss.headerTitle}>{t('coupon.title')}</Text>
+              <Text style={ss.headerTitle}>CouTix</Text>
               <View style={ss.headerLoc}>
                 <Icon name="location_on" size={13} color="#fff" filled />
                 <Text style={ss.headerLocText}>
-                  Haeundae · {source.length} {t('coupon.available')}
+                  {seg === 'coupons'
+                    ? `Haeundae · ${couponSource.length} ${t('coupon.available')}`
+                    : t('coupon.brandSub')}
                 </Text>
               </View>
             </View>
             {isMock && <FallbackBadge label="Sample" />}
           </View>
+
+          {/* 세그먼트 토글 — 쿠폰 / 티켓 */}
+          <View style={ss.segWrap}>
+            {(['coupons', 'tickets'] as Seg[]).map((s) => {
+              const on = s === seg
+              return (
+                <Pressable key={s} onPress={() => setSeg(s)} style={[ss.segBtn, on && ss.segBtnOn]}>
+                  <Text style={[ss.segText, { color: on ? accent : '#fff' }]}>
+                    {t(s === 'coupons' ? 'coupon.segCoupons' : 'coupon.segTickets')}
+                  </Text>
+                </Pressable>
+              )
+            })}
+          </View>
+
+          {/* 필터 칩 */}
           <ScrollView
             horizontal
             showsHorizontalScrollIndicator={false}
-            contentContainerStyle={{ gap: 6, marginTop: 14 }}>
-            {FILTERS.map((f) => {
-              const on = f.id === filter
+            contentContainerStyle={{ gap: 6, marginTop: 12 }}>
+            {filters.map((f) => {
+              const on = f.id === activeFilter
               const count =
-                f.id === 'all' ? source.length : source.filter((i) => i.filter === f.id).length
+                seg === 'coupons'
+                  ? f.id === 'all'
+                    ? couponSource.length
+                    : couponSource.filter((i) => i.filter === f.id).length
+                  : null
               return (
                 <Pressable
                   key={f.id}
-                  onPress={() => setFilter(f.id)}
+                  onPress={() => setActiveFilter(f.id)}
                   style={[ss.filterChip, on && ss.filterChipOn]}>
-                  <Text style={[ss.filterText, { color: on ? palette.coral[50] : '#fff' }]}>
-                    {t(f.key)} <Text style={{ opacity: 0.7 }}>{count}</Text>
+                  <Text style={[ss.filterText, { color: on ? accent : '#fff' }]}>
+                    {t(f.key)}
+                    {count != null && <Text style={{ opacity: 0.7 }}> {count}</Text>}
                   </Text>
                 </Pressable>
               )
@@ -159,34 +232,59 @@ export default function CouponsScreen() {
         </SafeAreaView>
       </LinearGradient>
 
-      {/* 쿠폰 리스트 */}
+      {/* 리스트 */}
       <ScrollView
         showsVerticalScrollIndicator={false}
         contentContainerStyle={{ padding: 16, paddingBottom: 24, gap: 10 }}>
-        {shown.map((c) => (
-          <Pressable
-            key={c.id}
-            onPress={() => openCoupon(c)}
-            style={({ pressed }) => [ss.card, shadows.card, { opacity: pressed ? 0.9 : 1 }]}>
-            <View style={ss.cardThumb}>
-              <PlaceThumb category={c.icon} height={56} />
-            </View>
-            <View style={{ flex: 1 }}>
-              <Text style={ss.cardName}>{c.name}</Text>
-              <Text style={ss.cardDetail}>{c.detail}</Text>
-              <View style={{ flexDirection: 'row', gap: 6, marginTop: 5 }}>
-                {!!c.dist && <Pill tone="neutral" size="xs">{`📍 ${c.dist}`}</Pill>}
-                <Pill tone="blue" size="xs">
-                  {c.cat}
-                </Pill>
+        {seg === 'coupons'
+          ? couponShown.map((c) => (
+              <Pressable
+                key={c.id}
+                onPress={() => openCoupon(c)}
+                style={({ pressed }) => [ss.card, shadows.card, { opacity: pressed ? 0.9 : 1 }]}>
+                <View style={ss.cardThumb}>
+                  <PlaceThumb category={c.icon} height={56} />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={ss.cardName}>{c.name}</Text>
+                  <Text style={ss.cardDetail}>{c.detail}</Text>
+                  <View style={{ flexDirection: 'row', gap: 6, marginTop: 5 }}>
+                    {!!c.dist && <Pill tone="neutral" size="xs">{`📍 ${c.dist}`}</Pill>}
+                    <Pill tone="blue" size="xs">
+                      {c.cat}
+                    </Pill>
+                  </View>
+                </View>
+                <View style={{ alignItems: 'flex-end' }}>
+                  <Text style={[ss.cardDisc, { color: palette.coral[50] }]}>{c.disc}</Text>
+                  <Text style={ss.cardNote}>{c.note}</Text>
+                </View>
+              </Pressable>
+            ))
+          : ticketShown.map((x) => (
+              <View key={x.id} style={[ss.card, shadows.card]}>
+                <View style={ss.cardThumbLg}>
+                  <PlaceThumb category={x.thumb} height={64} />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={ss.cardName}>{x.title}</Text>
+                  <View style={{ flexDirection: 'row', gap: 6, marginTop: 5 }}>
+                    <Pill tone="blue" size="xs">
+                      {t(TICKET_CAT_KEY[x.category])}
+                    </Pill>
+                    <Pill tone="neutral" size="xs">
+                      {x.provider}
+                    </Pill>
+                  </View>
+                  <Text style={ss.ticketPrice}>{ticketPrice(x)}</Text>
+                </View>
+                <Pressable onPress={() => bookTicket(x)} style={ss.bookBtn}>
+                  <Icon name="open_in_new" size={14} color="#fff" filled />
+                  <Text style={ss.bookText}>{t('ticket.book')}</Text>
+                </Pressable>
               </View>
-            </View>
-            <View style={{ alignItems: 'flex-end' }}>
-              <Text style={ss.cardDisc}>{c.disc}</Text>
-              <Text style={ss.cardNote}>{c.note}</Text>
-            </View>
-          </Pressable>
-        ))}
+            ))}
+        {seg === 'tickets' && <Text style={ss.outlinkNote}>{t('ticket.outlink')}</Text>}
       </ScrollView>
     </View>
   )
@@ -207,6 +305,24 @@ const ss = StyleSheet.create({
   headerTitle: { fontSize: 22, fontWeight: '800', color: '#fff', letterSpacing: -0.4 },
   headerLoc: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 2 },
   headerLocText: { fontSize: 12, color: 'rgba(255,255,255,.94)' },
+  // 세그먼트 토글
+  segWrap: {
+    flexDirection: 'row',
+    gap: 6,
+    marginTop: 14,
+    backgroundColor: 'rgba(255,255,255,.18)',
+    borderRadius: 999,
+    padding: 4,
+  },
+  segBtn: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 8,
+    borderRadius: 999,
+  },
+  segBtnOn: { backgroundColor: '#fff' },
+  segText: { fontSize: 13, fontWeight: '800', letterSpacing: -0.2 },
   filterChip: {
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,.4)',
@@ -228,8 +344,22 @@ const ss = StyleSheet.create({
     borderColor: palette.zinc[200],
   },
   cardThumb: { width: 56, height: 56, borderRadius: 14, overflow: 'hidden' },
+  cardThumbLg: { width: 64, height: 64, borderRadius: 14, overflow: 'hidden' },
   cardName: { fontSize: 14, fontWeight: '800', color: palette.zinc[900], letterSpacing: -0.1 },
   cardDetail: { fontSize: 11, color: palette.zinc[500], marginTop: 1 },
-  cardDisc: { fontSize: 15, fontWeight: '800', color: palette.coral[50], letterSpacing: -0.2 },
+  cardDisc: { fontSize: 15, fontWeight: '800', letterSpacing: -0.2 },
   cardNote: { fontSize: 10, color: palette.zinc[500], marginTop: 2 },
+  ticketPrice: { fontSize: 14, fontWeight: '800', color: palette.blue[50], marginTop: 6 },
+  bookBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    backgroundColor: palette.blue[50],
+    borderRadius: 999,
+    paddingVertical: 9,
+    paddingHorizontal: 14,
+    ...shadows.blue,
+  },
+  bookText: { color: '#fff', fontWeight: '700', fontSize: 13 },
+  outlinkNote: { fontSize: 11, color: palette.zinc[400], textAlign: 'center', marginTop: 6 },
 })
