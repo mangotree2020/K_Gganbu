@@ -204,6 +204,17 @@ export default function MapScreen() {
     lang,
   )
   const reviewsMock = reviews?.provider === 'mock'
+  // 리뷰 출처 필터 — 네이버(한국인)/구글(외국인) 카드를 탭하면 해당 리뷰만 표시(토글)
+  const [reviewFilter, setReviewFilter] = useState<'korean' | 'foreign' | null>(null)
+  // 선택 장소가 바뀌면 필터 초기화
+  const shownReviews = useMemo(() => {
+    const all = reviews?.reviews ?? []
+    if (!reviewFilter) return all
+    return all.filter((r) => {
+      const isKo = (r.lang ?? '').toLowerCase().startsWith('ko')
+      return reviewFilter === 'korean' ? isKo : !isKo
+    })
+  }, [reviews, reviewFilter])
 
   // 검색 결과로 지도 이동
   const goToSearchResult = (r: NaverPoi) => {
@@ -311,9 +322,10 @@ export default function MapScreen() {
 
   const selectPlace = (p: Poi) => {
     setSelected(p.id)
-    // 다른 장소 선택 시 기존 경로 제거
+    // 다른 장소 선택 시 기존 경로·리뷰 필터 초기화
     if (p.id !== selectedId) {
       setRouteInfo(null)
+      setReviewFilter(null)
       naverRef.current?.clearRoute()
       googleRef.current?.clearRoute()
     }
@@ -699,8 +711,15 @@ export default function MapScreen() {
               {reviewsMock && <FallbackBadge label="Sample" />}
             </View>
             <View style={ss.reviewRow}>
-              {/* 카드 전체가 아닌 우측 상단 아이콘 탭 시에만 지도 앱 호출 */}
-              <View style={[ss.reviewCard, { borderColor: '#03C75A' }]}>
+              {/* 카드 = 출처 필터(탭하면 해당 리뷰만). 우측 상단 아이콘만 지도 앱 호출 */}
+              <Pressable
+                onPress={() => setReviewFilter((f) => (f === 'korean' ? null : 'korean'))}
+                style={[
+                  ss.reviewCard,
+                  { borderColor: '#03C75A' },
+                  reviewFilter === 'korean' && ss.reviewCardSelN,
+                  reviewFilter === 'foreign' && ss.reviewCardDim,
+                ]}>
                 <View style={ss.reviewCardHead}>
                   <View style={[ss.platformBadge, { backgroundColor: '#03C75A' }]}>
                     <Text style={ss.platformBadgeText}>N</Text>
@@ -738,8 +757,15 @@ export default function MapScreen() {
                 ) : (
                   <Text style={ss.reviewNone}>{t('map.reviewNone')}</Text>
                 )}
-              </View>
-              <View style={[ss.reviewCard, { borderColor: '#4285F4' }]}>
+              </Pressable>
+              <Pressable
+                onPress={() => setReviewFilter((f) => (f === 'foreign' ? null : 'foreign'))}
+                style={[
+                  ss.reviewCard,
+                  { borderColor: '#4285F4' },
+                  reviewFilter === 'foreign' && ss.reviewCardSelG,
+                  reviewFilter === 'korean' && ss.reviewCardDim,
+                ]}>
                 <View style={ss.reviewCardHead}>
                   <View style={[ss.platformBadge, { backgroundColor: '#4285F4' }]}>
                     <Text style={ss.platformBadgeText}>G</Text>
@@ -777,10 +803,13 @@ export default function MapScreen() {
                 ) : (
                   <Text style={ss.reviewNone}>{t('map.reviewNone')}</Text>
                 )}
-              </View>
+              </Pressable>
             </View>
-            {/* 개별 리뷰 (한국인/외국인 혼합, 스크롤로 더 보기) */}
-            {(reviews?.reviews ?? []).map((r, i) => (
+            {/* 개별 리뷰 — 선택된 출처 카드의 리뷰만(필터). 미선택 시 전체 */}
+            {shownReviews.length === 0 && reviewFilter ? (
+              <Text style={ss.reviewNone}>{t('map.reviewNone')}</Text>
+            ) : null}
+            {shownReviews.map((r, i) => (
               <View key={i} style={ss.reviewItem}>
                 <View style={ss.reviewAvatar}>
                   <Text style={ss.reviewAvatarFlag}>{r.flag}</Text>
@@ -1043,6 +1072,11 @@ const ss = StyleSheet.create({
     backgroundColor: '#fff',
     gap: 5,
   },
+  // 선택된 출처 카드 — 굵은 테두리 + 옅은 배경 틴트
+  reviewCardSelN: { borderWidth: 2, backgroundColor: '#EFFBF3' },
+  reviewCardSelG: { borderWidth: 2, backgroundColor: '#EFF4FE' },
+  // 필터 활성 시 미선택 카드는 흐리게
+  reviewCardDim: { opacity: 0.45 },
   reviewCardHead: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   reviewExtBtn: { padding: 2 }, // 우측 상단 외부지도 아이콘(이것만 탭 시 지도 앱 호출)
   reviewCardTitle: { flex: 1, fontSize: 11, fontWeight: '800', color: palette.zinc[800] },
