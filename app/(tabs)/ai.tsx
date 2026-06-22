@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from 'react'
 import {
   Alert,
   Keyboard,
+  Modal,
   PermissionsAndroid,
   Platform,
   Pressable,
@@ -17,10 +18,24 @@ import { useIsFocused } from 'expo-router'
 
 import { Icon } from '@/components/brand'
 import { FallbackBadge } from '@/components/FallbackBadge'
-import { askGganbu } from '@/features/gganbu/services'
+import { askGganbuStream } from '@/features/gganbu/services'
+import {
+  loadChatSessions,
+  saveChatSession,
+  deleteChatSession,
+  clearChatSessions,
+  type ChatSession,
+} from '@/features/gganbu/chatHistory'
+import { DIALECTS, dialectFromCoords, type Dialect } from '@/features/gganbu/dialect'
+import { useMapPois } from '@/features/map/queries'
+import { loadSessions } from '@/features/translate/history'
 import { startLiveTranslate, type LiveSession } from '@/features/translate/geminiLive'
 import { startMic, type MicHandle } from '@/features/translate/voiceAudio'
-import { useRequireAccount } from '@/features/auth/loginPrompt'
+import { useWeather } from '@/features/weather/queries'
+import { useCityLabel } from '@/features/weather/useCityLabel'
+import { useCurrentLocation } from '@/hooks/useCurrentLocation'
+import { speakMessage, stopSpeak } from '@/lib/speak'
+import { toSpeakable } from '@/lib/speakable'
 import { useLocaleStore, useT } from '@/lib/i18n'
 import { palette } from '@/theme/tokens'
 
@@ -89,19 +104,75 @@ async function ensureMicPermission(): Promise<boolean> {
 
 export default function AiMateScreen() {
   const t = useT()
-  const requireAccount = useRequireAccount()
   const appLang = useLocaleStore((s) => s.lang)
   const [msgs, setMsgs] = useState<Msg[]>([INITIAL])
   const [input, setInput] = useState('')
   const [typing, setTyping] = useState(false)
   const [listening, setListening] = useState(false)
+  // 대화 이력 — 현재 세션 id + 이력 목록 모달
+  const sessionIdRef = useRef(0)
+  const [histOpen, setHistOpen] = useState(false)
+  const [sessions, setSessions] = useState<ChatSession[]>([])
+  // 사투리 모드 — 한국어일 때 기본 활성화(현지 로컬 친구 느낌). 한국어 전용.
+  const koOnly = appLang === 'ko'
+  const [satoori, setSatoori] = useState(koOnly)
+  const [dialect, setDialect] = useState<Dialect>(DIALECTS.standard)
+  const { coords } = useCurrentLocation()
+  // 정확한 답변용 실시간 컨텍스트 소스 — 날씨/현재 도시/주변 장소
+  const { data: weather } = useWeather(coords)
+  const city = useCityLabel(coords, appLang)
+  const { data: nearbyData } = useMapPois(appLang, 8)
   const scrollRef = useRef<ScrollView>(null)
   // 음성 질문(STT) — Gemini Live 전사 세션 + 마이크 캡처
   const sessionRef = useRef<LiveSession | null>(null)
   const micRef = useRef<MicHandle | null>(null)
   const sendRef = useRef<(text: string) => void>(() => {})
+  // TTS 재생 중 플래그 — 마이크가 AI 음성을 다시 전사(에코 루프)하지 않도록 게이팅
+  const speakingRef = useRef(false)
 
   const scrollEnd = () => setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 80)
+
+  // 정확한 답변용 컨텍스트 문자열 — 날씨/현재 도시/주변 장소 + 사용자가 통역한 최근 내용
+  const buildContext = () => {
+    const parts: string[] = []
+    parts.push(`Weather now: about ${weather?.tempC ?? 19}°C, ${weather?.condition ?? 'clear'}.`)
+    if (city) parts.push(`Traveler is near: ${city}.`)
+    const names = (nearbyData?.pois ?? [])
+      .map((p) => p.name)
+      .filter(Boolean)
+      .slice(0, 6)
+    if (names.length) parts.push(`Nearby real places: ${names.join(', ')}.`)
+    const recent = loadSessions()
+      .flatMap((s) => s.turns.map((tn) => tn.original))
+      .filter(Boolean)
+      .slice(-5)
+    if (recent.length) parts.push(`Recently the traveler said/translated: ${recent.join(' | ')}.`)
+    return parts.join(' ')
+  }
+
+  // AI 답변을 음성으로 읽어줌 — 마크다운/이모지/불릿 제거 후 "문장만" 자연스럽게 발화.
+  // 사투리 모드면 한국어로. 음성 입력 중이면 재생 동안 마이크 차단(에코 루프 방지).
+  const speakReply = (text: string) => {
+    const spoken = toSpeakable(text)
+    if (!spoken) return
+    // 실제 텍스트 스크립트로 발화 언어 판정(사투리 답변은 한글 → ko)
+    const lang = /[가-힣]/.test(spoken)
+      ? 'ko'
+      : /[ぁ-んァ-ン]/.test(spoken)
+        ? 'ja'
+        : /[一-鿿]/.test(spoken)
+          ? appLang === 'zh-TW'
+            ? 'zh-TW'
+            : 'zh-CN'
+          : 'en'
+    speakingRef.current = true
+    speakMessage(spoken, lang, () => {
+      // 스피커 잔향이 마이크에 남는 시간 여유 후 입력 재개
+      setTimeout(() => {
+        speakingRef.current = false
+      }, 300)
+    })
+  }
 
   const send = async (text: string) => {
     if (!text.trim()) return
@@ -120,18 +191,51 @@ export default function AiMateScreen() {
       setTimeout(() => {
         setTyping(false)
         setMsgs((m) => [...m, { role: 'bot', ...canned }])
+        speakReply(canned.text)
         scrollEnd()
       }, 600)
       return
     }
 
-    // 그 외 자유 입력 → 실 AI 깐부(Claude+RAG) 호출, 실패 시 mock 폴백
-    const { reply, provider } = await askGganbu([...history, { role: 'user', text }], {
-      language: 'en',
-      location: 'Haeundae, Busan',
-    })
+    // 그 외 자유 입력 → 실 AI 깐부(Claude) 스트리밍. 토큰이 도착하는 즉시 말풍선에 흘려준다.
+    // 사투리 ON이면 한국어 지역 방언으로, 아니면 앱 언어로 답변 → TTS도 같은 언어로.
+    let started = false
+    // 스트리밍 말풍선(마지막 봇 메시지)의 텍스트를 갱신
+    const updateLast = (full: string, extra: Partial<Msg> = {}) =>
+      setMsgs((m) => {
+        if (!m.length) return m
+        const copy = [...m]
+        copy[copy.length - 1] = { ...copy[copy.length - 1], text: full, ...extra }
+        return copy
+      })
+    const { reply, provider } = await askGganbuStream(
+      [...history, { role: 'user', text }],
+      {
+        language: satoori ? 'ko' : appLang,
+        location: city || 'Haeundae, Busan',
+        dialect: satoori ? dialect.instruction : undefined,
+        context: buildContext(),
+      },
+      (full) => {
+        // 첫 토큰 도착 → 타이핑 표시를 끄고 봇 말풍선 생성, 이후 누적 갱신
+        if (!started) {
+          started = true
+          setTyping(false)
+          setMsgs((m) => [...m, { role: 'bot', text: full }])
+        } else {
+          updateLast(full)
+        }
+        scrollEnd()
+      },
+    )
     setTyping(false)
-    setMsgs((m) => [...m, { role: 'bot', text: reply, fallback: provider === 'mock' }])
+    // 스트림이 한 글자도 못 받았으면(에러/mock) 새 말풍선으로, 받았으면 최종 확정
+    if (!started) {
+      setMsgs((m) => [...m, { role: 'bot', text: reply, fallback: provider === 'mock' }])
+    } else {
+      updateLast(reply, { fallback: provider === 'mock' })
+    }
+    speakReply(reply)
     scrollEnd()
   }
   // 최신 send를 ref로 노출 — 음성 전사 콜백이 항상 최신 대화 이력으로 질문하도록
@@ -182,7 +286,11 @@ export default function AiMateScreen() {
       return
     }
     sessionRef.current = session
-    micRef.current = startMic((pcm) => sessionRef.current?.sendAudio(pcm))
+    // TTS 재생 중(speakingRef)에는 오디오 전송 차단 — AI 음성의 에코 재전사 방지
+    micRef.current = startMic((pcm) => {
+      if (speakingRef.current) return
+      sessionRef.current?.sendAudio(pcm)
+    })
     setListening(true)
   }
 
@@ -198,11 +306,33 @@ export default function AiMateScreen() {
     // 다음 틱으로 미뤄 실행(이펙트 내 동기 setState로 인한 연쇄 렌더 방지)
     const id = setTimeout(() => {
       if (isFocused) startListening(true)
-      else stopListening()
+      else {
+        stopListening()
+        stopSpeak()
+      }
     }, 0)
     return () => clearTimeout(id)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isFocused])
+
+  // GPS 좌표 → 지역 사투리 자동 감지(버튼 표시·사투리 답변용)
+  useEffect(() => {
+    let alive = true
+    dialectFromCoords(coords).then((d) => {
+      if (alive) setDialect(d)
+    })
+    return () => {
+      alive = false
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [coords.latitude, coords.longitude])
+
+  // 사투리는 한국어 전용 — 앱 언어가 한국어가 아니면 자동 해제
+  useEffect(() => {
+    if (koOnly) return
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setSatoori(false)
+  }, [koOnly])
 
   // 키보드 표시 시 채팅을 최신으로 스크롤(키보드에 가린 최근 메시지 노출)
   useEffect(() => {
@@ -210,13 +340,54 @@ export default function AiMateScreen() {
     return () => show.remove()
   }, [])
 
-  // 언마운트 시 마이크/세션 정리(리소스 누수 방지)
+  // 대화가 바뀔 때마다 현재 세션을 이력에 저장(upsert) — 사용자 발화가 있을 때만
+  useEffect(() => {
+    if (msgs.some((m) => m.role === 'user')) {
+      sessionIdRef.current = saveChatSession(
+        msgs.map((m) => ({ role: m.role, text: m.text })),
+        sessionIdRef.current,
+      )
+    }
+  }, [msgs])
+
+  // 언마운트 시 마이크/세션/TTS 정리(리소스 누수·잔여 발화 방지)
   useEffect(() => {
     return () => {
       micRef.current?.stop()
       sessionRef.current?.close()
+      stopSpeak()
     }
   }, [])
+
+  // 이력 열기/복원/새 대화/삭제
+  const openHistory = () => {
+    setSessions(loadChatSessions())
+    setHistOpen(true)
+  }
+  const restoreSession = (s: ChatSession) => {
+    stopSpeak()
+    setMsgs(s.messages.map((m) => ({ role: m.role, text: m.text })))
+    sessionIdRef.current = s.id
+    setHistOpen(false)
+    scrollEnd()
+  }
+  const newChat = () => {
+    stopSpeak()
+    setMsgs([INITIAL])
+    sessionIdRef.current = 0
+    setInput('')
+    setHistOpen(false)
+  }
+  const removeSession = (id: number) => {
+    deleteChatSession(id)
+    setSessions(loadChatSessions())
+    if (sessionIdRef.current === id) sessionIdRef.current = 0
+  }
+  const clearAll = () => {
+    clearChatSessions()
+    setSessions([])
+    sessionIdRef.current = 0
+  }
 
   return (
     <View style={ss.container}>
@@ -238,9 +409,38 @@ export default function AiMateScreen() {
                 <Text style={ss.statusText}>{t('ai.online')} · Claude Sonnet 4</Text>
               </View>
             </View>
+            {/* 사투리 토글 — 한국어 전용(기본 ON). 외국어면 비활성 + 탭 시 음성 안내 */}
             <Pressable
-              onPress={() => requireAccount('auth.gateAi', () => {})}
-              style={({ pressed }) => [ss.historyBtn, { opacity: pressed ? 0.7 : 1 }]}>
+              onPress={() => {
+                if (!koOnly) {
+                  // 언어 변경이 필요하다는 안내를 앱 언어로 말해줌
+                  speakingRef.current = true
+                  speakMessage(t('ai.dialectKoOnly'), appLang, () => {
+                    setTimeout(() => {
+                      speakingRef.current = false
+                    }, 300)
+                  })
+                  return
+                }
+                setSatoori((v) => !v)
+              }}
+              style={[ss.satooriBtn, satoori && ss.satooriBtnOn, !koOnly && { opacity: 0.45 }]}
+              accessibilityRole="button"
+              accessibilityState={{ selected: satoori, disabled: !koOnly }}>
+              <Icon
+                name="megaphone"
+                size={13}
+                color={satoori ? '#fff' : palette.zinc[600]}
+                filled={satoori}
+              />
+              <Text style={[ss.satooriText, { color: satoori ? '#fff' : palette.zinc[700] }]}>
+                {satoori ? dialect.label : t('ai.dialect')}
+              </Text>
+            </Pressable>
+            <Pressable
+              onPress={openHistory}
+              style={({ pressed }) => [ss.historyBtn, { opacity: pressed ? 0.7 : 1 }]}
+              accessibilityRole="button">
               <Icon name="history" size={18} color={palette.zinc[900]} />
             </Pressable>
           </View>
@@ -351,6 +551,59 @@ export default function AiMateScreen() {
           </View>
         )}
       </ScrollView>
+
+      {/* 대화 이력 모달 — 지난 대화 목록(복원/삭제) + 새 대화 */}
+      <Modal
+        visible={histOpen}
+        animationType="slide"
+        transparent
+        onRequestClose={() => setHistOpen(false)}>
+        <View style={ss.histBackdrop}>
+          <View style={ss.histSheet}>
+            <SafeAreaView edges={['bottom']}>
+              <View style={ss.histHead}>
+                <Text style={ss.histTitle}>{t('ai.history')}</Text>
+                <View style={{ flexDirection: 'row', gap: 8 }}>
+                  <Pressable onPress={newChat} style={ss.histNewBtn}>
+                    <Icon name="add" size={15} color="#fff" />
+                    <Text style={ss.histNewText}>{t('ai.newChat')}</Text>
+                  </Pressable>
+                  <Pressable onPress={() => setHistOpen(false)} style={ss.histCloseBtn}>
+                    <Icon name="close" size={18} color={palette.zinc[700]} />
+                  </Pressable>
+                </View>
+              </View>
+              {sessions.length === 0 ? (
+                <Text style={ss.histEmpty}>{t('ai.historyEmpty')}</Text>
+              ) : (
+                <ScrollView style={{ maxHeight: 420 }} showsVerticalScrollIndicator={false}>
+                  {sessions.map((s) => (
+                    <Pressable key={s.id} onPress={() => restoreSession(s)} style={ss.histRow}>
+                      <View style={{ flex: 1 }}>
+                        <Text style={ss.histRowTitle} numberOfLines={1}>
+                          {s.title || '…'}
+                        </Text>
+                        <Text style={ss.histRowMeta}>
+                          {new Date(s.at).toLocaleString()} · {s.messages.length}
+                        </Text>
+                      </View>
+                      <Pressable
+                        onPress={() => removeSession(s.id)}
+                        hitSlop={10}
+                        style={ss.histDelBtn}>
+                        <Icon name="close" size={15} color={palette.zinc[400]} />
+                      </Pressable>
+                    </Pressable>
+                  ))}
+                  <Pressable onPress={clearAll} style={ss.histClearAll}>
+                    <Text style={ss.histClearText}>{t('ai.clearHistory')}</Text>
+                  </Pressable>
+                </ScrollView>
+              )}
+            </SafeAreaView>
+          </View>
+        </View>
+      </Modal>
     </View>
   )
 }
@@ -382,6 +635,19 @@ const ss = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  satooriBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 10,
+    height: 30,
+    borderRadius: 999,
+    backgroundColor: palette.zinc[100],
+    borderWidth: 1,
+    borderColor: palette.zinc[200],
+  },
+  satooriBtnOn: { backgroundColor: palette.coral[50], borderColor: palette.coral[50] },
+  satooriText: { fontSize: 11, fontWeight: '800', letterSpacing: -0.2 },
 
   userBubble: {
     alignSelf: 'flex-end',
@@ -488,4 +754,47 @@ const ss = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  // 대화 이력 모달
+  histBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.35)', justifyContent: 'flex-end' },
+  histSheet: {
+    backgroundColor: '#fff',
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    paddingHorizontal: 16,
+    paddingTop: 14,
+  },
+  histHead: { flexDirection: 'row', alignItems: 'center', marginBottom: 10 },
+  histTitle: { flex: 1, fontSize: 17, fontWeight: '800', color: palette.zinc[900] },
+  histNewBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: palette.blue[50],
+    borderRadius: 999,
+    paddingHorizontal: 12,
+    height: 32,
+  },
+  histNewText: { color: '#fff', fontSize: 12, fontWeight: '800' },
+  histCloseBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: 999,
+    backgroundColor: palette.zinc[100],
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  histEmpty: { fontSize: 13, color: palette.zinc[400], textAlign: 'center', paddingVertical: 32 },
+  histRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingVertical: 12,
+    borderBottomWidth: 0.5,
+    borderBottomColor: palette.zinc[200],
+  },
+  histRowTitle: { fontSize: 14, fontWeight: '700', color: palette.zinc[900] },
+  histRowMeta: { fontSize: 11, color: palette.zinc[400], marginTop: 2 },
+  histDelBtn: { padding: 4 },
+  histClearAll: { alignItems: 'center', paddingVertical: 16 },
+  histClearText: { fontSize: 12, fontWeight: '700', color: palette.error[50] },
 })
