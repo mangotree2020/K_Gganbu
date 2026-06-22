@@ -3,16 +3,7 @@
 import { LinearGradient } from 'expo-linear-gradient'
 import { router } from 'expo-router'
 import { useEffect, useMemo, useState } from 'react'
-import {
-  Dimensions,
-  Image,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  View,
-} from 'react-native'
+import { Dimensions, Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import Svg, { Circle, G, Path, Rect } from 'react-native-svg'
 
@@ -555,54 +546,7 @@ export default function HomeScreen() {
               )}
             </View>
 
-            {/* 검색 바 */}
-            <View style={[ss.searchBar, shadows.pop]}>
-              <Icon name="search" size={20} color={palette.blue[40]} />
-              <TextInput
-                placeholder={t('home.searchPlaceholder')}
-                placeholderTextColor={palette.zinc[500]}
-                style={ss.searchInput}
-              />
-              <Pressable style={ss.translateBtn} onPress={() => router.push('/(tabs)/translate')}>
-                <Icon name="translate" size={14} color="#fff" filled />
-                <Text style={ss.translateBtnText}> KO</Text>
-              </Pressable>
-            </View>
-
-            {/* 3대 코어 액션 */}
-            <View style={ss.coreActions}>
-              {[
-                {
-                  icon: 'translate',
-                  label: t('home.translateNow'),
-                  sub: t('home.translateNowSub'),
-                  route: '/(tabs)/translate',
-                },
-                {
-                  icon: 'smart_toy',
-                  label: t('home.askAi'),
-                  sub: t('home.askAiSub'),
-                  route: '/(tabs)/ai',
-                },
-                {
-                  icon: 'explore',
-                  label: t('home.findPlaces'),
-                  sub: t('home.findPlacesSub'),
-                  route: '/(tabs)/map',
-                },
-              ].map((a) => (
-                <Pressable
-                  key={a.icon}
-                  style={ss.coreAction}
-                  onPress={() => router.push(a.route as never)}>
-                  <View style={ss.coreActionIcon}>
-                    <Icon name={a.icon} size={22} color={palette.blue[40]} filled />
-                  </View>
-                  <Text style={ss.coreActionLabel}>{a.label}</Text>
-                  <Text style={ss.coreActionSub}>{a.sub}</Text>
-                </Pressable>
-              ))}
-            </View>
+            {/* 검색 Input Box 삭제 — 텍스트 입력 최소화 방향(요청). 음성/탭 기반 탐색으로 대체 */}
           </SafeAreaView>
         </View>
 
@@ -805,6 +749,15 @@ export default function HomeScreen() {
       {/* 플로팅 AI 깐부 버튼 (PLANNING §9, 디자인 docs/AI Gganbu.png) — 알약형 + 로봇 아이콘 + 라벨.
           전체폭 래퍼 + flex-end로 우측 정렬(absolute+right만으로는 전폭 늘어나는 문제 회피). */}
       <View style={ss.gganbuFabWrap} pointerEvents="box-none">
+        {/* AI Translate — 음성 통역 실행화면 바로가기(teal=번역 전용) */}
+        <Pressable
+          onPress={() => router.push('/voice-interpret' as never)}
+          android_ripple={{ color: 'rgba(255,255,255,0.25)', borderless: false }}
+          style={[ss.gganbuFab, ss.translateFab]}>
+          <Icon name="translate" size={20} color="#fff" />
+          <Text style={ss.gganbuFabText}>AI Translate</Text>
+        </Pressable>
+        {/* AI Gganbu — 챗봇 화면 */}
         <Pressable
           onPress={() => router.push('/(tabs)/ai' as never)}
           android_ripple={{ color: 'rgba(255,255,255,0.25)', borderless: false }}
@@ -829,7 +782,10 @@ const ss = StyleSheet.create({
     right: 16,
     bottom: 18,
     alignItems: 'flex-end', // 알약을 우측 정렬(내용 너비로 shrink)
+    gap: 10, // AI Translate / AI Gganbu 세로 스택 간격
   },
+  // AI Translate 플로팅 — teal(번역 전용 컬러)
+  translateFab: { backgroundColor: '#0D9488' },
   gganbuFab: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -843,13 +799,13 @@ const ss = StyleSheet.create({
   },
   gganbuFabText: { color: '#fff', fontSize: 15, fontWeight: '800', letterSpacing: -0.2 },
 
-  hero: { paddingHorizontal: 18, paddingBottom: 14, overflow: 'hidden' },
+  hero: { paddingHorizontal: 18, paddingBottom: 10, overflow: 'hidden' },
   heroTop: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginTop: 8,
-    marginBottom: 14,
+    marginTop: 6,
+    marginBottom: 10,
   },
   locationPill: {
     flexDirection: 'row',
@@ -890,27 +846,27 @@ const ss = StyleSheet.create({
   iconBadgeText: { color: '#fff', fontSize: 9, fontWeight: '800' },
   greeting: {
     color: '#fff',
-    fontSize: 26,
+    fontSize: 24,
     fontWeight: '800',
     letterSpacing: -0.6,
-    lineHeight: 30,
-    minHeight: 52, // gganbuMsg와 동일 높이로 메시지 전환 시 점프 방지
+    lineHeight: 29,
+    minHeight: 44, // gganbuMsg와 동일 높이로 메시지 전환 시 점프 방지
   },
   gganbuMsg: {
     color: '#fff',
-    fontSize: 20,
+    fontSize: 19,
     fontWeight: '800',
     letterSpacing: -0.3,
-    lineHeight: 26,
-    minHeight: 52, // 1~2줄 변동 시 레이아웃 점프 방지
+    lineHeight: 25,
+    minHeight: 44, // 1~2줄 변동 시 레이아웃 점프 방지
   },
-  dateTime: { color: 'rgba(255,255,255,.92)', fontSize: 14, fontWeight: '600', marginTop: 3 },
+  dateTime: { color: 'rgba(255,255,255,.92)', fontSize: 14, fontWeight: '600', marginTop: 2 },
   weatherRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
-    marginTop: 6,
-    marginBottom: 14,
+    marginTop: 4,
+    marginBottom: 10,
   },
   weatherText: { color: 'rgba(255,255,255,.92)', fontSize: 13 },
   weatherDot: { color: 'rgba(255,255,255,.5)', fontSize: 13, marginHorizontal: 4 },
