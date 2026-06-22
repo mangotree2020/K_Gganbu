@@ -1,7 +1,9 @@
 import { LinearGradient } from 'expo-linear-gradient'
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import {
-  KeyboardAvoidingView,
+  Alert,
+  Keyboard,
+  PermissionsAndroid,
   Platform,
   Pressable,
   ScrollView,
@@ -11,12 +13,15 @@ import {
   View,
 } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
+import { useIsFocused } from 'expo-router'
 
 import { Icon } from '@/components/brand'
 import { FallbackBadge } from '@/components/FallbackBadge'
 import { askGganbu } from '@/features/gganbu/services'
+import { startLiveTranslate, type LiveSession } from '@/features/translate/geminiLive'
+import { startMic, type MicHandle } from '@/features/translate/voiceAudio'
 import { useRequireAccount } from '@/features/auth/loginPrompt'
-import { useT } from '@/lib/i18n'
+import { useLocaleStore, useT } from '@/lib/i18n'
 import { palette } from '@/theme/tokens'
 
 type Schedule = { time: string; place: string; icon: string }
@@ -71,13 +76,30 @@ const INITIAL: Msg = {
   ],
 }
 
+// 마이크 권한 — Android RECORD_AUDIO. iOS는 react-native-audio-api가 자체 요청.
+async function ensureMicPermission(): Promise<boolean> {
+  if (Platform.OS !== 'android') return true
+  try {
+    const r = await PermissionsAndroid.request(PermissionsAndroid.PERMISSIONS.RECORD_AUDIO)
+    return r === PermissionsAndroid.RESULTS.GRANTED
+  } catch {
+    return false
+  }
+}
+
 export default function AiMateScreen() {
   const t = useT()
   const requireAccount = useRequireAccount()
+  const appLang = useLocaleStore((s) => s.lang)
   const [msgs, setMsgs] = useState<Msg[]>([INITIAL])
   const [input, setInput] = useState('')
   const [typing, setTyping] = useState(false)
+  const [listening, setListening] = useState(false)
   const scrollRef = useRef<ScrollView>(null)
+  // 음성 질문(STT) — Gemini Live 전사 세션 + 마이크 캡처
+  const sessionRef = useRef<LiveSession | null>(null)
+  const micRef = useRef<MicHandle | null>(null)
+  const sendRef = useRef<(text: string) => void>(() => {})
 
   const scrollEnd = () => setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 80)
 
@@ -112,6 +134,89 @@ export default function AiMateScreen() {
     setMsgs((m) => [...m, { role: 'bot', text: reply, fallback: provider === 'mock' }])
     scrollEnd()
   }
+  // 최신 send를 ref로 노출 — 음성 전사 콜백이 항상 최신 대화 이력으로 질문하도록
+  useEffect(() => {
+    sendRef.current = send
+  })
+
+  // 음성 듣기 중지 — 마이크/세션 정리
+  const stopListening = () => {
+    micRef.current?.stop()
+    micRef.current = null
+    sessionRef.current?.close()
+    sessionRef.current = null
+    setListening(false)
+  }
+
+  // 음성 듣기 시작 — 발화를 전사해 입력창에 채우고, 한 문장이 끝나면 자동 질문(끌 때까지 반복).
+  // silent=true(화면 진입 자동 시작)면 권한/오류 알림을 띄우지 않는다.
+  const startListening = async (silent = false) => {
+    if (listening || sessionRef.current) return
+    if (!(await ensureMicPermission())) {
+      if (!silent) Alert.alert(t('ai.micDeniedTitle'), t('ai.micDenied'))
+      return
+    }
+    const session = await startLiveTranslate(
+      { appLang, mode: 'transcribe' },
+      {
+        onStatus: (s) => {
+          if (s === 'error' || s === 'closed') stopListening()
+        },
+        onTurn: (turn) => {
+          const text = turn.original.trim()
+          if (!turn.final) {
+            // 진행 중 — 입력창에 실시간 표시
+            if (text) setInput(text)
+            return
+          }
+          // 한 발화 종료 → 질문 전송 후 계속 듣기(마이크 끌 때까지)
+          if (text) {
+            sendRef.current(text)
+            setInput('')
+          }
+        },
+      },
+    )
+    if (!session) {
+      if (!silent) Alert.alert(t('ai.micUnavailableTitle'), t('ai.micUnavailable'))
+      return
+    }
+    sessionRef.current = session
+    micRef.current = startMic((pcm) => sessionRef.current?.sendAudio(pcm))
+    setListening(true)
+  }
+
+  // 마이크 아이콘 터치 — 켜져 있으면 Off, 꺼져 있으면 다시 On
+  const toggleMic = () => {
+    if (listening) stopListening()
+    else startListening(false)
+  }
+
+  // 화면 진입 시 기본 On(바로 음성 지원), 이탈 시 Off(마이크 해제)
+  const isFocused = useIsFocused()
+  useEffect(() => {
+    // 다음 틱으로 미뤄 실행(이펙트 내 동기 setState로 인한 연쇄 렌더 방지)
+    const id = setTimeout(() => {
+      if (isFocused) startListening(true)
+      else stopListening()
+    }, 0)
+    return () => clearTimeout(id)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isFocused])
+
+  // 키보드 표시 시 채팅을 최신으로 스크롤(키보드에 가린 최근 메시지 노출)
+  useEffect(() => {
+    const show = Keyboard.addListener('keyboardDidShow', () => scrollEnd())
+    return () => show.remove()
+  }, [])
+
+  // 언마운트 시 마이크/세션 정리(리소스 누수 방지)
+  useEffect(() => {
+    return () => {
+      micRef.current?.stop()
+      sessionRef.current?.close()
+    }
+  }, [])
 
   return (
     <View style={ss.container}>
@@ -142,95 +247,110 @@ export default function AiMateScreen() {
         </SafeAreaView>
       </View>
 
-      <KeyboardAvoidingView
-        style={{ flex: 1 }}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-        <ScrollView
-          ref={scrollRef}
-          style={{ flex: 1 }}
-          contentContainerStyle={{ padding: 14, gap: 10 }}
-          showsVerticalScrollIndicator={false}>
-          {msgs.map((m, i) =>
-            m.role === 'user' ? (
-              <View key={i} style={ss.userBubble}>
-                <Text style={ss.userText}>{m.text}</Text>
-              </View>
-            ) : (
-              <View key={i} style={ss.botCol}>
-                <View style={ss.botBubble}>
-                  <Text style={ss.botText}>{m.text}</Text>
-                </View>
-                {m.fallback && <FallbackBadge label="Offline reply" style={{ marginTop: 6 }} />}
-                {m.schedule && (
-                  <View style={ss.attachCard}>
-                    {m.schedule.map((s, j) => (
-                      <View key={j} style={ss.schedRow}>
-                        <View style={ss.schedIcon}>
-                          <Icon name={s.icon} size={16} color={palette.blue[30]} filled />
-                        </View>
-                        <Text style={ss.schedTime}>{s.time}</Text>
-                        <Text style={ss.schedPlace}>{s.place}</Text>
-                      </View>
-                    ))}
-                  </View>
-                )}
-                {m.list && (
-                  <View style={ss.attachCard}>
-                    {m.list.map((it) => (
-                      <View key={it.name} style={ss.listRow}>
-                        <Text style={ss.listName}>{it.name}</Text>
-                        <Text style={ss.listNote}>{it.note}</Text>
-                      </View>
-                    ))}
-                  </View>
-                )}
-                {m.quick && (
-                  <View style={ss.quickWrap}>
-                    {m.quick.map((q) => (
-                      <Pressable key={q} onPress={() => send(q)} style={ss.quickChip}>
-                        <Text style={ss.quickText}>{q}</Text>
-                      </Pressable>
-                    ))}
-                  </View>
-                )}
-              </View>
-            ),
-          )}
-          {typing && (
-            <View style={[ss.botBubble, ss.typingBubble]}>
-              {[0, 1, 2].map((i) => (
-                <View key={i} style={ss.typingDot} />
-              ))}
-            </View>
-          )}
-        </ScrollView>
-
-        {/* 입력 바 */}
-        <View style={ss.inputBar}>
-          <Pressable style={ss.micBtn}>
-            <Icon name="mic" size={18} color={palette.zinc[900]} />
-          </Pressable>
-          <View style={ss.inputWrap}>
-            <TextInput
-              value={input}
-              onChangeText={setInput}
-              onSubmitEditing={() => send(input)}
-              placeholder={t('ai.placeholder')}
-              placeholderTextColor={palette.zinc[400]}
-              style={ss.input}
-              returnKeyType="send"
-            />
-          </View>
-          <Pressable
-            onPress={() => send(input)}
-            style={[
-              ss.sendBtn,
-              { backgroundColor: input.trim() ? palette.blue[50] : palette.zinc[200] },
-            ]}>
-            <Icon name="arrow_upward" size={20} color="#fff" />
-          </Pressable>
+      {/* 질문 입력 바 — 상단 배치(키보드가 가리지 않아 입력 텍스트가 항상 보임) */}
+      <View style={ss.inputBar}>
+        <Pressable
+          onPress={toggleMic}
+          style={[ss.micBtn, listening && ss.micBtnOn]}
+          accessibilityRole="button"
+          accessibilityState={{ selected: listening }}>
+          <Icon
+            name="mic"
+            size={18}
+            color={listening ? '#fff' : palette.zinc[900]}
+            filled={listening}
+          />
+        </Pressable>
+        <View style={ss.inputWrap}>
+          <TextInput
+            value={input}
+            onChangeText={setInput}
+            onSubmitEditing={() => send(input)}
+            placeholder={listening ? t('ai.listening') : t('ai.placeholder')}
+            placeholderTextColor={palette.zinc[400]}
+            style={ss.input}
+            returnKeyType="send"
+          />
         </View>
-      </KeyboardAvoidingView>
+        <Pressable
+          onPress={() => send(input)}
+          style={[
+            ss.sendBtn,
+            { backgroundColor: input.trim() ? palette.blue[50] : palette.zinc[200] },
+          ]}>
+          <Icon name="arrow_upward" size={20} color="#fff" />
+        </Pressable>
+      </View>
+
+      {/* 듣는 중 안내 */}
+      {listening && (
+        <View style={ss.listeningBar}>
+          <Icon name="mic" size={13} color={palette.coral[50]} filled />
+          <Text style={ss.listeningText}>{t('ai.listening')}</Text>
+        </View>
+      )}
+
+      {/* 채팅 영역 — 입력 바 아래를 채움 */}
+      <ScrollView
+        ref={scrollRef}
+        style={{ flex: 1 }}
+        contentContainerStyle={{ padding: 14, gap: 10 }}
+        showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled">
+        {msgs.map((m, i) =>
+          m.role === 'user' ? (
+            <View key={i} style={ss.userBubble}>
+              <Text style={ss.userText}>{m.text}</Text>
+            </View>
+          ) : (
+            <View key={i} style={ss.botCol}>
+              <View style={ss.botBubble}>
+                <Text style={ss.botText}>{m.text}</Text>
+              </View>
+              {m.fallback && <FallbackBadge label="Offline reply" style={{ marginTop: 6 }} />}
+              {m.schedule && (
+                <View style={ss.attachCard}>
+                  {m.schedule.map((s, j) => (
+                    <View key={j} style={ss.schedRow}>
+                      <View style={ss.schedIcon}>
+                        <Icon name={s.icon} size={16} color={palette.blue[30]} filled />
+                      </View>
+                      <Text style={ss.schedTime}>{s.time}</Text>
+                      <Text style={ss.schedPlace}>{s.place}</Text>
+                    </View>
+                  ))}
+                </View>
+              )}
+              {m.list && (
+                <View style={ss.attachCard}>
+                  {m.list.map((it) => (
+                    <View key={it.name} style={ss.listRow}>
+                      <Text style={ss.listName}>{it.name}</Text>
+                      <Text style={ss.listNote}>{it.note}</Text>
+                    </View>
+                  ))}
+                </View>
+              )}
+              {m.quick && (
+                <View style={ss.quickWrap}>
+                  {m.quick.map((q) => (
+                    <Pressable key={q} onPress={() => send(q)} style={ss.quickChip}>
+                      <Text style={ss.quickText}>{q}</Text>
+                    </Pressable>
+                  ))}
+                </View>
+              )}
+            </View>
+          ),
+        )}
+        {typing && (
+          <View style={[ss.botBubble, ss.typingBubble]}>
+            {[0, 1, 2].map((i) => (
+              <View key={i} style={ss.typingDot} />
+            ))}
+          </View>
+        )}
+      </ScrollView>
     </View>
   )
 }
@@ -331,8 +451,8 @@ const ss = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 10,
     backgroundColor: '#fff',
-    borderTopWidth: 0.5,
-    borderTopColor: palette.zinc[200],
+    borderBottomWidth: 0.5,
+    borderBottomColor: palette.zinc[200],
   },
   micBtn: {
     width: 36,
@@ -342,6 +462,16 @@ const ss = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  micBtnOn: { backgroundColor: palette.coral[50] },
+  listeningBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingVertical: 6,
+    backgroundColor: '#FFF1F2',
+  },
+  listeningText: { fontSize: 12, fontWeight: '700', color: palette.coral[50] },
   inputWrap: {
     flex: 1,
     height: 40,

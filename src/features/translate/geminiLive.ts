@@ -140,8 +140,10 @@ function fromB64(b64: string): Uint8Array {
 }
 
 // Gemini Live 양방향 통역 세션 시작. 토큰 미발급(키 미설정) 시 null 반환 → UI 폴백.
+// mode: 'interpret'(기본) = 양방향 통역 + 음성 출력.
+// 'transcribe' = 번역/음성 없이 발화 원문만 받음(STT — AI 깐부 음성 질문용).
 export async function startLiveTranslate(
-  opts: { appLang: string },
+  opts: { appLang: string; mode?: 'interpret' | 'transcribe' },
   cb: LiveCallbacks,
 ): Promise<LiveSession | null> {
   const grant = await getLiveToken(opts.appLang)
@@ -161,22 +163,41 @@ export async function startLiveTranslate(
   let audioChunks: Uint8Array[] = []
 
   ws.onopen = () => {
-    // 세션 설정 — 양방향 통역(systemInstruction). AUDIO 출력 + 원문/통역 transcription.
-    // speechConfig: 통역 음성을 자연스러운 prebuilt 음성(Aoede)으로 지정.
-    ws.send(
-      JSON.stringify({
-        setup: {
-          model: grant.model,
-          generationConfig: {
-            responseModalities: ['AUDIO'],
-            speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: VOICE_NAME } } },
-          },
-          systemInstruction: { parts: [{ text: interpreterInstruction(opts.appLang) }] },
-          inputAudioTranscription: {},
-          outputAudioTranscription: {},
-        },
-      }),
-    )
+    // 전사(STT) 모드 — 번역/음성 출력 없이 입력 음성의 원문 텍스트만 받는다(AI 음성 질문용).
+    const setup =
+      opts.mode === 'transcribe'
+        ? {
+            // 이 Live 모델은 AUDIO 모달리티만 지원(TEXT 미지원) → AUDIO로 두되 침묵 지시 +
+            // inputAudioTranscription으로 발화 원문만 사용한다(출력 음성은 호출측에서 무시).
+            model: grant.model,
+            generationConfig: {
+              responseModalities: ['AUDIO'],
+              speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: VOICE_NAME } } },
+            },
+            systemInstruction: {
+              parts: [
+                {
+                  text:
+                    'You are a silent transcription engine. Always reply with just a single period ' +
+                    'and never translate, answer, or add anything.',
+                },
+              ],
+            },
+            inputAudioTranscription: {},
+          }
+        : {
+            // 세션 설정 — 양방향 통역(systemInstruction). AUDIO 출력 + 원문/통역 transcription.
+            // speechConfig: 통역 음성을 자연스러운 prebuilt 음성(Aoede)으로 지정.
+            model: grant.model,
+            generationConfig: {
+              responseModalities: ['AUDIO'],
+              speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: VOICE_NAME } } },
+            },
+            systemInstruction: { parts: [{ text: interpreterInstruction(opts.appLang) }] },
+            inputAudioTranscription: {},
+            outputAudioTranscription: {},
+          }
+    ws.send(JSON.stringify({ setup }))
     // 오디오 전송은 setupComplete 수신 후 시작
   }
 
