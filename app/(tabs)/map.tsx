@@ -1,5 +1,5 @@
 import Slider from '@react-native-community/slider'
-import { useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   ActivityIndicator,
   Animated,
@@ -34,8 +34,10 @@ import {
   type NaverMapHandle,
   type NaverMarker,
 } from '@/features/map/NaverMap'
-import { usePlaceReviews } from '@/features/review/queries'
+import { usePlaceReviews, type PlaceReview } from '@/features/review/queries'
+import { translateText } from '@/features/translate/services'
 import { useCurrentLocation } from '@/hooks/useCurrentLocation'
+import { appFlag, baseLang, flagFor } from '@/lib/flags'
 import { useLocaleStore, useT } from '@/lib/i18n'
 import { palette, shadows } from '@/theme/tokens'
 
@@ -135,6 +137,92 @@ const CAT_COLOR: Record<string, string> = {
   beach: palette.blue[50],
 }
 const catColor = (cat: string) => CAT_COLOR[cat] ?? palette.blue[50]
+
+// 개별 리뷰 행 — 리뷰 언어가 앱 언어와 다르면 출발 국기(예: 🇰🇷)를 표시하고,
+// 국기를 탭하면 앱 언어로 번역 + 국기를 앱 언어 국기로 교체. 미번역 외국어 리뷰의 국기는
+// 화면에 보일 때 탭 유도를 위해 브르르 떨린다(주기적 wiggle).
+function ReviewRow({ review, appLang }: { review: PlaceReview; appLang: string }) {
+  const t = useT()
+  const needsTranslate = !!review.text && baseLang(review.lang) !== baseLang(appLang)
+  const [translated, setTranslated] = useState<string | null>(null)
+  const [busy, setBusy] = useState(false)
+  const shake = useState(() => new Animated.Value(0))[0]
+
+  // 미번역 외국어 리뷰 국기 — 주기적으로 떨려 "탭하면 번역" 유도
+  useEffect(() => {
+    if (!needsTranslate || translated) return
+    let alive = true
+    const wiggle = () => {
+      Animated.sequence([
+        Animated.timing(shake, { toValue: 1, duration: 55, useNativeDriver: true }),
+        Animated.timing(shake, { toValue: -1, duration: 55, useNativeDriver: true }),
+        Animated.timing(shake, { toValue: 1, duration: 55, useNativeDriver: true }),
+        Animated.timing(shake, { toValue: 0, duration: 55, useNativeDriver: true }),
+      ]).start(() => {
+        if (alive) setTimeout(() => alive && wiggle(), 2400)
+      })
+    }
+    wiggle()
+    return () => {
+      alive = false
+    }
+  }, [needsTranslate, translated, shake])
+
+  const onTapFlag = async () => {
+    if (!needsTranslate || translated || busy) return
+    setBusy(true)
+    try {
+      const { translatedText } = await translateText({
+        source: baseLang(review.lang),
+        target: appLang,
+        text: review.text,
+      })
+      setTranslated(translatedText)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const flag = translated ? appFlag(appLang) : review.flag || flagFor(review.lang)
+  const text = translated ?? review.text
+  const wobble = needsTranslate && !translated
+  const rotate = shake.interpolate({ inputRange: [-1, 1], outputRange: ['-11deg', '11deg'] })
+
+  return (
+    <View style={ss.reviewItem}>
+      <Pressable onPress={onTapFlag} disabled={!wobble || busy} hitSlop={8} style={ss.reviewAvatar}>
+        <Animated.Text style={[ss.reviewAvatarFlag, wobble && { transform: [{ rotate }] }]}>
+          {flag}
+        </Animated.Text>
+      </Pressable>
+      <View style={{ flex: 1 }}>
+        <View style={ss.reviewItemTop}>
+          <Text style={ss.reviewWho}>{review.who}</Text>
+          <View style={ss.reviewStars}>
+            {[1, 2, 3, 4, 5].map((s) => (
+              <Icon
+                key={s}
+                name="star"
+                size={9}
+                color={s <= review.score ? palette.amber[50] : palette.zinc[200]}
+                filled
+              />
+            ))}
+          </View>
+          <Text style={ss.reviewTime}>{review.time}</Text>
+        </View>
+        <Text style={ss.reviewItemText}>{text}</Text>
+        {wobble && (
+          <Pressable onPress={onTapFlag} hitSlop={6}>
+            <Text style={ss.reviewTapHint}>
+              {busy ? '…' : `${flagFor(review.lang)} ${t('map.tapTranslate')}`}
+            </Text>
+          </Pressable>
+        )}
+      </View>
+    </View>
+  )
+}
 
 export default function MapScreen() {
   const t = useT()
@@ -810,29 +898,7 @@ export default function MapScreen() {
               <Text style={ss.reviewNone}>{t('map.reviewNone')}</Text>
             ) : null}
             {shownReviews.map((r, i) => (
-              <View key={i} style={ss.reviewItem}>
-                <View style={ss.reviewAvatar}>
-                  <Text style={ss.reviewAvatarFlag}>{r.flag}</Text>
-                </View>
-                <View style={{ flex: 1 }}>
-                  <View style={ss.reviewItemTop}>
-                    <Text style={ss.reviewWho}>{r.who}</Text>
-                    <View style={ss.reviewStars}>
-                      {[1, 2, 3, 4, 5].map((s) => (
-                        <Icon
-                          key={s}
-                          name="star"
-                          size={9}
-                          color={s <= r.score ? palette.amber[50] : palette.zinc[200]}
-                          filled
-                        />
-                      ))}
-                    </View>
-                    <Text style={ss.reviewTime}>{r.time}</Text>
-                  </View>
-                  <Text style={ss.reviewItemText}>{r.text}</Text>
-                </View>
-              </View>
+              <ReviewRow key={i} review={r} appLang={lang} />
             ))}
           </ScrollView>
         ) : (
@@ -1031,6 +1097,7 @@ const ss = StyleSheet.create({
   reviewWho: { fontSize: 12, fontWeight: '700', color: palette.zinc[900] },
   reviewTime: { fontSize: 10, color: palette.zinc[400], marginLeft: 'auto' },
   reviewItemText: { fontSize: 12, color: palette.zinc[700], marginTop: 2, lineHeight: 17 },
+  reviewTapHint: { fontSize: 10.5, color: palette.blue[50], fontWeight: '700', marginTop: 3 },
   loadingText: { fontSize: 12, color: palette.zinc[500], marginTop: 8 },
   dirBtn: {
     width: 42,
