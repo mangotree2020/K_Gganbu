@@ -187,6 +187,10 @@ export default function CouTixScreen() {
               </View>
             </View>
             {isMock && <FallbackBadge label="Sample" />}
+            {/* 화면 닫기(X) — 다른 화면과 동일하게 상단 우측 제공 */}
+            <Pressable onPress={() => router.back()} hitSlop={8} style={ss.closeBtn}>
+              <Icon name="close" size={18} color="#fff" />
+            </Pressable>
           </View>
 
           {/* 세그먼트 토글 — 쿠폰 / 티켓 */}
@@ -294,6 +298,14 @@ const ss = StyleSheet.create({
   container: { flex: 1, backgroundColor: palette.zinc[50] },
   header: { paddingHorizontal: 18, paddingBottom: 16 },
   headerRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 12, marginTop: 8 },
+  closeBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: 999,
+    backgroundColor: 'rgba(255,255,255,0.22)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   headerIconBox: {
     width: 42,
     height: 42,
