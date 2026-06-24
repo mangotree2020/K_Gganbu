@@ -296,8 +296,18 @@ emergency_phrases id, category, source_text, translations(jsonb), priority
 
 > **구현 현황 (2026-06-17)**: Phase 1 백로그 #1~#25 **코드 구현 완료** (상세: `docs/BACKLOG.md` 진행 현황표).
 > ✅ 온보딩·홈·번역(텍스트/회화/OCR)·K-Map·쿠폰·긴급·Guest 동작 검증 완료.
-> 🔶 외부 설정 대기: 소셜 로그인(#8) · 전화 OTP(#9) · 음성통역 Agent(#16) · 실 번역/AI/Naver 키(#14·#22·#19).
+> 🔶 외부 설정 대기: 소셜 로그인(#8) · 전화 OTP(#9) · 음성통역 키(#16) · 실 번역/AI/Naver 키(#14·#22·#19).
 > ja 네이티브 검수: `docs/I18N_JA_REVIEW.md` 1차 자체 리뷰 완료 → ⚠️ 5건 원어민 확정 대기.
+>
+> **추가 진행 (2026-06-24, 06-18~22 작업 반영)**:
+> ✅ 음성통역(#16) B안 직결 구현 — `src/features/translate/geminiLive.ts`(앱→Gemini Live WS 직결, `gemini-live-token` ephemeral 발급). 화자전환 무음 튜닝·스피커 에코 차단·다국어 화자 구분·세션 끊김 자동 재연결·빈 통역 스킵·언어감지 실패 시 직전 언어 유지까지 완료. 남은 외부 의존: `GEMINI_API_KEY`(Live preview) + 네이티브 16kHz PCM 마이크 캡처(prebuild 1회). 미설정 시 텍스트 번역 폴백 상시 노출.
+> ✅ AI 깐부(#21·#22, §18) 대폭 강화 — 음성 질문 입력 + 음성 답변(TTS 문장 추출·자연 톤), 지역 **사투리** 매핑·GPS 감지(`src/features/gganbu/dialect.ts`), 실시간 위치·시간 컨텍스트 주입, 대화 이력 MMKV 영속(`src/features/gganbu/chatHistory.ts` + `app/voice-history.tsx`). AI 깐부 화면 통합(`(tabs)/ai`).
+> ✅ 소셜 로그인(#8) OAuth 콜백 딥링크 처리·리다이렉트 설정·인증 가드 권위화·testID 정비(`app/auth-callback.tsx`). 남은 외부 의존: Supabase Google·Apple provider 설정.
+> ✅ K-Map(#19) Naver 구형 지도 API 폴백 제거(2026-06-25 종료 대응) + 지도 리뷰를 Google Places 실데이터로 전환·출처별 필터. 검색·필터·내위치·지도유형·바텀시트 개선.
+> ✅ 홈(#12) 실시간 날씨·현재 위치 관광지 사진 동적 배경·AI 깐부 컨텍스트 인사·앱 언어 TTS·Today's Pick 배선(mock 위젯 → 실데이터).
+> ✅ Expo SDK56 패키지 버전 정렬(런치 크래시 해결).
+>
+> **구조 변경(기획 §9/§19 대비)**: 탭이 `index/map/translate/ai/coupons/profile`로 확장. ① 통역이 독립 탭으로 승격(`(tabs)/translate`), ② AI 깐부가 독립 탭(`(tabs)/ai`)으로 승격(+홈 플로팅 버튼 유지), ③ 쿠폰+티켓을 **CouTix** 단일 탭(`(tabs)/coupons`)으로 통합. 기획서 §9의 "4탭+플로팅"에서 진화한 현행 구조.
 
 ## Phase 2 — 커머스·콘텐츠 확장 (+4~6주)
 

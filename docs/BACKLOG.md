@@ -26,40 +26,44 @@
                                      └─→ 긴급 도움(#25)
 ```
 
-## 진행 현황 (2026-06-17 기준)
+## 진행 현황 (2026-06-24 기준, 06-18~22 작업 반영)
 
 > Phase 1 백로그 **25개 항목 코드 구현 완료** (완료 조건 체크박스 전수 충족).
 > 일부 항목은 코드 완료 상태이며, 실제 동작에는 외부 키·대시보드 설정이 추가로 필요(🔶).
+>
+> **06-18~22 추가 진척**: #16 음성통역 B안 직결(`geminiLive.ts`) 구현 — 무음 튜닝·에코 차단·자동 재연결·언어감지 폴백까지 완료(잔여: `GEMINI_API_KEY`+네이티브 PCM 마이크). #8 OAuth 콜백 딥링크·리다이렉트·가드 정비(잔여: Supabase provider). #19 Naver 구형 API 폴백 제거 + 지도 리뷰 Google Places 실데이터·출처 필터. #12 홈 실시간 날씨·동적 배경·AI 컨텍스트 인사·TTS. #21·#22 AI 깐부 음성 질답·사투리·대화이력(MMKV) 강화.
+>
+> **구조 변경**: 탭이 `index/map/translate/ai/coupons/profile`로 확장 — 통역·AI 깐부 독립 탭 승격, 쿠폰+티켓을 CouTix 단일 탭 통합(상세: `docs/PLANNING.md` Phase 1 현황).
 
 **범례**: ✅ 구현 완료·검증 · 🔶 코드 완료 · 외부 설정 시 동작
 
-| #   | 항목                 | 상태 | 비고                                             |
-| --- | -------------------- | ---- | ------------------------------------------------ |
-| #1  | 프로젝트 초기 셋업   | ✅   | Expo Router·NativeWind·alias·lint 베이스라인     |
-| #2  | Supabase 스키마·RLS  | ✅   | migration 5종 + 전 테이블 RLS                    |
-| #3  | mock 서비스 레이어   | ✅   | USE_MOCK 토글 + withRetry 래퍼                   |
-| #4  | 다국어(i18n) 기반    | ✅   | 5개 언어 + ja 1차 자체 검수(`I18N_JA_REVIEW.md`) |
-| #5  | 공통 UI·마스코트     | ✅   | Button/Card/Sheet/EmptyState + brand             |
-| #6  | 탭+플로팅 AI+SOS     | ✅   | 4탭 셸 + 전역 진입점                             |
-| #7  | Guest 모드           | ✅   | 익명 세션 + linkIdentity 승계                    |
-| #8  | 소셜 로그인          | 🔶   | 코드 완료 / Supabase Google·Apple provider 설정  |
-| #9  | 전화 OTP             | 🔶   | 코드 완료 / NHN Cloud SMS provider 설정          |
-| #10 | 온보딩 — 언어        | ✅   |                                                  |
-| #11 | 온보딩 — 지역·관심사 | ✅   |                                                  |
-| #12 | 홈 — 3대 버튼·위젯   | ✅   |                                                  |
-| #13 | 텍스트 번역 mock     | ✅   |                                                  |
-| #14 | 텍스트 번역 실 API   | 🔶   | Google Translation 단독 확정(§11) / API 키 필요  |
-| #15 | 상황별 회화·보여주기 | ✅   | 오프라인 번들                                    |
-| #16 | 음성 통역            | 🔶   | 코드 완료 / Gemini Live Agent·LiveKit 키 필요    |
-| #17 | K-Map 렌더링         | ✅   |                                                  |
-| #18 | K-Map POI 검색 mock  | ✅   |                                                  |
-| #19 | K-Map 길찾기·Naver   | 🔶   | 코드 완료 / Naver 키(검증됨)·Edge Function 배포  |
-| #20 | K-Map 즐겨찾기       | ✅   |                                                  |
-| #21 | AI 깐부 채팅 mock    | ✅   |                                                  |
-| #22 | AI 깐부 Claude·RAG   | 🔶   | 코드 완료 / Claude·TourAPI 키 필요               |
-| #23 | 쿠폰함 저장·목록     | ✅   |                                                  |
-| #24 | 쿠폰 QR one-time     | ✅   |                                                  |
-| #25 | 긴급 도움(SOS)       | ✅   | 오프라인 동작                                    |
+| #   | 항목                 | 상태 | 비고                                                                                             |
+| --- | -------------------- | ---- | ------------------------------------------------------------------------------------------------ |
+| #1  | 프로젝트 초기 셋업   | ✅   | Expo Router·NativeWind·alias·lint 베이스라인                                                     |
+| #2  | Supabase 스키마·RLS  | ✅   | migration 5종 + 전 테이블 RLS                                                                    |
+| #3  | mock 서비스 레이어   | ✅   | USE_MOCK 토글 + withRetry 래퍼                                                                   |
+| #4  | 다국어(i18n) 기반    | ✅   | 5개 언어 + ja 1차 자체 검수(`I18N_JA_REVIEW.md`)                                                 |
+| #5  | 공통 UI·마스코트     | ✅   | Button/Card/Sheet/EmptyState + brand                                                             |
+| #6  | 탭+플로팅 AI+SOS     | ✅   | 4탭 셸 + 전역 진입점                                                                             |
+| #7  | Guest 모드           | ✅   | 익명 세션 + linkIdentity 승계                                                                    |
+| #8  | 소셜 로그인          | 🔶   | 코드 완료 / Supabase Google·Apple provider 설정                                                  |
+| #9  | 전화 OTP             | 🔶   | 코드 완료 / NHN Cloud SMS provider 설정                                                          |
+| #10 | 온보딩 — 언어        | ✅   |                                                                                                  |
+| #11 | 온보딩 — 지역·관심사 | ✅   |                                                                                                  |
+| #12 | 홈 — 3대 버튼·위젯   | ✅   |                                                                                                  |
+| #13 | 텍스트 번역 mock     | ✅   |                                                                                                  |
+| #14 | 텍스트 번역 실 API   | 🔶   | Google Translation 단독 확정(§11) / API 키 필요                                                  |
+| #15 | 상황별 회화·보여주기 | ✅   | 오프라인 번들                                                                                    |
+| #16 | 음성 통역            | 🔶   | B안 직결(`geminiLive.ts`) 구현 / GEMINI_API_KEY·네이티브 PCM 마이크 대기                         |
+| #17 | K-Map 렌더링         | ✅   |                                                                                                  |
+| #18 | K-Map POI 검색 mock  | ✅   |                                                                                                  |
+| #19 | K-Map 길찾기·Naver   | 🔶   | 코드 완료 / 구형 API 폴백 제거·리뷰 Google Places 실데이터 / Naver 키(검증됨)·Edge Function 배포 |
+| #20 | K-Map 즐겨찾기       | ✅   |                                                                                                  |
+| #21 | AI 깐부 채팅 mock    | ✅   |                                                                                                  |
+| #22 | AI 깐부 Claude·RAG   | 🔶   | 코드 완료 / Claude·TourAPI 키 필요                                                               |
+| #23 | 쿠폰함 저장·목록     | ✅   |                                                                                                  |
+| #24 | 쿠폰 QR one-time     | ✅   |                                                                                                  |
+| #25 | 긴급 도움(SOS)       | ✅   | 오프라인 동작                                                                                    |
 
 > 🔶 항목 외부 설정 절차는 **`docs/SETUP_EXTERNAL.md`** 참조 (시크릿 이름·발급처·검증 포함).
 > ja 네이티브 검수는 `docs/I18N_JA_REVIEW.md`의 ⚠️ 5건 우선 진행.
