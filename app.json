@@ -37,6 +37,15 @@
       "@livekit/react-native-expo-plugin",
       "@config-plugins/react-native-webrtc",
       [
+        "react-native-audio-api",
+        {
+          "iosMicrophonePermission": "실시간 음성 통역과 AI 깐부 음성 질문을 위해 마이크를 사용합니다.",
+          "iosBackgroundMode": true,
+          "androidForegroundService": false,
+          "androidPermissions": ["android.permission.RECORD_AUDIO"]
+        }
+      ],
+      [
         "expo-image-picker",
         {
           "photosPermission": "메뉴·간판 사진을 번역하기 위해 사진 접근이 필요합니다.",
