@@ -1,7 +1,7 @@
-import axios from 'axios'
+import { create } from 'axios'
 import { firebaseAuth } from '@/lib/firebase'
 
-export const api = axios.create({
+export const api = create({
   baseURL: process.env['EXPO_PUBLIC_API_URL'],
   timeout: 10000,
   headers: {
