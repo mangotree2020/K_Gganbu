@@ -87,7 +87,7 @@ const SCENARIOS = [
 const MODES: { id: Mode; icon: string; label: string }[] = [
   { id: 'voice', icon: 'mic', label: 'Voice' },
   { id: 'camera', icon: 'photo_camera', label: 'Camera' },
-  { id: 'text', icon: 'keyboard', label: 'Learn KO' },
+  { id: 'text', icon: 'keyboard', label: 'K-Talk Quest' },
 ]
 
 export default function TranslateScreen() {
