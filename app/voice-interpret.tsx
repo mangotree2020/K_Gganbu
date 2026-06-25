@@ -833,23 +833,26 @@ export default function VoiceInterpretScreen() {
               )}
             </ScrollView>
 
-            {/* 하단 — 언어 스위처(Translate와 동일 디자인·기능) + 우하단 플로팅 End */}
-            <View style={ss.bottomRow}>
-              <View style={ss.langRow}>
-                <Pressable onPress={() => setPicker('peer')} style={ss.langPick}>
-                  <Text style={ss.langText}>{langMeta(peerLang).label}</Text>
-                  <Icon name="expand_more" size={16} color={palette.zinc[500]} />
-                </Pressable>
-                <Pressable onPress={swap} style={ss.swapBtn}>
-                  <Icon name="swap_horiz" size={18} color={palette.teal[30]} />
-                </Pressable>
-                <Pressable onPress={() => setPicker('my')} style={ss.langPick}>
-                  <Text style={ss.langText}>{langMeta(myLang).label}</Text>
-                  <Icon name="expand_more" size={16} color={palette.zinc[500]} />
-                </Pressable>
-              </View>
+            {/* End — 언어 스위치 위 한 줄(우측 정렬) 플로팅 버튼 */}
+            <View style={ss.endRow}>
               <Pressable onPress={() => router.back()} style={[ss.fabEnd, shadows.pop]}>
                 <Icon name="close" size={24} color="#fff" />
+              </Pressable>
+            </View>
+            {/* 언어 스위처 — 전체 폭 한 줄(Translate와 동일 디자인·기능) */}
+            <View style={ss.langRow}>
+              <Pressable onPress={() => setPicker('peer')} style={ss.langPick}>
+                <Text style={ss.langFlagSm}>{langMeta(peerLang).flag}</Text>
+                <Text style={ss.langText}>{langMeta(peerLang).label}</Text>
+                <Icon name="expand_more" size={16} color={palette.zinc[500]} />
+              </Pressable>
+              <Pressable onPress={swap} style={ss.swapBtn}>
+                <Icon name="swap_horiz" size={18} color={palette.teal[30]} />
+              </Pressable>
+              <Pressable onPress={() => setPicker('my')} style={ss.langPick}>
+                <Text style={ss.langFlagSm}>{langMeta(myLang).flag}</Text>
+                <Text style={ss.langText}>{langMeta(myLang).label}</Text>
+                <Icon name="expand_more" size={16} color={palette.zinc[500]} />
               </Pressable>
             </View>
           </View>
@@ -1004,10 +1007,9 @@ const ss = StyleSheet.create({
     ...shadows.card,
   },
 
-  // 하단 — 언어 스위처(Translate와 동일) + 플로팅 End
-  bottomRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingTop: 10 },
+  // 하단 — End 버튼 한 줄(우측) 위에, 전체 폭 언어 스위처
+  endRow: { flexDirection: 'row', justifyContent: 'flex-end', paddingTop: 8, paddingBottom: 8 },
   langRow: {
-    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
@@ -1017,9 +1019,11 @@ const ss = StyleSheet.create({
     borderColor: palette.zinc[200],
     borderRadius: 16,
     paddingVertical: 8,
-    paddingHorizontal: 14,
+    paddingHorizontal: 18,
+    marginBottom: 4,
   },
-  langPick: { flexDirection: 'row', alignItems: 'center', gap: 2 },
+  langPick: { flexDirection: 'row', alignItems: 'center', gap: 5 },
+  langFlagSm: { fontSize: 16 },
   langText: { fontSize: 13.5, fontWeight: '700', color: palette.zinc[800] },
   swapBtn: {
     width: 32,
