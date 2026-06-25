@@ -2,8 +2,8 @@
 // 길거리에서 여러 명이 각자 언어로 번갈아 대화하는 상황 대응. 목표 = 앱 설정 언어.
 // 발화 언어를 스크립트로 감지해 국기·언어 칩 + 화자(언어)별 색상으로 구분.
 // 마이크 16kHz PCM(react-native-audio-api) → Gemini Live → 통역 음성 24kHz + 원문/통역 자막.
-import { router } from 'expo-router'
-import { useEffect, useRef, useState } from 'react'
+import { router, useFocusEffect } from 'expo-router'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import {
   ActivityIndicator,
   Animated,
@@ -581,21 +581,20 @@ export default function VoiceInterpretScreen() {
     setStatus('error')
   }
 
-  // 언마운트(X 닫기 등) 시에도 미저장 대화 보존
-  useEffect(
-    () => () => {
-      persist()
-      teardown()
-    },
-    [],
+  // 탭 화면이라 mount/unmount가 아닌 focus/blur 생명주기 사용.
+  // 포커스: 새 세션 시작(상태 리셋, persistedRef 초기화) — 중간 화면 없이 바로 통역.
+  // 블러(다른 탭/뒤로): 이력 저장(로컬+원격) + 정리. 다시 들어오면 새 대화로 시작.
+  useFocusEffect(
+    useCallback(() => {
+      persistedRef.current = false
+      start()
+      return () => {
+        persist()
+        teardown()
+      }
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []),
   )
-
-  // 진입 즉시 자동 시작 — 중간 'Start interpreting' 화면 제거(바로 통역 화면 진입)
-  useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    start()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
 
   // 통역 두 언어 변경 시 — 기존 대화는 유지한 채 새 방향으로 세션만 재연결
   const langMountRef = useRef(false)
