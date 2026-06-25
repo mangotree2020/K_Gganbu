@@ -44,18 +44,91 @@ export function clearSessions() {
   storage.set(KEY, '[]')
 }
 
-// ── 원격(Supabase) — 사용자별 보관 ───────────────────────────────────────────
+// ── 원격(Supabase) — 사용자별 보관 + 오프라인 큐/재시도 ──────────────────────
 
-// 원격 세션 저장 — user_id는 DB 기본값 current_user_id()로 자동. 실패는 무시(로컬 보존).
+const QUEUE_KEY = 'voiceSyncQueue'
+const MAX_QUEUE = 50
+
+// 업로드 대기 항목 — client_id로 멱등(재시도 시 중복 방지)
+type PendingUpload = {
+  client_id: string
+  turns: HistoryTurn[]
+  myLang: string
+  peerLang: string
+  at: number
+}
+
+function readQueue(): PendingUpload[] {
+  try {
+    const raw = storage.getString(QUEUE_KEY)
+    return raw ? (JSON.parse(raw) as PendingUpload[]) : []
+  } catch {
+    return []
+  }
+}
+function writeQueue(q: PendingUpload[]) {
+  try {
+    storage.set(QUEUE_KEY, JSON.stringify(q.slice(-MAX_QUEUE)))
+  } catch {
+    // 무시
+  }
+}
+
+// 세션을 업로드 대기열에 적재(동일 세션 중복 적재 방지)
+export function enqueueRemote(turns: HistoryTurn[], myLang: string, peerLang: string) {
+  if (!turns.length) return
+  const sig = sessionSignature({ id: 0, at: 0, lang: myLang, turns })
+  const q = readQueue()
+  if (q.some((p) => sessionSignature({ id: 0, at: 0, lang: p.myLang, turns: p.turns }) === sig))
+    return
+  const client_id = `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`
+  q.push({ client_id, turns, myLang, peerLang, at: Date.now() })
+  writeQueue(q)
+}
+
+// 단건 업로드 시도 — client_id 멱등 upsert(onConflict 무시). 성공 true.
+async function tryUpload(p: PendingUpload): Promise<boolean> {
+  try {
+    const { error } = await supabase.from('voice_sessions').upsert(
+      {
+        client_id: p.client_id,
+        my_lang: p.myLang,
+        peer_lang: p.peerLang,
+        turns: p.turns,
+        turn_count: p.turns.length,
+      },
+      { onConflict: 'client_id', ignoreDuplicates: true },
+    )
+    return !error
+  } catch {
+    return false
+  }
+}
+
+// 대기열 전송 — 성공분 제거, 실패분 유지(다음 기회에 재시도). 동시 중복 실행 방지.
+let flushing = false
+export async function flushRemoteQueue(): Promise<void> {
+  if (flushing) return
+  const q = readQueue()
+  if (!q.length) return
+  flushing = true
+  try {
+    const remaining: PendingUpload[] = []
+    for (const p of q) {
+      const ok = await tryUpload(p)
+      if (!ok) remaining.push(p)
+    }
+    writeQueue(remaining)
+  } finally {
+    flushing = false
+  }
+}
+
+// 원격 세션 저장 — 대기열 적재 후 즉시 업로드 시도. 실패해도 큐에 남아 나중에 재시도.
 export async function saveSessionRemote(turns: HistoryTurn[], myLang: string, peerLang: string) {
   if (!turns.length) return
-  try {
-    await supabase
-      .from('voice_sessions')
-      .insert({ my_lang: myLang, peer_lang: peerLang, turns, turn_count: turns.length })
-  } catch {
-    // 네트워크/권한 실패 무시 — 로컬 이력은 별도로 보존됨
-  }
+  enqueueRemote(turns, myLang, peerLang)
+  await flushRemoteQueue()
 }
 
 // 원격 세션 목록(최신순) — 로그인/게스트 모두 본인 데이터만(RLS)

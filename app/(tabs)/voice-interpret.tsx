@@ -23,7 +23,7 @@ import Slider from '@react-native-community/slider'
 import { Icon } from '@/components/brand'
 import { storage } from '@/lib/mmkv'
 import { startLiveTranslate, type LiveSession } from '@/features/translate/geminiLive'
-import { saveSession, saveSessionRemote } from '@/features/translate/history'
+import { flushRemoteQueue, saveSession, saveSessionRemote } from '@/features/translate/history'
 import { resetSpeaker, setSpeaker } from '../../modules/expo-speaker-route'
 import {
   createPlayer,
@@ -587,6 +587,7 @@ export default function VoiceInterpretScreen() {
   useFocusEffect(
     useCallback(() => {
       persistedRef.current = false
+      flushRemoteQueue() // 진입 시 미전송 세션 재시도
       start()
       return () => {
         persist()
