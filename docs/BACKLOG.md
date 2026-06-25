@@ -418,26 +418,27 @@
 - [x] 가까운 병원 찾기(지도 연결)
 - [x] 네트워크/위치 거부 시에도 연락처·문장 표시
 
-## [#26] 여권 OCR & 쇼핑 면세 혜택 (예정)
+## [#26] 여권 OCR & 쇼핑 면세 혜택
 
 **라벨**: feature/passport
-**상태**: 📋 계획 — **착수 선행조건: My 메뉴 화면 디자인 수정 완료**
-**의존성**: My 탭 디자인 수정, #4(i18n), 카메라 권한, ocr Edge Function(Google Vision)
+**상태**: ✅ Phase 1 구현·실기기 검증 완료(서버 저장 채택) · 🔜 Phase 2/3 잔여
+**의존성**: My 탭 디자인(완료), #4(i18n), 카메라 권한, Google Vision(설정됨)
 **범위**: My 메뉴에서 여권 촬영 → MRZ OCR(Google Vision) → 여권 정보 파싱·저장 → 외국인 쇼핑 면세(Tax Refund) 혜택 제공
-**상세 계획**: `docs/tasks/passport-ocr.md` (DB 스키마·Storage·Edge Function·RN hook·Web Admin·비용 포함)
+**상세 계획**: `docs/tasks/passport-ocr.md`
 
-**완료 조건** (상세 계획 기준)
+**Phase 1 — 완료** (서버 저장, RLS는 current_user_id 패턴으로 정렬)
 
-- [ ] DB 스키마: `passport_scans`(원본/상태) + `passport_data`(파싱 결과) + RLS(본인만)
-- [ ] Storage `passport-images`(Private) 버킷 + 본인 폴더 RLS
-- [ ] Edge Function `passport-ocr`: Storage 업로드 → Vision TEXT_DETECTION → MRZ(TD3) 파싱 → DB 저장
-- [ ] RN hook `usePassportScan` + My 탭 진입점·여권 스캔 화면(디자인 수정 후 위치 확정)
-- [ ] 촬영/갤러리 + just-in-time 권한, MRZ 인식 실패(5~10%) 재촬영 안내 UX
-- [ ] 면세 혜택 카드(한도·환급 안내) — Phase 2: 제휴 매장 면세 QR
-- [ ] Web Admin(별도 앱) 스캔 목록·재처리
+- [x] DB 스키마: `passport_scans` + `passport_data` + RLS(본인 read/delete, 쓰기 service role) — 마이그레이션 20260625004
+- [x] Storage `passport-images`(Private) 버킷 + 본인 폴더 RLS — 20260625005
+- [x] Edge Function `passport-ocr`(ACTIVE): Storage 업로드 → Vision TEXT_DETECTION → MRZ(TD3) 인라인 파싱(체크 디지트) → DB 저장
+- [x] `features/passport/queries`(usePassport/useScanPassport/useRemovePassport) + `app/passport.tsx`(미등록 CTA/등록 카드/삭제)
+- [x] 촬영/갤러리 + just-in-time 권한, MRZ 실패 재촬영 안내, My 카드 등록 상태 연동, passport.\* i18n 5종
+- [x] 실기기 검증: 스캔→OCR→DB 기록 + 실 여권 등록 표시 확인
 
-**착수 전 정렬 필요 (기존 프로젝트 컨벤션 대비)**
+**Phase 2/3 — 잔여** (디자인 등록 카드의 퀵액션·운영)
 
-- RLS: 상세 계획은 `auth.uid() = user_id`(auth.users 직접 참조). 기존 스키마는 `public.users(auth_id→id)` 매핑 + `current_user_id()` 사용 → 패턴 통일 결정 필요
-- Edge 런타임: 기존 함수는 `Deno.serve` + `jsr:` 임포트 사용(계획의 `deno.land/std serve`와 상이) → 통일 권장
-- 개인정보: 여권 이미지 Storage 보관은 PIPA상 민감정보 — 보관 최소화/암호화/삭제·동의 정책 확정(이미지 미보관 옵션도 검토)
+- [ ] VAT 환급 추적(refund tracker) — 영수증 누적·환급 예상액
+- [ ] 영수증 스캐너(receipt scanner) — 구매 영수증 OCR·적립
+- [ ] 공항 환급 QR(airport QR) — 김해공항 환급 청구 연계
+- [ ] 제휴 매장 즉시면세 연동 / Web Admin(별도 앱) 스캔 목록·재처리
+- [ ] 개인정보: 여권 이미지 보관 정책 정밀화(보관기간·자동삭제·암호화 강화) — PIPA 검토
