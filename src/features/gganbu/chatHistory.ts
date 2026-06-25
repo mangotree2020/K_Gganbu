@@ -1,4 +1,5 @@
-// AI 깐부 대화 이력 — MMKV에 세션 저장/조회. 텍스트(역할·내용)만 보관.
+// AI 깐부 대화 이력 — MMKV(로컬) + Supabase(원격, 사용자별) 저장/조회.
+import { enqueueSync, flushSync } from '@/lib/remoteSync'
 import { storage } from '@/lib/mmkv'
 
 const KEY = 'gganbuChatHistory'
@@ -57,3 +58,21 @@ export function deleteChatSession(id: number) {
 export function clearChatSessions() {
   storage.set(KEY, '[]')
 }
+
+// ── 원격(Supabase gganbu_sessions) — 사용자별 보관 + 큐/재시도 ────────────────
+
+// 대화 세션을 서버 업로드 대기열에 적재 후 즉시 시도(실패 시 큐에 남아 재시도).
+// 사용자 발화가 1개 이상일 때만. sig=세션 id 로 중복 적재 방지.
+export async function saveChatSessionRemote(session: ChatSession) {
+  const hasUser = session.messages.some((m) => m.role === 'user' && m.text.trim())
+  if (!hasUser) return
+  enqueueSync('gganbu_sessions', `gganbu:${session.id}`, {
+    title: session.title,
+    messages: session.messages,
+    msg_count: session.messages.length,
+  })
+  await flushSync()
+}
+
+// 미전송 대기열 재시도(앱 시작/화면 진입 시)
+export const flushChatRemote = flushSync

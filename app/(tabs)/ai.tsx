@@ -22,6 +22,8 @@ import { askGganbuStream } from '@/features/gganbu/services'
 import {
   loadChatSessions,
   saveChatSession,
+  saveChatSessionRemote,
+  flushChatRemote,
   deleteChatSession,
   clearChatSessions,
   type ChatSession,
@@ -359,6 +361,11 @@ export default function AiMateScreen() {
     }
   }, [])
 
+  // 진입 시 미전송 대화 세션 재시도(서버 업로드)
+  useEffect(() => {
+    flushChatRemote()
+  }, [])
+
   // 이력 열기/복원/새 대화/삭제
   const openHistory = () => {
     setSessions(loadChatSessions())
@@ -377,6 +384,20 @@ export default function AiMateScreen() {
     sessionIdRef.current = 0
     setInput('')
     setHistOpen(false)
+  }
+  // 헤더 X(닫기) — 현재 대화를 이력 저장(로컬 최종 + 서버) 후 새 대화로 초기화.
+  const closeChat = () => {
+    const hasUser = msgs.some((m) => m.role === 'user' && m.text.trim())
+    if (hasUser) {
+      const slim = msgs.filter((m) => m.text.trim()).map((m) => ({ role: m.role, text: m.text }))
+      const sid = saveChatSession(slim, sessionIdRef.current) // 로컬 최종 저장(upsert)
+      const title = msgs
+        .find((m) => m.role === 'user' && m.text.trim())
+        ?.text.trim()
+        .slice(0, 40)
+      saveChatSessionRemote({ id: sid, at: Date.now(), title: title ?? '', messages: slim }) // 서버(큐+재시도)
+    }
+    newChat()
   }
   const removeSession = (id: number) => {
     deleteChatSession(id)
@@ -442,6 +463,13 @@ export default function AiMateScreen() {
               style={({ pressed }) => [ss.historyBtn, { opacity: pressed ? 0.7 : 1 }]}
               accessibilityRole="button">
               <Icon name="history" size={18} color={palette.zinc[900]} />
+            </Pressable>
+            {/* X(닫기) — 대화 이력 저장(로컬+서버) 후 새 대화 */}
+            <Pressable
+              onPress={closeChat}
+              style={({ pressed }) => [ss.historyBtn, { opacity: pressed ? 0.7 : 1 }]}
+              accessibilityRole="button">
+              <Icon name="close" size={18} color={palette.zinc[900]} />
             </Pressable>
           </View>
         </SafeAreaView>
