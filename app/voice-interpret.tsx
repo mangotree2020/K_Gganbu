@@ -252,11 +252,16 @@ async function ensureMicPermission(): Promise<boolean> {
 export default function VoiceInterpretScreen() {
   const t = useT()
   const appLang: AppLang = useLocaleStore((s) => s.lang)
-  const setLang = useLocaleStore((s) => s.setLang)
-  // 통역 상대 언어(내 언어가 한국어면 영어, 그 외엔 한국어) — 스위처 좌측 표시용
-  const otherLang: AppLang = appLang === 'ko' ? 'en' : 'ko'
-  // 하단/상단 설정 시트: 마이크·볼륨·언어 중 하나 또는 닫힘
-  const [panel, setPanel] = useState<null | 'mic' | 'volume' | 'lang'>(null)
+  // 통역 두 언어(로컬) — Translate 화면과 동일하게 양쪽 자유 선택 + swap.
+  // myLang = 내 언어(기본 앱 언어), peerLang = 상대 언어(기본 한국어, 내가 한국어면 영어).
+  const [myLang, setMyLang] = useState<AppLang>(appLang)
+  const [peerLang, setPeerLang] = useState<AppLang>(appLang === 'ko' ? 'en' : 'ko')
+  // 하단 언어 피커 대상(내/상대) 또는 닫힘 — Translate와 동일한 플래그 시트
+  const [picker, setPicker] = useState<null | 'my' | 'peer'>(null)
+  // Listening 바로 아래 인라인 패널 — 음성 설정/볼륨. 처음엔 둘 다 열림, 통역 시작 시 자동 닫힘.
+  const [micOpen, setMicOpen] = useState(true)
+  const [volOpen, setVolOpen] = useState(true)
+  const autoClosedRef = useRef(false)
   const [status, setStatus] = useState<VoiceStatus>('idle')
   const [active, setActive] = useState(false)
   const [turns, setTurns] = useState<Turn[]>([])
@@ -303,7 +308,7 @@ export default function VoiceInterpretScreen() {
   // 언어 판정 우선순위: Gemini 감지 코드 > 스크립트 휴리스틱 > 직전 언어 > 앱 언어.
   // Gemini가 코드를 안 줄 때(preview)도 동작하도록 detectLang을 폴백으로 유지.
   const resolveLang = (s: string, geminiCode?: string): string =>
-    normalizeLang(geminiCode) || detectLang(s) || lastLangRef.current || appLang
+    normalizeLang(geminiCode) || detectLang(s) || lastLangRef.current || myLang
   // turn id → 통역 음성 PCM (다시 듣기용)
   const audioStoreRef = useRef<Map<number, Uint8Array>>(new Map())
   // 이력 저장용 — 콜백/언마운트에서 최신값 읽기
@@ -445,7 +450,7 @@ export default function VoiceInterpretScreen() {
   async function connect(): Promise<boolean> {
     try {
       const session = await startLiveTranslate(
-        { appLang },
+        { appLang: myLang, peerLang },
         {
           onStatus: (s) => {
             if (s === 'open') {
@@ -480,7 +485,7 @@ export default function VoiceInterpretScreen() {
             // 즉시 출력 라우팅을 전환해 음성 도착 전 전환을 끝낸다(앞부분 잘림 방지).
             if (headsetRef.current && speakerMyVoiceRef.current) {
               const src = turn.original || turn.translation
-              if (src) applySpeakerRoute(resolveLang(src, turn.lang) === appLang)
+              if (src) applySpeakerRoute(resolveLang(src, turn.lang) === myLang)
             }
             if (turn.final) {
               setCurrent(null)
@@ -491,7 +496,7 @@ export default function VoiceInterpretScreen() {
                 // Gemini 감지 코드 우선, 없으면 스크립트 감지. 명확하면 직전 언어 갱신.
                 const detected = normalizeLang(turn.lang) || detectLang(orig)
                 if (detected) lastLangRef.current = detected
-                const lang = detected || lastLangRef.current || appLang
+                const lang = detected || lastLangRef.current || myLang
                 if (turn.audio) audioStoreRef.current.set(idRef.current, turn.audio)
                 setTurns((prev) =>
                   [
@@ -505,6 +510,12 @@ export default function VoiceInterpretScreen() {
                     },
                   ].slice(-40),
                 )
+                // 첫 통역이 들어오면(통역 시작) 인라인 설정 패널을 자동으로 닫아 대화 영역 확대
+                if (!autoClosedRef.current) {
+                  autoClosedRef.current = true
+                  setMicOpen(false)
+                  setVolOpen(false)
+                }
               }
             } else {
               setCurrent({
@@ -515,8 +526,8 @@ export default function VoiceInterpretScreen() {
             }
           },
           onAudio: (pcm24, sourceText, sourceLang) => {
-            // 화자 판단: 원문이 앱 언어면 내 발화 통역, 아니면 상대 발화 통역(미상이면 직전 유지)
-            const isMine = resolveLang(sourceText, sourceLang) === appLang
+            // 화자 판단: 원문이 내 언어면 내 발화 통역, 아니면 상대 발화 통역(미상이면 직전 유지)
+            const isMine = resolveLang(sourceText, sourceLang) === myLang
             const enabled = isMine ? myVoiceRef.current : otherVoiceRef.current
             if (!enabled) return
             // 이어폰 + 토글 ON: 내 통역은 스피커(상대에게), 상대 통역은 이어폰(나에게)
@@ -574,7 +585,7 @@ export default function VoiceInterpretScreen() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  // 통역 화면 내 언어 전환 시 — 기존 대화는 유지한 채 새 방향으로 세션만 재연결
+  // 통역 두 언어 변경 시 — 기존 대화는 유지한 채 새 방향으로 세션만 재연결
   const langMountRef = useRef(false)
   useEffect(() => {
     if (!langMountRef.current) {
@@ -582,7 +593,7 @@ export default function VoiceInterpretScreen() {
       return
     }
     if (!active) return
-    // 진행 중 세션의 자동 재연결을 막고(의도적 close) 새 appLang으로 재연결
+    // 진행 중 세션의 자동 재연결을 막고(의도적 close) 새 언어쌍으로 재연결
     intentionalCloseRef.current = true
     if (reconnectTimerRef.current) {
       clearTimeout(reconnectTimerRef.current)
@@ -599,12 +610,24 @@ export default function VoiceInterpretScreen() {
       if (!ok) setStatus('unavailable')
     })
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [appLang])
+  }, [myLang, peerLang])
 
-  // 언어 전환 — 시트에서 내 언어 선택. 동일 언어면 무시, 아니면 store 갱신(effect가 재연결)
-  const switchLang = (code: AppLang) => {
-    setPanel(null)
-    if (code !== appLang) setLang(code)
+  // 언어 피커 선택 — 내/상대 측에 반영(effect가 재연결). 두 측이 같아지면 자동으로 스왑.
+  const pickLang = (code: AppLang) => {
+    const side = picker
+    setPicker(null)
+    if (side === 'my') {
+      setMyLang(code)
+      if (code === peerLang) setPeerLang(myLang)
+    } else if (side === 'peer') {
+      setPeerLang(code)
+      if (code === myLang) setMyLang(peerLang)
+    }
+  }
+  // 두 언어 스왑 — Translate의 swap과 동일
+  const swap = () => {
+    setMyLang(peerLang)
+    setPeerLang(myLang)
   }
 
   const empty = turns.length === 0 && !current?.original && !current?.translation
@@ -644,26 +667,131 @@ export default function VoiceInterpretScreen() {
                 {headset && <Icon name="headphones" size={13} color={palette.teal[40]} filled />}
               </View>
               <View style={ss.topActions}>
-                <Pressable onPress={() => setPanel('mic')} style={ss.toolBtn}>
+                {/* 음성 설정 패널 열기/닫기 — 열림 상태 강조 */}
+                <Pressable
+                  onPress={() => setMicOpen((v) => !v)}
+                  style={[ss.toolBtn, micOpen && ss.toolBtnOn]}>
                   <Icon
                     name="tune"
                     size={19}
-                    color={otherVoice || myVoice ? palette.teal[40] : palette.zinc[400]}
+                    color={micOpen ? palette.teal[30] : palette.zinc[500]}
                     filled
                   />
                 </Pressable>
-                <Pressable onPress={() => setPanel('volume')} style={ss.toolBtn}>
+                {/* 볼륨 패널 열기/닫기 — 열림 상태 강조 */}
+                <Pressable
+                  onPress={() => setVolOpen((v) => !v)}
+                  style={[ss.toolBtn, volOpen && ss.toolBtnOn]}>
                   <Icon
-                    name={volume > 0 && (otherVoice || myVoice) ? 'volume_up' : 'volume_off'}
+                    name={volume > 0 ? 'volume_up' : 'volume_off'}
                     size={19}
-                    color={
-                      volume > 0 && (otherVoice || myVoice) ? palette.teal[40] : palette.zinc[400]
-                    }
+                    color={volOpen ? palette.teal[30] : palette.zinc[500]}
                     filled
                   />
                 </Pressable>
               </View>
             </View>
+
+            {/* 인라인 음성 설정 패널 (Listening 바로 아래) — 처음엔 열림, 통역 시작 시 자동 닫힘 */}
+            {micOpen && (
+              <View style={ss.inlinePanel}>
+                <ToggleRow
+                  icon={otherVoice ? 'volume_up' : 'volume_off'}
+                  label={t('voice.soundOther')}
+                  value={otherVoice}
+                  onToggle={toggleOtherVoice}
+                />
+                <View style={ss.rowDivider} />
+                <View style={ss.toggleRow}>
+                  <View style={ss.toggleLabelGroup}>
+                    <Icon
+                      name={
+                        !myVoice
+                          ? 'volume_off'
+                          : headset && !speakerMyVoice
+                            ? 'headphones'
+                            : 'megaphone'
+                      }
+                      size={18}
+                      color={
+                        !myVoice
+                          ? palette.zinc[400]
+                          : speakerMyVoice
+                            ? palette.coral[40]
+                            : palette.teal[40]
+                      }
+                      filled
+                    />
+                    <Text style={[ss.toggleLabel, !myVoice && { color: palette.zinc[400] }]}>
+                      {t('voice.soundMine')}
+                    </Text>
+                  </View>
+                  <View style={ss.rowControls}>
+                    {headset && myVoice && (
+                      <Pressable
+                        onPress={toggleSpeakerMyVoice}
+                        hitSlop={6}
+                        style={[
+                          ss.outputChip,
+                          {
+                            backgroundColor: speakerMyVoice ? palette.coral[95] : palette.teal[95],
+                          },
+                        ]}>
+                        <Icon
+                          name={speakerMyVoice ? 'megaphone' : 'headphones'}
+                          size={13}
+                          color={speakerMyVoice ? palette.coral[40] : palette.teal[40]}
+                          filled
+                        />
+                        <Text
+                          style={[
+                            ss.outputChipText,
+                            { color: speakerMyVoice ? palette.coral[40] : palette.teal[40] },
+                          ]}>
+                          {speakerMyVoice ? t('voice.outSpeaker') : t('voice.outEarphone')}
+                        </Text>
+                      </Pressable>
+                    )}
+                    <Switch
+                      value={myVoice}
+                      onValueChange={toggleMyVoice}
+                      trackColor={{ true: palette.teal[80], false: palette.zinc[300] }}
+                      thumbColor={myVoice ? palette.teal[40] : '#f4f4f5'}
+                    />
+                  </View>
+                </View>
+              </View>
+            )}
+
+            {/* 인라인 볼륨 패널 */}
+            {volOpen && (
+              <View style={ss.inlinePanel}>
+                <View style={ss.volumeRow}>
+                  <Icon
+                    name="volume_up"
+                    size={16}
+                    color={otherVoice || myVoice ? palette.teal[40] : palette.zinc[400]}
+                    filled
+                  />
+                  <Slider
+                    style={[ss.slider, !(otherVoice || myVoice) && { opacity: 0.35 }]}
+                    disabled={!(otherVoice || myVoice)}
+                    minimumValue={0}
+                    maximumValue={1}
+                    value={volume}
+                    onValueChange={onVolumeChange}
+                    onSlidingComplete={onVolumeCommit}
+                    minimumTrackTintColor={palette.teal[40]}
+                    maximumTrackTintColor={palette.zinc[200]}
+                    thumbTintColor={palette.teal[40]}
+                  />
+                  <Text
+                    style={[ss.volPct, !(otherVoice || myVoice) && { color: palette.zinc[400] }]}>
+                    {Math.round(volume * 100)}%
+                  </Text>
+                </View>
+              </View>
+            )}
 
             <ScrollView
               ref={scrollRef}
@@ -688,7 +816,7 @@ export default function VoiceInterpretScreen() {
                       original={tn.original}
                       translation={tn.translation}
                       lang={tn.lang}
-                      isMe={tn.lang === appLang}
+                      isMe={tn.lang === myLang}
                       onReplay={tn.hasAudio ? () => replay(tn.id) : undefined}
                     />
                   ))}
@@ -697,7 +825,7 @@ export default function VoiceInterpretScreen() {
                       original={current.original}
                       translation={current.translation}
                       lang={current.lang}
-                      isMe={current.lang === appLang}
+                      isMe={current.lang === myLang}
                       dim
                     />
                   )}
@@ -705,20 +833,21 @@ export default function VoiceInterpretScreen() {
               )}
             </ScrollView>
 
-            {/* 하단 — 언어 스위처(기존 End 자리) + 우하단 플로팅 End 버튼 */}
+            {/* 하단 — 언어 스위처(Translate와 동일 디자인·기능) + 우하단 플로팅 End */}
             <View style={ss.bottomRow}>
-              <Pressable onPress={() => setPanel('lang')} style={ss.langBar}>
-                <View style={ss.langChip}>
-                  <Text style={ss.langFlag}>{langMeta(otherLang).flag}</Text>
-                  <Text style={ss.langName}>{langMeta(otherLang).label}</Text>
-                </View>
-                <Icon name="swap_horiz" size={18} color={palette.teal[40]} />
-                <View style={ss.langChip}>
-                  <Text style={ss.langFlag}>{langMeta(appLang).flag}</Text>
-                  <Text style={ss.langName}>{langMeta(appLang).label}</Text>
-                </View>
-                <Icon name="expand_more" size={16} color={palette.zinc[400]} />
-              </Pressable>
+              <View style={ss.langRow}>
+                <Pressable onPress={() => setPicker('peer')} style={ss.langPick}>
+                  <Text style={ss.langText}>{langMeta(peerLang).label}</Text>
+                  <Icon name="expand_more" size={16} color={palette.zinc[500]} />
+                </Pressable>
+                <Pressable onPress={swap} style={ss.swapBtn}>
+                  <Icon name="swap_horiz" size={18} color={palette.teal[30]} />
+                </Pressable>
+                <Pressable onPress={() => setPicker('my')} style={ss.langPick}>
+                  <Text style={ss.langText}>{langMeta(myLang).label}</Text>
+                  <Icon name="expand_more" size={16} color={palette.zinc[500]} />
+                </Pressable>
+              </View>
               <Pressable onPress={() => router.back()} style={[ss.fabEnd, shadows.pop]}>
                 <Icon name="close" size={24} color="#fff" />
               </Pressable>
@@ -764,133 +893,32 @@ export default function VoiceInterpretScreen() {
           </View>
         )}
 
-        {/* 설정 시트 — 마이크/볼륨/언어 */}
+        {/* 언어 피커 — Translate와 동일한 플래그 선택 시트(내/상대 측) */}
         <Modal
-          visible={panel !== null}
+          visible={picker !== null}
           transparent
           animationType="fade"
-          onRequestClose={() => setPanel(null)}>
-          <Pressable style={ss.sheetBg} onPress={() => setPanel(null)}>
+          onRequestClose={() => setPicker(null)}>
+          <Pressable style={ss.sheetBg} onPress={() => setPicker(null)}>
             <Pressable style={ss.sheet} onPress={() => {}}>
-              {panel === 'mic' && (
-                <>
-                  <Text style={ss.sheetTitle}>{t('voice.micPanel')}</Text>
-                  <ToggleRow
-                    icon={otherVoice ? 'volume_up' : 'volume_off'}
-                    label={t('voice.soundOther')}
-                    value={otherVoice}
-                    onToggle={toggleOtherVoice}
-                  />
-                  <View style={ss.rowDivider} />
-                  <View style={ss.toggleRow}>
-                    <View style={ss.toggleLabelGroup}>
-                      <Icon
-                        name={
-                          !myVoice
-                            ? 'volume_off'
-                            : headset && !speakerMyVoice
-                              ? 'headphones'
-                              : 'megaphone'
-                        }
-                        size={18}
-                        color={
-                          !myVoice
-                            ? palette.zinc[400]
-                            : speakerMyVoice
-                              ? palette.coral[40]
-                              : palette.teal[40]
-                        }
-                        filled
-                      />
-                      <Text style={[ss.toggleLabel, !myVoice && { color: palette.zinc[400] }]}>
-                        {t('voice.soundMine')}
-                      </Text>
-                    </View>
-                    <View style={ss.rowControls}>
-                      {headset && myVoice && (
-                        <Pressable
-                          onPress={toggleSpeakerMyVoice}
-                          hitSlop={6}
-                          style={[
-                            ss.outputChip,
-                            {
-                              backgroundColor: speakerMyVoice
-                                ? palette.coral[95]
-                                : palette.teal[95],
-                            },
-                          ]}>
-                          <Icon
-                            name={speakerMyVoice ? 'megaphone' : 'headphones'}
-                            size={13}
-                            color={speakerMyVoice ? palette.coral[40] : palette.teal[40]}
-                            filled
-                          />
-                          <Text
-                            style={[
-                              ss.outputChipText,
-                              { color: speakerMyVoice ? palette.coral[40] : palette.teal[40] },
-                            ]}>
-                            {speakerMyVoice ? t('voice.outSpeaker') : t('voice.outEarphone')}
-                          </Text>
-                        </Pressable>
-                      )}
-                      <Switch
-                        value={myVoice}
-                        onValueChange={toggleMyVoice}
-                        trackColor={{ true: palette.teal[80], false: palette.zinc[300] }}
-                        thumbColor={myVoice ? palette.teal[40] : '#f4f4f5'}
-                      />
-                    </View>
-                  </View>
-                </>
-              )}
-              {panel === 'volume' && (
-                <>
-                  <Text style={ss.sheetTitle}>{t('voice.volume')}</Text>
-                  <View style={ss.volumeRow}>
-                    <Icon
-                      name="volume_up"
-                      size={16}
-                      color={otherVoice || myVoice ? palette.teal[40] : palette.zinc[400]}
-                      filled
-                    />
-                    <Slider
-                      style={[ss.slider, !(otherVoice || myVoice) && { opacity: 0.35 }]}
-                      disabled={!(otherVoice || myVoice)}
-                      minimumValue={0}
-                      maximumValue={1}
-                      value={volume}
-                      onValueChange={onVolumeChange}
-                      onSlidingComplete={onVolumeCommit}
-                      minimumTrackTintColor={palette.teal[40]}
-                      maximumTrackTintColor={palette.zinc[200]}
-                      thumbTintColor={palette.teal[40]}
-                    />
-                    <Text
-                      style={[ss.volPct, !(otherVoice || myVoice) && { color: palette.zinc[400] }]}>
-                      {Math.round(volume * 100)}%
-                    </Text>
-                  </View>
-                </>
-              )}
-              {panel === 'lang' && (
-                <>
-                  <Text style={ss.sheetTitle}>{t('voice.interpretLang')}</Text>
-                  <Text style={ss.sheetHint}>{t('voice.myLanguage')}</Text>
-                  {APP_LANGS.map((l) => (
-                    <Pressable
-                      key={l.code}
-                      onPress={() => switchLang(l.code)}
-                      style={[ss.langOpt, l.code === appLang && ss.langOptOn]}>
-                      <Text style={{ fontSize: 20 }}>{l.flag}</Text>
-                      <Text style={ss.langOptText}>{l.label}</Text>
-                      {l.code === appLang && (
-                        <Icon name="check_circle" size={18} color={palette.teal[40]} filled />
-                      )}
-                    </Pressable>
-                  ))}
-                </>
-              )}
+              <Text style={ss.sheetTitle}>
+                {picker === 'my' ? t('voice.myLanguage') : t('voice.peerLanguage')}
+              </Text>
+              {APP_LANGS.map((l) => {
+                const cur = picker === 'my' ? myLang : peerLang
+                return (
+                  <Pressable
+                    key={l.code}
+                    onPress={() => pickLang(l.code)}
+                    style={[ss.langOpt, cur === l.code && ss.langOptOn]}>
+                    <Text style={{ fontSize: 20 }}>{l.flag}</Text>
+                    <Text style={ss.langOptText}>{l.label}</Text>
+                    {cur === l.code && (
+                      <Icon name="check_circle" size={18} color={palette.teal[40]} filled />
+                    )}
+                  </Pressable>
+                )
+              })}
             </Pressable>
           </Pressable>
         </Modal>
@@ -958,29 +986,49 @@ const ss = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  // 패널 열림 상태 강조
+  toolBtnOn: { backgroundColor: palette.teal[90], borderWidth: 1.5, borderColor: palette.teal[40] },
   // 펄스 닷 — 듣는 중 표시
   pulseWrap: { width: 12, height: 12, alignItems: 'center', justifyContent: 'center' },
   pulseRing: { position: 'absolute', width: 8, height: 8, borderRadius: 4 },
   pulseCore: { width: 8, height: 8, borderRadius: 4 },
 
-  // 하단 — 언어 스위처 + 플로팅 End
+  // Listening 바로 아래 인라인 설정 패널(음성/볼륨)
+  inlinePanel: {
+    marginTop: 10,
+    backgroundColor: '#fff',
+    borderRadius: 14,
+    borderWidth: 0.5,
+    borderColor: palette.zinc[200],
+    paddingHorizontal: 14,
+    ...shadows.card,
+  },
+
+  // 하단 — 언어 스위처(Translate와 동일) + 플로팅 End
   bottomRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingTop: 10 },
-  langBar: {
+  langRow: {
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
+    justifyContent: 'space-between',
     height: 52,
     backgroundColor: palette.zinc[50],
     borderWidth: 0.5,
     borderColor: palette.zinc[200],
     borderRadius: 16,
+    paddingVertical: 8,
     paddingHorizontal: 14,
   },
-  langChip: { flexDirection: 'row', alignItems: 'center', gap: 5 },
-  langFlag: { fontSize: 16 },
-  langName: { fontSize: 13.5, fontWeight: '700', color: palette.zinc[800] },
+  langPick: { flexDirection: 'row', alignItems: 'center', gap: 2 },
+  langText: { fontSize: 13.5, fontWeight: '700', color: palette.zinc[800] },
+  swapBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: 999,
+    backgroundColor: palette.teal[90],
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   fabEnd: {
     width: 52,
     height: 52,

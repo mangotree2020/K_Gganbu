@@ -60,19 +60,17 @@ const LANG_NAME: Record<string, string> = {
   ko: 'Korean',
 }
 
-function interpreterInstruction(appLang: string): string {
-  const app = LANG_NAME[appLang] ?? 'English'
-  // 멀티 화자/멀티 언어 상황(길거리에서 여러 명이 각자 언어로 번갈아 대화).
-  // 목표 언어 = 앱 설정 언어(app). 어떤 언어든 자동 감지 → app으로 통역.
-  // 단, app으로 말한 발화는 상대가 알아듣도록 other(앱이 한국어면 영어, 그 외 한국어)로.
-  const other = appLang === 'ko' ? 'English' : 'Korean'
+// 두 언어 간 양방향 통역 지시문. myLang(내 언어) ↔ peerLang(상대 언어).
+// 내 언어 발화 → 상대 언어로, 상대 언어(또는 그 외 언어) 발화 → 내 언어로.
+function interpreterInstruction(myLang: string, peerLang: string): string {
+  const mine = LANG_NAME[myLang] ?? 'English'
+  const peer = LANG_NAME[peerLang] ?? 'Korean'
   return (
-    `You are a real-time interpreter for a multi-person street conversation in Korea, ` +
-    `where several people take turns speaking in different languages. ` +
+    `You are a real-time interpreter for a face-to-face conversation between a ${mine} speaker and a ${peer} speaker. ` +
     `Detect the language of each utterance automatically, then apply this strict rule: ` +
-    `an utterance spoken in ${app} must be rendered in ${other}; ` +
-    `an utterance in ANY other language must be rendered in ${app}. ` +
-    `Your output language is therefore always ${app} or ${other} and nothing else, regardless of previous turns. ` +
+    `an utterance spoken in ${mine} must be rendered in ${peer}; ` +
+    `an utterance in ${peer} (or ANY other language) must be rendered in ${mine}. ` +
+    `Your output language is therefore always ${mine} or ${peer} and nothing else, regardless of previous turns. ` +
     `Speak slowly, calmly, and very clearly, enunciating each word with natural pauses so a non-native listener can follow easily. ` +
     `Reply with ONLY the spoken translation — no notes, no language labels, no extra words.`
   )
@@ -143,7 +141,7 @@ function fromB64(b64: string): Uint8Array {
 // mode: 'interpret'(기본) = 양방향 통역 + 음성 출력.
 // 'transcribe' = 번역/음성 없이 발화 원문만 받음(STT — AI 깐부 음성 질문용).
 export async function startLiveTranslate(
-  opts: { appLang: string; mode?: 'interpret' | 'transcribe' },
+  opts: { appLang: string; peerLang?: string; mode?: 'interpret' | 'transcribe' },
   cb: LiveCallbacks,
 ): Promise<LiveSession | null> {
   const grant = await getLiveToken(opts.appLang)
@@ -193,7 +191,16 @@ export async function startLiveTranslate(
               responseModalities: ['AUDIO'],
               speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: VOICE_NAME } } },
             },
-            systemInstruction: { parts: [{ text: interpreterInstruction(opts.appLang) }] },
+            systemInstruction: {
+              parts: [
+                {
+                  text: interpreterInstruction(
+                    opts.appLang,
+                    opts.peerLang ?? (opts.appLang === 'ko' ? 'en' : 'ko'),
+                  ),
+                },
+              ],
+            },
             inputAudioTranscription: {},
             outputAudioTranscription: {},
           }
