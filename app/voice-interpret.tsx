@@ -794,7 +794,7 @@ export default function VoiceInterpretScreen() {
             <ScrollView
               ref={scrollRef}
               style={{ flex: 1, marginTop: 12 }}
-              contentContainerStyle={{ gap: 10, paddingBottom: 12 }}
+              contentContainerStyle={{ gap: 10, paddingBottom: 96 }}
               onContentSizeChange={() => scrollRef.current?.scrollToEnd({ animated: true })}>
               {empty ? (
                 <View style={{ alignItems: 'center', marginTop: 40, gap: 16 }}>
@@ -831,12 +831,6 @@ export default function VoiceInterpretScreen() {
               )}
             </ScrollView>
 
-            {/* End — 언어 스위치 위 한 줄(우측 정렬) 플로팅 버튼 */}
-            <View style={ss.endRow}>
-              <Pressable onPress={() => router.back()} style={[ss.fabEnd, shadows.pop]}>
-                <Icon name="close" size={24} color="#fff" />
-              </Pressable>
-            </View>
             {/* 언어 스위처 — 전체 폭 한 줄(Translate와 동일 디자인·기능) */}
             <View style={ss.langRow}>
               {/* 왼쪽 = 앱 사용자(화자) 언어 — You 배지로 표시 */}
@@ -858,6 +852,11 @@ export default function VoiceInterpretScreen() {
                 <Icon name="expand_more" size={16} color={palette.zinc[500]} />
               </Pressable>
             </View>
+
+            {/* End — 절대 위치 플로팅 버튼(언어 스위치 위 우측). 스크롤 하단 패딩으로 대화 미가림 */}
+            <Pressable onPress={() => router.back()} style={[ss.fabEnd, shadows.pop]}>
+              <Icon name="close" size={24} color="#fff" />
+            </Pressable>
           </View>
         ) : (
           <View style={ss.center}>
@@ -1010,8 +1009,7 @@ const ss = StyleSheet.create({
     ...shadows.card,
   },
 
-  // 하단 — End 버튼 한 줄(우측) 위에, 전체 폭 언어 스위처
-  endRow: { flexDirection: 'row', justifyContent: 'flex-end', paddingTop: 8, paddingBottom: 8 },
+  // 하단 — 전체 폭 언어 스위처 + 그 위 우측 플로팅 End
   langRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1045,6 +1043,9 @@ const ss = StyleSheet.create({
     justifyContent: 'center',
   },
   fabEnd: {
+    position: 'absolute',
+    right: 0,
+    bottom: 66,
     width: 52,
     height: 52,
     borderRadius: 999,
