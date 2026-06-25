@@ -213,12 +213,7 @@ export default function TranslateScreen() {
                   key={m.id}
                   onPress={() => setMode(m.id)}
                   style={[ss.modeBtn, on ? ss.modeBtnOn : ss.modeBtnOff]}>
-                  <Icon
-                    name={m.icon}
-                    size={22}
-                    color={on ? palette.teal[30] : palette.zinc[600]}
-                    filled={on}
-                  />
+                  <Icon name={m.icon} size={22} color={on ? palette.teal[30] : palette.zinc[600]} />
                   <Text
                     style={[ss.modeLabel, { color: on ? palette.teal[30] : palette.zinc[700] }]}>
                     {t(`translate.mode${m.id.charAt(0).toUpperCase()}${m.id.slice(1)}`)}

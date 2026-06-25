@@ -675,7 +675,6 @@ export default function VoiceInterpretScreen() {
                     name="tune"
                     size={19}
                     color={micOpen ? palette.teal[30] : palette.zinc[500]}
-                    filled
                   />
                 </Pressable>
                 {/* 볼륨 패널 열기/닫기 — 열림 상태 강조 */}
@@ -686,7 +685,6 @@ export default function VoiceInterpretScreen() {
                     name={volume > 0 ? 'volume_up' : 'volume_off'}
                     size={19}
                     color={volOpen ? palette.teal[30] : palette.zinc[500]}
-                    filled
                   />
                 </Pressable>
               </View>

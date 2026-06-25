@@ -282,11 +282,13 @@ export function Icon({
   // 통역 아이콘은 한/영(한A) 글리프로 통일
   if (name === 'translate') return <TranslateGlyph size={size} color={color} />
   const Cmp = MAP[name] ?? Circle
+  // filled일 때는 스트로크를 얇게(1.5) — lucide 아웃라인 아이콘을 같은 색으로 채우면
+  // 2px 스트로크가 채움 위에 이중으로 겹쳐 작은 크기에서 뭉개진다. 얇게 해 솔리드를 깔끔히.
   return (
     <Cmp
       size={size}
       color={color}
-      strokeWidth={strokeWidth ?? 2}
+      strokeWidth={strokeWidth ?? (filled ? 1.5 : 2)}
       fill={filled ? color : 'transparent'}
     />
   )
