@@ -2,7 +2,6 @@ import { LinearGradient } from 'expo-linear-gradient'
 import { router } from 'expo-router'
 import { useState } from 'react'
 import {
-  Alert,
   Modal,
   Pressable,
   ScrollView,
@@ -19,6 +18,7 @@ import { enablePush } from '@/features/notifications/services'
 import { usePushStore } from '@/features/notifications/store'
 import { useUserCoupons } from '@/features/coupon/queries'
 import { useFavorites } from '@/features/favorites/queries'
+import { usePassport } from '@/features/passport/queries'
 import { useAuthStore } from '@/features/auth/store'
 import { APP_LANGS, useLocaleStore, useT, type AppLang } from '@/lib/i18n'
 import { palette, shadows } from '@/theme/tokens'
@@ -71,6 +71,7 @@ export default function ProfileScreen() {
   const currentLang = APP_LANGS.find((l) => l.code === lang) ?? APP_LANGS[0]
   const { data: favorites } = useFavorites()
   const { data: savedCoupons } = useUserCoupons()
+  const { data: passport } = usePassport()
   const pushEnabled = usePushStore((s) => s.enabled)
   const setPushEnabled = usePushStore((s) => s.setEnabled)
 
@@ -164,11 +165,9 @@ export default function ProfileScreen() {
           ))}
         </View>
 
-        {/* 여권 스캔 → 면세 (Passport & Tax-Free) — 등록 진입점(등록·OCR은 백로그 #26) */}
+        {/* 여권 스캔 → 면세 (Passport & Tax-Free) — 등록 시 상태 카드, 미등록 시 CTA. → /passport (#26) */}
         <View style={{ paddingHorizontal: 16, paddingTop: 12 }}>
-          <TouchableOpacity
-            activeOpacity={0.9}
-            onPress={() => Alert.alert(t('profile.passportTitle'), t('profile.passportSoon'))}>
+          <TouchableOpacity activeOpacity={0.9} onPress={() => router.push('/passport')}>
             <LinearGradient
               colors={['#1E3A5F', '#0EA5E9', '#0D9488']}
               locations={[0, 0.7, 1]}
@@ -179,18 +178,33 @@ export default function ProfileScreen() {
                 <View style={ss.passportIcon}>
                   <Text style={{ fontSize: 24 }}>🛂</Text>
                 </View>
-                <View style={{ flex: 1 }}>
-                  <Text style={ss.passportTitle}>{t('profile.passportTitle')}</Text>
-                  <Text style={ss.passportSub}>{t('profile.passportSub')}</Text>
-                </View>
+                {passport ? (
+                  <View style={{ flex: 1 }}>
+                    <Text style={ss.passportTitle}>
+                      {passport.surname}
+                      {passport.givenName ? `, ${passport.givenName}` : ''}
+                    </Text>
+                    <Text style={ss.passportSub}>
+                      {passport.nationality ?? '—'} · {t('passport.taxFreeOn')}
+                    </Text>
+                  </View>
+                ) : (
+                  <View style={{ flex: 1 }}>
+                    <Text style={ss.passportTitle}>{t('profile.passportTitle')}</Text>
+                    <Text style={ss.passportSub}>{t('profile.passportSub')}</Text>
+                  </View>
+                )}
                 <Icon name="chevron_right" size={20} color="rgba(255,255,255,.8)" />
               </View>
               <View style={ss.passportChips}>
-                {[
-                  `✈️ ${t('profile.passportChip1')}`,
-                  `🧾 ${t('profile.passportChip2')}`,
-                  `🔒 ${t('profile.passportChip3')}`,
-                ].map((c) => (
+                {(passport
+                  ? [`🛂 Tax-Free ON`, `✈️ ${t('profile.passportChip1')}`]
+                  : [
+                      `✈️ ${t('profile.passportChip1')}`,
+                      `🧾 ${t('profile.passportChip2')}`,
+                      `🔒 ${t('profile.passportChip3')}`,
+                    ]
+                ).map((c) => (
                   <View key={c} style={ss.passportChip}>
                     <Text style={ss.passportChipText}>{c}</Text>
                   </View>
