@@ -83,15 +83,16 @@ const SCENARIOS = [
   { k: 'Hotel', ex: 'Check-in · Room', icon: 'hotel', color: palette.amber[50], bg: '#FEF3C7' },
 ]
 
+// 순서: Voice → Camera → Text(한국어 학습). Voice가 기본 선택
 const MODES: { id: Mode; icon: string; label: string }[] = [
-  { id: 'text', icon: 'keyboard', label: 'Text' },
-  { id: 'camera', icon: 'photo_camera', label: 'Camera' },
   { id: 'voice', icon: 'mic', label: 'Voice' },
+  { id: 'camera', icon: 'photo_camera', label: 'Camera' },
+  { id: 'text', icon: 'keyboard', label: 'Learn KO' },
 ]
 
 export default function TranslateScreen() {
   const t = useT()
-  const [mode, setMode] = useState<Mode>('text')
+  const [mode, setMode] = useState<Mode>('voice')
   const [src, setSrc] = useState('en')
   const [tgt, setTgt] = useState('ko')
   const INITIAL_INPUT = 'Does this dish contain pork?'
@@ -168,6 +169,23 @@ export default function TranslateScreen() {
     setOcrLoading(false)
   }
 
+  // 언어 설정 스위치 박스 — text/voice 모드 공용
+  const langSwitcher = (
+    <View style={ss.langRow}>
+      <Pressable onPress={() => setPicker('src')} style={ss.langPick}>
+        <Text style={ss.langText}>{langLabel(src)}</Text>
+        <Icon name="expand_more" size={16} color={palette.zinc[500]} />
+      </Pressable>
+      <Pressable onPress={swap} style={ss.swapBtn}>
+        <Icon name="swap_horiz" size={18} color={palette.teal[30]} />
+      </Pressable>
+      <Pressable onPress={() => setPicker('tgt')} style={ss.langPick}>
+        <Text style={ss.langText}>{langLabel(tgt)}</Text>
+        <Icon name="expand_more" size={16} color={palette.zinc[500]} />
+      </Pressable>
+    </View>
+  )
+
   return (
     <View style={ss.container}>
       <SafeAreaView edges={['top']} style={{ flex: 1 }}>
@@ -193,9 +211,7 @@ export default function TranslateScreen() {
               return (
                 <Pressable
                   key={m.id}
-                  onPress={() =>
-                    m.id === 'voice' ? router.push('/voice-interpret') : setMode(m.id)
-                  }
+                  onPress={() => setMode(m.id)}
                   style={[ss.modeBtn, on ? ss.modeBtnOn : ss.modeBtnOff]}>
                   <Icon
                     name={m.icon}
@@ -212,22 +228,30 @@ export default function TranslateScreen() {
             })}
           </View>
 
+          {mode === 'voice' && (
+            <View style={{ paddingHorizontal: 16, paddingTop: 6 }}>
+              {/* 언어 설정 스위치 박스 */}
+              {langSwitcher}
+
+              {/* 통역 전단계 — Start 시 풀스크린 라이브 세션으로 이동 */}
+              <View style={ss.voiceCard}>
+                <View style={ss.voiceMic}>
+                  <Icon name="mic" size={32} color={palette.teal[40]} filled />
+                </View>
+                <Text style={ss.voiceTitle}>{t('voice.realtimeTitle')}</Text>
+                <Text style={ss.voiceSub}>{t('voice.realtimeSub')}</Text>
+                <Pressable onPress={() => router.push('/voice-interpret')} style={ss.voiceStart}>
+                  <Icon name="mic" size={18} color="#fff" filled />
+                  <Text style={ss.voiceStartText}>{t('voice.start')}</Text>
+                </Pressable>
+              </View>
+            </View>
+          )}
+
           {mode === 'text' && (
             <View style={{ paddingHorizontal: 16 }}>
               {/* 언어 행 (탭하여 선택) */}
-              <View style={ss.langRow}>
-                <Pressable onPress={() => setPicker('src')} style={ss.langPick}>
-                  <Text style={ss.langText}>{langLabel(src)}</Text>
-                  <Icon name="expand_more" size={16} color={palette.zinc[500]} />
-                </Pressable>
-                <Pressable onPress={swap} style={ss.swapBtn}>
-                  <Icon name="swap_horiz" size={18} color={palette.teal[30]} />
-                </Pressable>
-                <Pressable onPress={() => setPicker('tgt')} style={ss.langPick}>
-                  <Text style={ss.langText}>{langLabel(tgt)}</Text>
-                  <Icon name="expand_more" size={16} color={palette.zinc[500]} />
-                </Pressable>
-              </View>
+              {langSwitcher}
 
               {/* 입력 */}
               <View style={ss.inputCard}>
@@ -514,6 +538,47 @@ const ss = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+
+  // 음성 통역 전단계 카드
+  voiceCard: {
+    alignItems: 'center',
+    gap: 8,
+    paddingVertical: 28,
+    paddingHorizontal: 20,
+    borderRadius: 16,
+    borderWidth: 0.5,
+    borderColor: palette.zinc[200],
+    backgroundColor: palette.zinc[50],
+  },
+  voiceMic: {
+    width: 72,
+    height: 72,
+    borderRadius: 22,
+    backgroundColor: palette.teal[95],
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 2,
+  },
+  voiceTitle: { fontSize: 17, fontWeight: '800', color: palette.zinc[900] },
+  voiceSub: {
+    fontSize: 13,
+    color: palette.zinc[500],
+    textAlign: 'center',
+    lineHeight: 19,
+    paddingHorizontal: 8,
+  },
+  voiceStart: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    backgroundColor: palette.teal[40],
+    borderRadius: 999,
+    paddingVertical: 14,
+    paddingHorizontal: 28,
+    marginTop: 6,
+  },
+  voiceStartText: { color: '#fff', fontSize: 15, fontWeight: '700' },
 
   inputCard: {
     backgroundColor: palette.zinc[50],
