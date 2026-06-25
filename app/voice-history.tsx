@@ -1,11 +1,18 @@
-// 음성 통역 대화 이력 화면 — MMKV에 저장된 지난 세션 목록·대화 조회.
+// 음성 통역 대화 이력 화면 — 로컬(MMKV) + 원격(Supabase, 사용자별) 세션 병합 조회.
 import { router } from 'expo-router'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 
 import { Icon } from '@/components/brand'
-import { clearSessions, loadSessions, type VoiceSession } from '@/features/translate/history'
+import {
+  clearRemoteSessions,
+  clearSessions,
+  loadRemoteSessions,
+  loadSessions,
+  mergeSessions,
+  type VoiceSession,
+} from '@/features/translate/history'
 import { APP_LANGS, useT } from '@/lib/i18n'
 import { palette, shadows } from '@/theme/tokens'
 
@@ -22,11 +29,27 @@ function fmtDate(ms: number): string {
 
 export default function VoiceHistoryScreen() {
   const t = useT()
+  // 로컬 즉시 표시 → 원격 병합(사용자별, RLS)
   const [sessions, setSessions] = useState<VoiceSession[]>(() => loadSessions())
   const [openId, setOpenId] = useState<number | null>(sessions[0]?.id ?? null)
 
+  useEffect(() => {
+    let alive = true
+    loadRemoteSessions().then((remote) => {
+      if (!alive || !remote.length) return
+      setSessions((local) => {
+        const merged = mergeSessions(local, remote)
+        return merged
+      })
+    })
+    return () => {
+      alive = false
+    }
+  }, [])
+
   const clearAll = () => {
     clearSessions()
+    clearRemoteSessions()
     setSessions([])
   }
 

@@ -23,7 +23,7 @@ import Slider from '@react-native-community/slider'
 import { Icon } from '@/components/brand'
 import { storage } from '@/lib/mmkv'
 import { startLiveTranslate, type LiveSession } from '@/features/translate/geminiLive'
-import { saveSession } from '@/features/translate/history'
+import { saveSession, saveSessionRemote } from '@/features/translate/history'
 import { resetSpeaker, setSpeaker } from '../../modules/expo-speaker-route'
 import {
   createPlayer,
@@ -314,23 +314,35 @@ export default function VoiceInterpretScreen() {
   // 이력 저장용 — 콜백/언마운트에서 최신값 읽기
   const turnsRef = useRef<Turn[]>([])
   const appLangRef = useRef(appLang)
+  const myLangRef = useRef(myLang)
+  const peerLangRef = useRef(peerLang)
+  const persistedRef = useRef(false) // 중복 저장 방지(X 핸들러 + 언마운트)
   useEffect(() => {
     turnsRef.current = turns
   }, [turns])
   useEffect(() => {
     appLangRef.current = appLang
   }, [appLang])
+  useEffect(() => {
+    myLangRef.current = myLang
+  }, [myLang])
+  useEffect(() => {
+    peerLangRef.current = peerLang
+  }, [peerLang])
 
-  // 현재 대화를 이력에 저장(빈 대화는 무시)
+  // 현재 대화를 이력에 저장(빈 대화는 무시) — 로컬(MMKV) + 원격(Supabase, 사용자별).
+  // 한 세션당 1회만 저장(persistedRef 가드).
   const persist = () => {
-    saveSession(
-      turnsRef.current.map((x) => ({
-        original: x.original,
-        translation: x.translation,
-        lang: x.lang,
-      })),
-      appLangRef.current,
-    )
+    if (persistedRef.current) return
+    const turns = turnsRef.current.map((x) => ({
+      original: x.original,
+      translation: x.translation,
+      lang: x.lang,
+    }))
+    if (!turns.length) return
+    persistedRef.current = true
+    saveSession(turns, appLangRef.current) // 로컬 즉시
+    saveSessionRemote(turns, myLangRef.current, peerLangRef.current) // 원격(비동기, 실패 무시)
   }
   // onAudio/마이크 콜백 클로저에서 최신 On/Off 값을 읽기 위한 미러
   const otherVoiceRef = useRef(otherVoice)
@@ -647,7 +659,14 @@ export default function VoiceInterpretScreen() {
           <Pressable onPress={() => router.push('/voice-history')} style={ss.close}>
             <Icon name="history" size={18} color={palette.zinc[700]} />
           </Pressable>
-          <Pressable onPress={() => router.back()} style={ss.close}>
+          {/* X — 대화 종료 + 이력 저장(로컬·원격) 후 닫기 */}
+          <Pressable
+            onPress={() => {
+              persist()
+              teardown()
+              router.back()
+            }}
+            style={ss.close}>
             <Icon name="close" size={18} color={palette.zinc[700]} />
           </Pressable>
         </View>
