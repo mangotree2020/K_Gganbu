@@ -423,14 +423,21 @@
 **라벨**: feature/passport
 **상태**: 📋 계획 — **착수 선행조건: My 메뉴 화면 디자인 수정 완료**
 **의존성**: My 탭 디자인 수정, #4(i18n), 카메라 권한, ocr Edge Function(Google Vision)
-**범위**: My 메뉴에서 여권 촬영 → MRZ OCR로 여권 정보 추출·저장 → 외국인 쇼핑 면세(Tax Refund) 혜택 제공
-**상세 계획**: `docs/tasks/passport-ocr.md`
+**범위**: My 메뉴에서 여권 촬영 → MRZ OCR(Google Vision) → 여권 정보 파싱·저장 → 외국인 쇼핑 면세(Tax Refund) 혜택 제공
+**상세 계획**: `docs/tasks/passport-ocr.md` (DB 스키마·Storage·Edge Function·RN hook·Web Admin·비용 포함)
 
-**완료 조건**
+**완료 조건** (상세 계획 기준)
 
-- [ ] My 탭 진입점(디자인 수정 후 위치 확정) + 여권 등록 화면(`app/passport.tsx`)
-- [ ] 여권 촬영/갤러리 + just-in-time 권한, 거부 시 수동 입력 degrade
-- [ ] MRZ(ICAO 9303) OCR·파싱 + 체크 디지트 검증(mock-first)
-- [ ] 추출 정보 확인·수정·저장 (저장 위치: 로컬 암호화 vs 서버 — 정책 결정)
-- [ ] 개인정보 명시 동의·보관기간·삭제 기능(여권 이미지 미보관 원칙)
+- [ ] DB 스키마: `passport_scans`(원본/상태) + `passport_data`(파싱 결과) + RLS(본인만)
+- [ ] Storage `passport-images`(Private) 버킷 + 본인 폴더 RLS
+- [ ] Edge Function `passport-ocr`: Storage 업로드 → Vision TEXT_DETECTION → MRZ(TD3) 파싱 → DB 저장
+- [ ] RN hook `usePassportScan` + My 탭 진입점·여권 스캔 화면(디자인 수정 후 위치 확정)
+- [ ] 촬영/갤러리 + just-in-time 권한, MRZ 인식 실패(5~10%) 재촬영 안내 UX
 - [ ] 면세 혜택 카드(한도·환급 안내) — Phase 2: 제휴 매장 면세 QR
+- [ ] Web Admin(별도 앱) 스캔 목록·재처리
+
+**착수 전 정렬 필요 (기존 프로젝트 컨벤션 대비)**
+
+- RLS: 상세 계획은 `auth.uid() = user_id`(auth.users 직접 참조). 기존 스키마는 `public.users(auth_id→id)` 매핑 + `current_user_id()` 사용 → 패턴 통일 결정 필요
+- Edge 런타임: 기존 함수는 `Deno.serve` + `jsr:` 임포트 사용(계획의 `deno.land/std serve`와 상이) → 통일 권장
+- 개인정보: 여권 이미지 Storage 보관은 PIPA상 민감정보 — 보관 최소화/암호화/삭제·동의 정책 확정(이미지 미보관 옵션도 검토)
