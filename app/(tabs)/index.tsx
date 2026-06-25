@@ -755,7 +755,7 @@ export default function HomeScreen() {
           android_ripple={{ color: 'rgba(255,255,255,0.25)', borderless: false }}
           style={[ss.gganbuFab, ss.translateFab]}>
           <Icon name="translate" size={20} color="#fff" />
-          <Text style={ss.gganbuFabText}>AI Translate</Text>
+          <Text style={ss.gganbuFabText}>Translate</Text>
         </Pressable>
         {/* AI Gganbu — 챗봇 화면 */}
         <Pressable
