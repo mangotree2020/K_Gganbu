@@ -5,6 +5,9 @@
 import { router } from 'expo-router'
 import { useEffect, useRef, useState } from 'react'
 import {
+  ActivityIndicator,
+  Animated,
+  Modal,
   PermissionsAndroid,
   Platform,
   Pressable,
@@ -211,6 +214,31 @@ function ToggleRow({
   )
 }
 
+// 듣는 중 표시용 펄스 닷 — 가운데 점 + 바깥으로 퍼지는 링(살아있는 느낌)
+function PulseDot({ color }: { color: string }) {
+  const [a] = useState(() => new Animated.Value(0))
+  useEffect(() => {
+    const loop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(a, { toValue: 1, duration: 1100, useNativeDriver: true }),
+        Animated.timing(a, { toValue: 0, duration: 0, useNativeDriver: true }),
+      ]),
+    )
+    loop.start()
+    return () => loop.stop()
+  }, [a])
+  const scale = a.interpolate({ inputRange: [0, 1], outputRange: [1, 2.6] })
+  const opacity = a.interpolate({ inputRange: [0, 1], outputRange: [0.45, 0] })
+  return (
+    <View style={ss.pulseWrap}>
+      <Animated.View
+        style={[ss.pulseRing, { backgroundColor: color, transform: [{ scale }], opacity }]}
+      />
+      <View style={[ss.pulseCore, { backgroundColor: color }]} />
+    </View>
+  )
+}
+
 async function ensureMicPermission(): Promise<boolean> {
   if (Platform.OS !== 'android') return true
   try {
@@ -224,6 +252,11 @@ async function ensureMicPermission(): Promise<boolean> {
 export default function VoiceInterpretScreen() {
   const t = useT()
   const appLang: AppLang = useLocaleStore((s) => s.lang)
+  const setLang = useLocaleStore((s) => s.setLang)
+  // 통역 상대 언어(내 언어가 한국어면 영어, 그 외엔 한국어) — 스위처 좌측 표시용
+  const otherLang: AppLang = appLang === 'ko' ? 'en' : 'ko'
+  // 하단/상단 설정 시트: 마이크·볼륨·언어 중 하나 또는 닫힘
+  const [panel, setPanel] = useState<null | 'mic' | 'volume' | 'lang'>(null)
   const [status, setStatus] = useState<VoiceStatus>('idle')
   const [active, setActive] = useState(false)
   const [turns, setTurns] = useState<Turn[]>([])
@@ -518,15 +551,6 @@ export default function VoiceInterpretScreen() {
     else setStatus('unavailable')
   }
 
-  const stop = () => {
-    persist()
-    teardown()
-    setActive(false)
-    setTurns([])
-    setCurrent(null)
-    setStatus('idle')
-  }
-
   const failToFallback = () => {
     teardown()
     setActive(false)
@@ -543,11 +567,52 @@ export default function VoiceInterpretScreen() {
     [],
   )
 
+  // 진입 즉시 자동 시작 — 중간 'Start interpreting' 화면 제거(바로 통역 화면 진입)
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    start()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  // 통역 화면 내 언어 전환 시 — 기존 대화는 유지한 채 새 방향으로 세션만 재연결
+  const langMountRef = useRef(false)
+  useEffect(() => {
+    if (!langMountRef.current) {
+      langMountRef.current = true
+      return
+    }
+    if (!active) return
+    // 진행 중 세션의 자동 재연결을 막고(의도적 close) 새 appLang으로 재연결
+    intentionalCloseRef.current = true
+    if (reconnectTimerRef.current) {
+      clearTimeout(reconnectTimerRef.current)
+      reconnectTimerRef.current = null
+    }
+    reconnectingRef.current = false
+    sessionRef.current?.close()
+    sessionRef.current = null
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setStatus('connecting')
+    intentionalCloseRef.current = false
+    reconnectAttemptRef.current = 0
+    connect().then((ok) => {
+      if (!ok) setStatus('unavailable')
+    })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [appLang])
+
+  // 언어 전환 — 시트에서 내 언어 선택. 동일 언어면 무시, 아니면 store 갱신(effect가 재연결)
+  const switchLang = (code: AppLang) => {
+    setPanel(null)
+    if (code !== appLang) setLang(code)
+  }
+
   const empty = turns.length === 0 && !current?.original && !current?.translation
 
   return (
     <View style={ss.container}>
       <SafeAreaView edges={['top', 'bottom']} style={{ flex: 1 }}>
+        {/* 헤더 — 아이콘·타이틀·이력 (종료는 하단 플로팅 버튼) */}
         <View style={ss.header}>
           <View style={ss.headerIcon}>
             <Icon name="mic" size={20} color={palette.teal[40]} filled />
@@ -559,122 +624,44 @@ export default function VoiceInterpretScreen() {
           <Pressable onPress={() => router.push('/voice-history')} style={ss.close}>
             <Icon name="history" size={18} color={palette.zinc[700]} />
           </Pressable>
-          <Pressable onPress={() => router.back()} style={ss.close}>
-            <Icon name="close" size={18} color={palette.zinc[700]} />
-          </Pressable>
         </View>
 
         {active ? (
           <View style={ss.body}>
-            <View style={ss.statusPill}>
-              <Icon
-                name="circle"
-                size={8}
-                color={status === 'connected' ? palette.success[50] : palette.amber[50]}
-                filled
-              />
-              <Text style={ss.statusText}>
-                {status === 'connected'
-                  ? t('voice.listening')
-                  : status === 'reconnecting'
-                    ? t('voice.reconnecting')
-                    : t('voice.connecting')}
-              </Text>
-              {headset && <Icon name="headphones" size={13} color={palette.teal[40]} filled />}
-            </View>
-
-            <View style={ss.settingsCard}>
-              {/* 상대 음성 — 이어폰으로 들림 */}
-              <ToggleRow
-                icon={otherVoice ? 'volume_up' : 'volume_off'}
-                label={t('voice.soundOther')}
-                value={otherVoice}
-                onToggle={toggleOtherVoice}
-              />
-              <View style={ss.rowDivider} />
-              {/* 내 통역 — On/Off + (이어폰 시)출력처 칩(이어폰/스피커 전환) 통합 */}
-              <View style={ss.toggleRow}>
-                <View style={ss.toggleLabelGroup}>
+            {/* 상단 툴바 — 상태 표시(펄스) + 마이크·볼륨 설정 버튼 */}
+            <View style={ss.topBar}>
+              <View style={ss.statusPill}>
+                <PulseDot
+                  color={status === 'connected' ? palette.success[50] : palette.amber[50]}
+                />
+                <Text style={ss.statusText}>
+                  {status === 'connected'
+                    ? t('voice.listening')
+                    : status === 'reconnecting'
+                      ? t('voice.reconnecting')
+                      : t('voice.connecting')}
+                </Text>
+                {headset && <Icon name="headphones" size={13} color={palette.teal[40]} filled />}
+              </View>
+              <View style={ss.topActions}>
+                <Pressable onPress={() => setPanel('mic')} style={ss.toolBtn}>
                   <Icon
-                    name={
-                      !myVoice
-                        ? 'volume_off'
-                        : headset && !speakerMyVoice
-                          ? 'headphones'
-                          : 'megaphone'
-                    }
-                    size={18}
+                    name="tune"
+                    size={19}
+                    color={otherVoice || myVoice ? palette.teal[40] : palette.zinc[400]}
+                    filled
+                  />
+                </Pressable>
+                <Pressable onPress={() => setPanel('volume')} style={ss.toolBtn}>
+                  <Icon
+                    name={volume > 0 && (otherVoice || myVoice) ? 'volume_up' : 'volume_off'}
+                    size={19}
                     color={
-                      !myVoice
-                        ? palette.zinc[400]
-                        : speakerMyVoice
-                          ? palette.coral[40]
-                          : palette.teal[40]
+                      volume > 0 && (otherVoice || myVoice) ? palette.teal[40] : palette.zinc[400]
                     }
                     filled
                   />
-                  <Text style={[ss.toggleLabel, !myVoice && { color: palette.zinc[400] }]}>
-                    {t('voice.soundMine')}
-                  </Text>
-                </View>
-                <View style={ss.rowControls}>
-                  {headset && myVoice && (
-                    <Pressable
-                      onPress={toggleSpeakerMyVoice}
-                      hitSlop={6}
-                      style={[
-                        ss.outputChip,
-                        {
-                          backgroundColor: speakerMyVoice ? palette.coral[95] : palette.teal[95],
-                        },
-                      ]}>
-                      <Icon
-                        name={speakerMyVoice ? 'megaphone' : 'headphones'}
-                        size={13}
-                        color={speakerMyVoice ? palette.coral[40] : palette.teal[40]}
-                        filled
-                      />
-                      <Text
-                        style={[
-                          ss.outputChipText,
-                          { color: speakerMyVoice ? palette.coral[40] : palette.teal[40] },
-                        ]}>
-                        {speakerMyVoice ? t('voice.outSpeaker') : t('voice.outEarphone')}
-                      </Text>
-                    </Pressable>
-                  )}
-                  <Switch
-                    value={myVoice}
-                    onValueChange={toggleMyVoice}
-                    trackColor={{ true: palette.teal[80], false: palette.zinc[300] }}
-                    thumbColor={myVoice ? palette.teal[40] : '#f4f4f5'}
-                  />
-                </View>
-              </View>
-              <View style={ss.rowDivider} />
-              {/* 볼륨 */}
-              <View style={ss.volumeRow}>
-                <Icon
-                  name="volume_up"
-                  size={16}
-                  color={otherVoice || myVoice ? palette.teal[40] : palette.zinc[400]}
-                  filled
-                />
-                <Slider
-                  style={[ss.slider, !(otherVoice || myVoice) && { opacity: 0.35 }]}
-                  disabled={!(otherVoice || myVoice)}
-                  minimumValue={0}
-                  maximumValue={1}
-                  value={volume}
-                  onValueChange={onVolumeChange}
-                  onSlidingComplete={onVolumeCommit}
-                  minimumTrackTintColor={palette.teal[40]}
-                  maximumTrackTintColor={palette.zinc[200]}
-                  thumbTintColor={palette.teal[40]}
-                />
-                <Text style={[ss.volPct, !(otherVoice || myVoice) && { color: palette.zinc[400] }]}>
-                  {Math.round(volume * 100)}%
-                </Text>
+                </Pressable>
               </View>
             </View>
 
@@ -718,10 +705,24 @@ export default function VoiceInterpretScreen() {
               )}
             </ScrollView>
 
-            <Pressable onPress={stop} style={ss.stopBtn}>
-              <Icon name="close" size={18} color="#fff" />
-              <Text style={ss.stopText}>{t('voice.end')}</Text>
-            </Pressable>
+            {/* 하단 — 언어 스위처(기존 End 자리) + 우하단 플로팅 End 버튼 */}
+            <View style={ss.bottomRow}>
+              <Pressable onPress={() => setPanel('lang')} style={ss.langBar}>
+                <View style={ss.langChip}>
+                  <Text style={ss.langFlag}>{langMeta(otherLang).flag}</Text>
+                  <Text style={ss.langName}>{langMeta(otherLang).label}</Text>
+                </View>
+                <Icon name="swap_horiz" size={18} color={palette.teal[40]} />
+                <View style={ss.langChip}>
+                  <Text style={ss.langFlag}>{langMeta(appLang).flag}</Text>
+                  <Text style={ss.langName}>{langMeta(appLang).label}</Text>
+                </View>
+                <Icon name="expand_more" size={16} color={palette.zinc[400]} />
+              </Pressable>
+              <Pressable onPress={() => router.back()} style={[ss.fabEnd, shadows.pop]}>
+                <Icon name="close" size={24} color="#fff" />
+              </Pressable>
+            </View>
           </View>
         ) : (
           <View style={ss.center}>
@@ -737,34 +738,162 @@ export default function VoiceInterpretScreen() {
                   <Text style={ss.altText}>{t('voice.toText')}</Text>
                 </Pressable>
               </>
-            ) : (
+            ) : status === 'error' ? (
               <>
                 <Text style={ss.bigTitle}>{t('voice.realtimeTitle')}</Text>
-                <Text style={ss.bigSub}>{t('voice.realtimeSub')}</Text>
-                <Pressable
-                  onPress={start}
-                  disabled={status === 'connecting'}
-                  style={[ss.startBtn, { opacity: status === 'connecting' ? 0.6 : 1 }]}>
+                <Text style={ss.err}>{t('voice.error')}</Text>
+                <Pressable onPress={start} style={ss.startBtn}>
                   <Icon name="mic" size={18} color="#fff" filled />
-                  <Text style={ss.startText}>
-                    {status === 'connecting' ? t('voice.connecting') : t('voice.start')}
-                  </Text>
+                  <Text style={ss.startText}>{t('voice.start')}</Text>
                 </Pressable>
-                {status === 'error' && (
-                  <>
-                    <Text style={ss.err}>{t('voice.error')}</Text>
-                    <Pressable
-                      onPress={() => router.replace('/(tabs)/translate')}
-                      style={ss.altBtn}>
-                      <Icon name="translate" size={16} color="#fff" filled />
-                      <Text style={ss.altText}>{t('voice.toText')}</Text>
-                    </Pressable>
-                  </>
-                )}
+                <Pressable onPress={() => router.replace('/(tabs)/translate')} style={ss.altBtn}>
+                  <Icon name="translate" size={16} color="#fff" filled />
+                  <Text style={ss.altText}>{t('voice.toText')}</Text>
+                </Pressable>
+              </>
+            ) : (
+              // idle/connecting — 자동 시작 진행 중(중간 화면 없이 바로 통역으로)
+              <>
+                <Text style={ss.bigTitle}>{t('voice.realtimeTitle')}</Text>
+                <View style={ss.connectingRow}>
+                  <ActivityIndicator color={palette.teal[40]} />
+                  <Text style={ss.bigSub}>{t('voice.connecting')}</Text>
+                </View>
               </>
             )}
           </View>
         )}
+
+        {/* 설정 시트 — 마이크/볼륨/언어 */}
+        <Modal
+          visible={panel !== null}
+          transparent
+          animationType="fade"
+          onRequestClose={() => setPanel(null)}>
+          <Pressable style={ss.sheetBg} onPress={() => setPanel(null)}>
+            <Pressable style={ss.sheet} onPress={() => {}}>
+              {panel === 'mic' && (
+                <>
+                  <Text style={ss.sheetTitle}>{t('voice.micPanel')}</Text>
+                  <ToggleRow
+                    icon={otherVoice ? 'volume_up' : 'volume_off'}
+                    label={t('voice.soundOther')}
+                    value={otherVoice}
+                    onToggle={toggleOtherVoice}
+                  />
+                  <View style={ss.rowDivider} />
+                  <View style={ss.toggleRow}>
+                    <View style={ss.toggleLabelGroup}>
+                      <Icon
+                        name={
+                          !myVoice
+                            ? 'volume_off'
+                            : headset && !speakerMyVoice
+                              ? 'headphones'
+                              : 'megaphone'
+                        }
+                        size={18}
+                        color={
+                          !myVoice
+                            ? palette.zinc[400]
+                            : speakerMyVoice
+                              ? palette.coral[40]
+                              : palette.teal[40]
+                        }
+                        filled
+                      />
+                      <Text style={[ss.toggleLabel, !myVoice && { color: palette.zinc[400] }]}>
+                        {t('voice.soundMine')}
+                      </Text>
+                    </View>
+                    <View style={ss.rowControls}>
+                      {headset && myVoice && (
+                        <Pressable
+                          onPress={toggleSpeakerMyVoice}
+                          hitSlop={6}
+                          style={[
+                            ss.outputChip,
+                            {
+                              backgroundColor: speakerMyVoice
+                                ? palette.coral[95]
+                                : palette.teal[95],
+                            },
+                          ]}>
+                          <Icon
+                            name={speakerMyVoice ? 'megaphone' : 'headphones'}
+                            size={13}
+                            color={speakerMyVoice ? palette.coral[40] : palette.teal[40]}
+                            filled
+                          />
+                          <Text
+                            style={[
+                              ss.outputChipText,
+                              { color: speakerMyVoice ? palette.coral[40] : palette.teal[40] },
+                            ]}>
+                            {speakerMyVoice ? t('voice.outSpeaker') : t('voice.outEarphone')}
+                          </Text>
+                        </Pressable>
+                      )}
+                      <Switch
+                        value={myVoice}
+                        onValueChange={toggleMyVoice}
+                        trackColor={{ true: palette.teal[80], false: palette.zinc[300] }}
+                        thumbColor={myVoice ? palette.teal[40] : '#f4f4f5'}
+                      />
+                    </View>
+                  </View>
+                </>
+              )}
+              {panel === 'volume' && (
+                <>
+                  <Text style={ss.sheetTitle}>{t('voice.volume')}</Text>
+                  <View style={ss.volumeRow}>
+                    <Icon
+                      name="volume_up"
+                      size={16}
+                      color={otherVoice || myVoice ? palette.teal[40] : palette.zinc[400]}
+                      filled
+                    />
+                    <Slider
+                      style={[ss.slider, !(otherVoice || myVoice) && { opacity: 0.35 }]}
+                      disabled={!(otherVoice || myVoice)}
+                      minimumValue={0}
+                      maximumValue={1}
+                      value={volume}
+                      onValueChange={onVolumeChange}
+                      onSlidingComplete={onVolumeCommit}
+                      minimumTrackTintColor={palette.teal[40]}
+                      maximumTrackTintColor={palette.zinc[200]}
+                      thumbTintColor={palette.teal[40]}
+                    />
+                    <Text
+                      style={[ss.volPct, !(otherVoice || myVoice) && { color: palette.zinc[400] }]}>
+                      {Math.round(volume * 100)}%
+                    </Text>
+                  </View>
+                </>
+              )}
+              {panel === 'lang' && (
+                <>
+                  <Text style={ss.sheetTitle}>{t('voice.interpretLang')}</Text>
+                  <Text style={ss.sheetHint}>{t('voice.myLanguage')}</Text>
+                  {APP_LANGS.map((l) => (
+                    <Pressable
+                      key={l.code}
+                      onPress={() => switchLang(l.code)}
+                      style={[ss.langOpt, l.code === appLang && ss.langOptOn]}>
+                      <Text style={{ fontSize: 20 }}>{l.flag}</Text>
+                      <Text style={ss.langOptText}>{l.label}</Text>
+                      {l.code === appLang && (
+                        <Icon name="check_circle" size={18} color={palette.teal[40]} filled />
+                      )}
+                    </Pressable>
+                  ))}
+                </>
+              )}
+            </Pressable>
+          </Pressable>
+        </Modal>
       </SafeAreaView>
     </View>
   )
@@ -812,6 +941,86 @@ const ss = StyleSheet.create({
     paddingVertical: 6,
   },
   statusText: { fontSize: 12, fontWeight: '600', color: palette.zinc[700] },
+
+  // 상단 툴바 — 상태(좌) + 마이크/볼륨 버튼(우)
+  topBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 10,
+  },
+  topActions: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  toolBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 999,
+    backgroundColor: palette.zinc[100],
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  // 펄스 닷 — 듣는 중 표시
+  pulseWrap: { width: 12, height: 12, alignItems: 'center', justifyContent: 'center' },
+  pulseRing: { position: 'absolute', width: 8, height: 8, borderRadius: 4 },
+  pulseCore: { width: 8, height: 8, borderRadius: 4 },
+
+  // 하단 — 언어 스위처 + 플로팅 End
+  bottomRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingTop: 10 },
+  langBar: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    height: 52,
+    backgroundColor: palette.zinc[50],
+    borderWidth: 0.5,
+    borderColor: palette.zinc[200],
+    borderRadius: 16,
+    paddingHorizontal: 14,
+  },
+  langChip: { flexDirection: 'row', alignItems: 'center', gap: 5 },
+  langFlag: { fontSize: 16 },
+  langName: { fontSize: 13.5, fontWeight: '700', color: palette.zinc[800] },
+  fabEnd: {
+    width: 52,
+    height: 52,
+    borderRadius: 999,
+    backgroundColor: palette.error[50],
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+
+  // 설정 시트(마이크/볼륨/언어)
+  sheetBg: { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'flex-end' },
+  sheet: {
+    backgroundColor: '#fff',
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    paddingHorizontal: 16,
+    paddingTop: 16,
+    paddingBottom: 32,
+    gap: 2,
+  },
+  sheetTitle: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: palette.zinc[500],
+    letterSpacing: 0.3,
+    marginBottom: 6,
+    paddingHorizontal: 4,
+  },
+  sheetHint: { fontSize: 11, color: palette.zinc[400], paddingHorizontal: 4, marginBottom: 2 },
+  langOpt: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingVertical: 12,
+    paddingHorizontal: 12,
+    borderRadius: 14,
+  },
+  langOptOn: { backgroundColor: palette.teal[95] },
+  langOptText: { flex: 1, fontSize: 15, fontWeight: '600', color: palette.zinc[900] },
+  connectingRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 8 },
 
   // 출력 설정 카드 (컴팩트)
   settingsCard: {

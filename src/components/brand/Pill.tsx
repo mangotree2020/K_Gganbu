@@ -17,6 +17,13 @@ type Props = {
   style?: ViewStyle
 }
 
+// children이 문자열/숫자이거나, 문자열·숫자로만 이루어진 배열이면 Text로 감싼다.
+// (예: `✦ {t('...')}` → ['✦ ', '...'] 배열 → 감싸지 않으면 RN 경고/에러)
+const isTextual = (c: React.ReactNode): boolean =>
+  typeof c === 'string' ||
+  typeof c === 'number' ||
+  (Array.isArray(c) && c.every((x) => typeof x === 'string' || typeof x === 'number'))
+
 export function Pill({ children, tone = 'neutral', size = 'sm', style }: Props) {
   const t = pillTones[tone]
   const s = SIZES[size]
@@ -35,7 +42,7 @@ export function Pill({ children, tone = 'neutral', size = 'sm', style }: Props) 
         },
         style,
       ]}>
-      {typeof children === 'string' ? (
+      {isTextual(children) ? (
         <Text style={{ color: t.color, fontSize: s.fs, fontWeight: '600', letterSpacing: 0.1 }}>
           {children}
         </Text>
