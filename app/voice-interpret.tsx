@@ -839,17 +839,22 @@ export default function VoiceInterpretScreen() {
             </View>
             {/* 언어 스위처 — 전체 폭 한 줄(Translate와 동일 디자인·기능) */}
             <View style={ss.langRow}>
-              <Pressable onPress={() => setPicker('peer')} style={ss.langPick}>
-                <Text style={ss.langFlagSm}>{langMeta(peerLang).flag}</Text>
-                <Text style={ss.langText}>{langMeta(peerLang).label}</Text>
+              {/* 왼쪽 = 앱 사용자(화자) 언어 — You 배지로 표시 */}
+              <Pressable onPress={() => setPicker('my')} style={ss.langPick}>
+                <View style={ss.youBadge}>
+                  <Text style={ss.youBadgeText}>{t('voice.you')}</Text>
+                </View>
+                <Text style={ss.langFlagSm}>{langMeta(myLang).flag}</Text>
+                <Text style={ss.langText}>{langMeta(myLang).label}</Text>
                 <Icon name="expand_more" size={16} color={palette.zinc[500]} />
               </Pressable>
               <Pressable onPress={swap} style={ss.swapBtn}>
                 <Icon name="swap_horiz" size={18} color={palette.teal[30]} />
               </Pressable>
-              <Pressable onPress={() => setPicker('my')} style={ss.langPick}>
-                <Text style={ss.langFlagSm}>{langMeta(myLang).flag}</Text>
-                <Text style={ss.langText}>{langMeta(myLang).label}</Text>
+              {/* 오른쪽 = 상대 언어 */}
+              <Pressable onPress={() => setPicker('peer')} style={ss.langPick}>
+                <Text style={ss.langFlagSm}>{langMeta(peerLang).flag}</Text>
+                <Text style={ss.langText}>{langMeta(peerLang).label}</Text>
                 <Icon name="expand_more" size={16} color={palette.zinc[500]} />
               </Pressable>
             </View>
@@ -1023,6 +1028,14 @@ const ss = StyleSheet.create({
   langPick: { flexDirection: 'row', alignItems: 'center', gap: 5 },
   langFlagSm: { fontSize: 16 },
   langText: { fontSize: 13.5, fontWeight: '700', color: palette.zinc[800] },
+  // 앱 사용자(화자) 표시 배지 — 왼쪽 언어에
+  youBadge: {
+    backgroundColor: palette.teal[40],
+    borderRadius: 999,
+    paddingHorizontal: 6,
+    paddingVertical: 1,
+  },
+  youBadgeText: { fontSize: 9.5, fontWeight: '800', color: '#fff', letterSpacing: 0.3 },
   swapBtn: {
     width: 32,
     height: 32,

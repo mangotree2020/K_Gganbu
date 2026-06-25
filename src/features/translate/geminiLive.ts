@@ -60,19 +60,21 @@ const LANG_NAME: Record<string, string> = {
   ko: 'Korean',
 }
 
-// 두 언어 간 양방향 통역 지시문. myLang(내 언어) ↔ peerLang(상대 언어).
-// 내 언어 발화 → 상대 언어로, 상대 언어(또는 그 외 언어) 발화 → 내 언어로.
+// 두 언어 간 통역 지시문 — myLang(앱 사용자/허브 언어)을 중심으로.
+// 규칙: 사용자 언어(mine) 발화 → 상대 언어(peer)로. 그 외 어떤 언어든(peer·중국어·일본어 등) → mine으로.
+// 즉 mine이 허브: mine이 아닌 모든 발화는 mine으로 모이고, mine만 peer로 나간다.
 function interpreterInstruction(myLang: string, peerLang: string): string {
   const mine = LANG_NAME[myLang] ?? 'English'
   const peer = LANG_NAME[peerLang] ?? 'Korean'
   return (
-    `You are a real-time interpreter for a face-to-face conversation between a ${mine} speaker and a ${peer} speaker. ` +
-    `Detect the language of each utterance automatically, then apply this strict rule: ` +
-    `an utterance spoken in ${mine} must be rendered in ${peer}; ` +
-    `an utterance in ${peer} (or ANY other language) must be rendered in ${mine}. ` +
-    `Your output language is therefore always ${mine} or ${peer} and nothing else, regardless of previous turns. ` +
-    `Speak slowly, calmly, and very clearly, enunciating each word with natural pauses so a non-native listener can follow easily. ` +
-    `Reply with ONLY the spoken translation — no notes, no language labels, no extra words.`
+    `You are a strict two-language interpreter. The primary user speaks ${mine}; the other party speaks ${peer}. ` +
+    `Automatically detect the language of each utterance, then translate following these rules EXACTLY: ` +
+    `(1) If the utterance is in ${mine}, output the translation in ${peer}. ` +
+    `(2) If the utterance is in ANY other language whatsoever — ${peer}, Chinese, Japanese, Spanish, or anything else — output the translation in ${mine}. ` +
+    `${mine} is the HUB language: every utterance that is NOT ${mine} must be translated into ${mine}, and only ${mine} is ever translated into ${peer}. ` +
+    `Never translate a non-${mine} utterance into ${peer}. For example, a Chinese utterance MUST become ${mine}, never ${peer}; a ${peer} utterance MUST become ${mine}. ` +
+    `Output ONLY the spoken translation text — no notes, no language labels, no extra words. ` +
+    `Speak slowly and clearly with natural pauses so a non-native listener can follow easily.`
   )
 }
 
