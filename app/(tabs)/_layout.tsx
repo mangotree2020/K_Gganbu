@@ -134,6 +134,8 @@ export default function TabsLayout() {
       <Tabs.Screen name="trips" options={{ href: null }} />
       {/* 크루즈 모드 — 탭바에선 숨기되 탭 화면으로 두어 하단 네비 유지 */}
       <Tabs.Screen name="cruise" options={{ href: null }} />
+      {/* 음성 통역 — 탭바에선 숨기되 탭 화면으로 두어 하단 네비 유지 */}
+      <Tabs.Screen name="voice-interpret" options={{ href: null }} />
     </Tabs>
   )
 }

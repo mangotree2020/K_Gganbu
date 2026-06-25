@@ -78,7 +78,7 @@ function RootLayoutNav() {
         <Stack.Screen name="tips" options={{ presentation: 'modal' }} />
         <Stack.Screen name="allergy" options={{ presentation: 'modal' }} />
         <Stack.Screen name="coupon-qr" options={{ presentation: 'modal' }} />
-        <Stack.Screen name="voice-interpret" options={{ presentation: 'modal' }} />
+        {/* voice-interpret는 (tabs)/voice-interpret 탭 화면으로 이동 — 하단 네비게이션 바 유지 */}
         <Stack.Screen name="voice-history" options={{ presentation: 'modal' }} />
         <Stack.Screen name="phrases" options={{ presentation: 'modal' }} />
         <Stack.Screen name="favorites" options={{ presentation: 'modal' }} />

@@ -24,7 +24,7 @@ import { Icon } from '@/components/brand'
 import { storage } from '@/lib/mmkv'
 import { startLiveTranslate, type LiveSession } from '@/features/translate/geminiLive'
 import { saveSession } from '@/features/translate/history'
-import { resetSpeaker, setSpeaker } from '../modules/expo-speaker-route'
+import { resetSpeaker, setSpeaker } from '../../modules/expo-speaker-route'
 import {
   createPlayer,
   isHeadsetConnected,
@@ -634,7 +634,7 @@ export default function VoiceInterpretScreen() {
 
   return (
     <View style={ss.container}>
-      <SafeAreaView edges={['top', 'bottom']} style={{ flex: 1 }}>
+      <SafeAreaView edges={['top']} style={{ flex: 1 }}>
         {/* 헤더 — 아이콘·타이틀·이력 (종료는 하단 플로팅 버튼) */}
         <View style={ss.header}>
           <View style={ss.headerIcon}>
@@ -646,6 +646,9 @@ export default function VoiceInterpretScreen() {
           </View>
           <Pressable onPress={() => router.push('/voice-history')} style={ss.close}>
             <Icon name="history" size={18} color={palette.zinc[700]} />
+          </Pressable>
+          <Pressable onPress={() => router.back()} style={ss.close}>
+            <Icon name="close" size={18} color={palette.zinc[700]} />
           </Pressable>
         </View>
 
@@ -794,7 +797,7 @@ export default function VoiceInterpretScreen() {
             <ScrollView
               ref={scrollRef}
               style={{ flex: 1, marginTop: 12 }}
-              contentContainerStyle={{ gap: 10, paddingBottom: 96 }}
+              contentContainerStyle={{ gap: 10, paddingBottom: 12 }}
               onContentSizeChange={() => scrollRef.current?.scrollToEnd({ animated: true })}>
               {empty ? (
                 <View style={{ alignItems: 'center', marginTop: 40, gap: 16 }}>
@@ -852,11 +855,6 @@ export default function VoiceInterpretScreen() {
                 <Icon name="expand_more" size={16} color={palette.zinc[500]} />
               </Pressable>
             </View>
-
-            {/* End — 절대 위치 플로팅 버튼(언어 스위치 위 우측). 스크롤 하단 패딩으로 대화 미가림 */}
-            <Pressable onPress={() => router.back()} style={[ss.fabEnd, shadows.pop]}>
-              <Icon name="close" size={24} color="#fff" />
-            </Pressable>
           </View>
         ) : (
           <View style={ss.center}>
@@ -1042,18 +1040,6 @@ const ss = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  fabEnd: {
-    position: 'absolute',
-    right: 0,
-    bottom: 66,
-    width: 52,
-    height: 52,
-    borderRadius: 999,
-    backgroundColor: palette.error[50],
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-
   // 설정 시트(마이크/볼륨/언어)
   sheetBg: { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'flex-end' },
   sheet: {
