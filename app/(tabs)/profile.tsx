@@ -2,6 +2,7 @@ import { LinearGradient } from 'expo-linear-gradient'
 import { router } from 'expo-router'
 import { useState } from 'react'
 import {
+  Alert,
   Modal,
   Pressable,
   ScrollView,
@@ -163,6 +164,42 @@ export default function ProfileScreen() {
           ))}
         </View>
 
+        {/* 여권 스캔 → 면세 (Passport & Tax-Free) — 등록 진입점(등록·OCR은 백로그 #26) */}
+        <View style={{ paddingHorizontal: 16, paddingTop: 12 }}>
+          <TouchableOpacity
+            activeOpacity={0.9}
+            onPress={() => Alert.alert(t('profile.passportTitle'), t('profile.passportSoon'))}>
+            <LinearGradient
+              colors={['#1E3A5F', '#0EA5E9', '#0D9488']}
+              locations={[0, 0.7, 1]}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+              style={ss.passportCard}>
+              <View style={ss.passportTop}>
+                <View style={ss.passportIcon}>
+                  <Text style={{ fontSize: 24 }}>🛂</Text>
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={ss.passportTitle}>{t('profile.passportTitle')}</Text>
+                  <Text style={ss.passportSub}>{t('profile.passportSub')}</Text>
+                </View>
+                <Icon name="chevron_right" size={20} color="rgba(255,255,255,.8)" />
+              </View>
+              <View style={ss.passportChips}>
+                {[
+                  `✈️ ${t('profile.passportChip1')}`,
+                  `🧾 ${t('profile.passportChip2')}`,
+                  `🔒 ${t('profile.passportChip3')}`,
+                ].map((c) => (
+                  <View key={c} style={ss.passportChip}>
+                    <Text style={ss.passportChipText}>{c}</Text>
+                  </View>
+                ))}
+              </View>
+            </LinearGradient>
+          </TouchableOpacity>
+        </View>
+
         {/* 프리미엄 */}
         <View style={{ paddingHorizontal: 16, paddingTop: 12 }}>
           <LinearGradient
@@ -307,6 +344,40 @@ const ss = StyleSheet.create({
   },
   statNum: { fontSize: 18, fontWeight: '800', color: palette.blue[50], marginTop: 4 },
   statLabel: { fontSize: 10, color: palette.zinc[500], marginTop: 1 },
+
+  // 여권 스캔 → 면세 카드
+  passportCard: { borderRadius: 18, overflow: 'hidden', ...shadows.blue },
+  passportTop: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 14,
+    padding: 16,
+    paddingBottom: 13,
+  },
+  passportIcon: {
+    width: 46,
+    height: 46,
+    borderRadius: 14,
+    backgroundColor: 'rgba(255,255,255,.2)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  passportTitle: { fontSize: 14, fontWeight: '800', color: '#fff', letterSpacing: -0.2 },
+  passportSub: { fontSize: 11, color: 'rgba(255,255,255,.9)', marginTop: 2 },
+  passportChips: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+    paddingHorizontal: 16,
+    paddingBottom: 13,
+  },
+  passportChip: {
+    backgroundColor: 'rgba(255,255,255,.18)',
+    paddingHorizontal: 9,
+    paddingVertical: 3,
+    borderRadius: 999,
+  },
+  passportChipText: { fontSize: 10, fontWeight: '700', color: '#fff' },
 
   premium: {
     flexDirection: 'row',
