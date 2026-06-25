@@ -282,14 +282,28 @@ export function Icon({
   // 통역 아이콘은 한/영(한A) 글리프로 통일
   if (name === 'translate') return <TranslateGlyph size={size} color={color} />
   const Cmp = MAP[name] ?? Circle
-  // filled일 때는 스트로크를 얇게(1.5) — lucide 아웃라인 아이콘을 같은 색으로 채우면
-  // 2px 스트로크가 채움 위에 이중으로 겹쳐 작은 크기에서 뭉개진다. 얇게 해 솔리드를 깔끔히.
+  // lucide는 아웃라인 아이콘 — 복잡한 아이콘(식기·자동차·청진기 등)을 솔리드로 채우면
+  // 내부 디테일이 사라져 작은 크기에서 "색 덩어리"로 뭉개진다. 그래서 filled는 기본
+  // 아웃라인으로 또렷하게 렌더하고, 솔리드가 의미 있는 점·배지·별 류만 실제로 채운다.
+  const solidFill = filled && SOLID_FILL.has(name)
   return (
     <Cmp
       size={size}
       color={color}
-      strokeWidth={strokeWidth ?? (filled ? 1.5 : 2)}
-      fill={filled ? color : 'transparent'}
+      strokeWidth={strokeWidth ?? 2}
+      fill={solidFill ? color : 'transparent'}
     />
   )
 }
+
+// filled 시 실제 솔리드로 채울 아이콘(단순 형태 — 점·배지·별·북마크 등). 그 외는 아웃라인.
+const SOLID_FILL = new Set([
+  'circle',
+  'check_circle',
+  'star',
+  'bookmark',
+  'bookmark_add',
+  'local_activity',
+  'verified',
+  'workspace_premium',
+])
