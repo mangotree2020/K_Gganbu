@@ -1,7 +1,10 @@
 import { LinearGradient } from 'expo-linear-gradient'
 import { router } from 'expo-router'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import {
+  Animated,
+  Easing,
+  Image,
   Modal,
   Pressable,
   ScrollView,
@@ -13,6 +16,9 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context'
 
 import { Icon } from '@/components/brand'
+import { ProfileAvatar } from '@/features/profile/Avatar'
+import { useProfileStore } from '@/features/profile/store'
+import { zodiacImage, zodiacOf, ZODIAC_EMOJI, ZODIAC_LABEL } from '@/features/profile/zodiac'
 import { useSignOut } from '@/features/auth/queries'
 import { enablePush } from '@/features/notifications/services'
 import { usePushStore } from '@/features/notifications/store'
@@ -68,6 +74,9 @@ export default function ProfileScreen() {
   const lang = useLocaleStore((s) => s.lang)
   const setLang = useLocaleStore((s) => s.setLang)
   const [langOpen, setLangOpen] = useState(false)
+  const [charOpen, setCharOpen] = useState(false)
+  // 프로필(로컬) — 아바타·성별·출생연도
+  const profile = useProfileStore()
   const currentLang = APP_LANGS.find((l) => l.code === lang) ?? APP_LANGS[0]
   const { data: favorites } = useFavorites()
   const { data: savedCoupons } = useUserCoupons()
@@ -123,11 +132,14 @@ export default function ProfileScreen() {
         style={ss.header}>
         <SafeAreaView edges={['top']}>
           <View style={ss.profileRow}>
-            <View style={ss.avatar}>
-              <Text style={{ fontSize: 26 }}>👤</Text>
-            </View>
+            <Pressable onPress={() => setCharOpen(true)} hitSlop={6}>
+              <ProfileAvatar size={56} style={ss.avatar} />
+              <View style={ss.avatarEdit}>
+                <Icon name="auto_awesome" size={11} color="#fff" />
+              </View>
+            </Pressable>
             <View style={{ flex: 1 }}>
-              <Text style={ss.name}>{user?.fullName ?? 'Traveler'}</Text>
+              <Text style={ss.name}>{profile.displayName || user?.fullName || 'Traveler'}</Text>
               <Text style={ss.sub}>{user?.email ?? '🇯🇵 Japan · EN / 日本語'}</Text>
             </View>
             <View style={ss.planBox}>
@@ -302,7 +314,103 @@ export default function ProfileScreen() {
           </Pressable>
         </Pressable>
       </Modal>
+
+      {/* 캐릭터 애니메이션 오버레이 — My 아바타 탭 시 12지신 캐릭터 등장 (현재 정지 이미지 + 모션, 추후 애니메이션 에셋) */}
+      <CharacterOverlay
+        visible={charOpen}
+        onClose={() => setCharOpen(false)}
+        onEdit={() => {
+          setCharOpen(false)
+          router.push('/profile-edit')
+        }}
+      />
     </View>
+  )
+}
+
+// 캐릭터 오버레이 — 12지신 캐릭터를 크게 띄우고 등장/플로팅 모션 재생.
+// 사진 등록 시 사진을, 출생연도만 있으면 띠 캐릭터를, 둘 다 없으면 안내를 보여준다.
+function CharacterOverlay({
+  visible,
+  onClose,
+  onEdit,
+}: {
+  visible: boolean
+  onClose: () => void
+  onEdit: () => void
+}) {
+  const { photoUri, gender, birthYear } = useProfileStore()
+  const [enter] = useState(() => new Animated.Value(0))
+  const [float] = useState(() => new Animated.Value(0))
+
+  useEffect(() => {
+    if (!visible) {
+      enter.setValue(0)
+      return
+    }
+    Animated.spring(enter, {
+      toValue: 1,
+      friction: 6,
+      tension: 80,
+      useNativeDriver: true,
+    }).start()
+    const loop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(float, {
+          toValue: 1,
+          duration: 1600,
+          easing: Easing.inOut(Easing.sin),
+          useNativeDriver: true,
+        }),
+        Animated.timing(float, {
+          toValue: 0,
+          duration: 1600,
+          easing: Easing.inOut(Easing.sin),
+          useNativeDriver: true,
+        }),
+      ]),
+    )
+    loop.start()
+    return () => loop.stop()
+  }, [visible, enter, float])
+
+  const animal = birthYear ? zodiacOf(birthYear) : null
+  const source = photoUri ? { uri: photoUri } : animal ? zodiacImage(gender, birthYear!) : null
+
+  const translateY = float.interpolate({ inputRange: [0, 1], outputRange: [0, -14] })
+  const scale = enter.interpolate({ inputRange: [0, 1], outputRange: [0.6, 1] })
+
+  return (
+    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
+      <Pressable style={ss.charBackdrop} onPress={onClose}>
+        <Animated.View
+          style={[ss.charStage, { opacity: enter, transform: [{ translateY }, { scale }] }]}>
+          {source ? (
+            <Image source={source} style={ss.charImg} resizeMode="contain" />
+          ) : (
+            <View style={ss.charEmpty}>
+              <Text style={{ fontSize: 64 }}>🧧</Text>
+            </View>
+          )}
+        </Animated.View>
+
+        {animal && !photoUri && (
+          <View style={ss.charLabel}>
+            <Text style={ss.charLabelText}>
+              {ZODIAC_EMOJI[animal]} Year of the {ZODIAC_LABEL[animal]}
+            </Text>
+          </View>
+        )}
+        {!source && (
+          <Text style={ss.charHint}>Add a photo or birth year to meet your zodiac buddy.</Text>
+        )}
+
+        <Pressable style={ss.charEdit} onPress={onEdit}>
+          <Icon name="settings" size={16} color={palette.blue[40]} />
+          <Text style={ss.charEditText}>Edit profile</Text>
+        </Pressable>
+      </Pressable>
+    </Modal>
   )
 }
 
@@ -311,14 +419,22 @@ const ss = StyleSheet.create({
   header: { paddingHorizontal: 16, paddingBottom: 18 },
   profileRow: { flexDirection: 'row', alignItems: 'center', gap: 14, marginTop: 8 },
   avatar: {
-    width: 64,
-    height: 64,
-    borderRadius: 999,
     backgroundColor: 'rgba(255,255,255,.18)',
     borderWidth: 2,
-    borderColor: 'rgba(255,255,255,.32)',
+    borderColor: 'rgba(255,255,255,.42)',
+  },
+  avatarEdit: {
+    position: 'absolute',
+    right: -2,
+    bottom: -2,
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    backgroundColor: palette.coral[50],
     alignItems: 'center',
     justifyContent: 'center',
+    borderWidth: 1.5,
+    borderColor: '#fff',
   },
   name: { fontSize: 18, fontWeight: '800', color: '#fff', letterSpacing: -0.2 },
   sub: { fontSize: 12, color: 'rgba(255,255,255,.92)', marginTop: 2 },
@@ -480,4 +596,48 @@ const ss = StyleSheet.create({
   langRowActive: { backgroundColor: palette.blue[90] },
   langLabel: { flex: 1, fontSize: 15, fontWeight: '600', color: palette.zinc[800] },
   langLabelActive: { color: palette.blue[30], fontWeight: '800' },
+  // 캐릭터 오버레이
+  charBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(9,9,11,.82)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 24,
+  },
+  charStage: { alignItems: 'center', justifyContent: 'center' },
+  charImg: { width: 280, height: 280 },
+  charEmpty: {
+    width: 200,
+    height: 200,
+    borderRadius: 100,
+    backgroundColor: 'rgba(255,255,255,.08)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  charLabel: {
+    marginTop: 18,
+    backgroundColor: 'rgba(255,255,255,.14)',
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 999,
+  },
+  charLabelText: { color: '#fff', fontWeight: '800', fontSize: 15 },
+  charHint: {
+    marginTop: 16,
+    color: 'rgba(255,255,255,.8)',
+    fontSize: 13,
+    textAlign: 'center',
+    maxWidth: 260,
+  },
+  charEdit: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginTop: 26,
+    backgroundColor: '#fff',
+    paddingHorizontal: 18,
+    paddingVertical: 11,
+    borderRadius: 999,
+  },
+  charEditText: { color: palette.blue[40], fontWeight: '800', fontSize: 14 },
 })
