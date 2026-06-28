@@ -18,7 +18,7 @@ import { SafeAreaView } from 'react-native-safe-area-context'
 import { Icon } from '@/components/brand'
 import { ProfileAvatar } from '@/features/profile/Avatar'
 import { useProfileStore } from '@/features/profile/store'
-import { zodiacImage, zodiacOf, ZODIAC_EMOJI, ZODIAC_LABEL } from '@/features/profile/zodiac'
+import { zodiacImage, zodiacOf, zodiacYearLabel, ZODIAC_EMOJI } from '@/features/profile/zodiac'
 import { useSignOut } from '@/features/auth/queries'
 import { enablePush } from '@/features/notifications/services'
 import { usePushStore } from '@/features/notifications/store'
@@ -339,6 +339,8 @@ function CharacterOverlay({
   onClose: () => void
   onEdit: () => void
 }) {
+  const t = useT()
+  const lang = useLocaleStore((s) => s.lang)
   const { photoUri, gender, birthYear } = useProfileStore()
   const [enter] = useState(() => new Animated.Value(0))
   const [float] = useState(() => new Animated.Value(0))
@@ -397,17 +399,15 @@ function CharacterOverlay({
         {animal && !photoUri && (
           <View style={ss.charLabel}>
             <Text style={ss.charLabelText}>
-              {ZODIAC_EMOJI[animal]} Year of the {ZODIAC_LABEL[animal]}
+              {ZODIAC_EMOJI[animal]} {zodiacYearLabel(lang, animal)}
             </Text>
           </View>
         )}
-        {!source && (
-          <Text style={ss.charHint}>Add a photo or birth year to meet your zodiac buddy.</Text>
-        )}
+        {!source && <Text style={ss.charHint}>{t('profile.zodiacEmpty')}</Text>}
 
         <Pressable style={ss.charEdit} onPress={onEdit}>
           <Icon name="settings" size={16} color={palette.blue[40]} />
-          <Text style={ss.charEditText}>Edit profile</Text>
+          <Text style={ss.charEditText}>{t('profile.editProfile')}</Text>
         </Pressable>
       </Pressable>
     </Modal>
@@ -604,8 +604,17 @@ const ss = StyleSheet.create({
     justifyContent: 'center',
     padding: 24,
   },
-  charStage: { alignItems: 'center', justifyContent: 'center' },
-  charImg: { width: 280, height: 280 },
+  // 캐릭터 일러스트는 배경(크림)이 박혀 있어 어두운 백드롭에 사각으로 뜬다 →
+  // 같은 톤의 둥근 카드로 감싸 자연스럽게 보이게 한다.
+  charStage: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#FBF3E3',
+    borderRadius: 32,
+    overflow: 'hidden',
+    ...shadows.pop,
+  },
+  charImg: { width: 288, height: 288 },
   charEmpty: {
     width: 200,
     height: 200,

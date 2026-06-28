@@ -1,6 +1,7 @@
 // 12지신(한국 전통 띠) — 태어난 해 → 동물, 성별별 캐릭터 이미지 매핑.
 // 이미지는 assets/zodiac/{female,male}/{animal}.jpg (768px JPEG, 용량 최적화본).
 import type { ImageSourcePropType } from 'react-native'
+import type { AppLang } from '@/lib/i18n'
 
 export type Gender = 'female' | 'male'
 
@@ -52,6 +53,87 @@ export const ZODIAC_LABEL: Record<ZodiacAnimal, string> = {
   chicken: 'Rooster',
   dog: 'Dog',
   pig: 'Pig',
+}
+
+// 언어별 띠 동물 이름 (ko/ja/zh는 干支 한자·고유어)
+const ZODIAC_LABEL_I18N: Record<AppLang, Record<ZodiacAnimal, string>> = {
+  en: ZODIAC_LABEL,
+  ko: {
+    mouse: '쥐',
+    cow: '소',
+    tiger: '호랑이',
+    rabbit: '토끼',
+    dragon: '용',
+    snake: '뱀',
+    horse: '말',
+    sheep: '양',
+    monkey: '원숭이',
+    chicken: '닭',
+    dog: '개',
+    pig: '돼지',
+  },
+  ja: {
+    mouse: 'ねずみ',
+    cow: 'うし',
+    tiger: 'とら',
+    rabbit: 'うさぎ',
+    dragon: 'たつ',
+    snake: 'へび',
+    horse: 'うま',
+    sheep: 'ひつじ',
+    monkey: 'さる',
+    chicken: 'とり',
+    dog: 'いぬ',
+    pig: 'いのしし',
+  },
+  'zh-CN': {
+    mouse: '鼠',
+    cow: '牛',
+    tiger: '虎',
+    rabbit: '兔',
+    dragon: '龙',
+    snake: '蛇',
+    horse: '马',
+    sheep: '羊',
+    monkey: '猴',
+    chicken: '鸡',
+    dog: '狗',
+    pig: '猪',
+  },
+  'zh-TW': {
+    mouse: '鼠',
+    cow: '牛',
+    tiger: '虎',
+    rabbit: '兔',
+    dragon: '龍',
+    snake: '蛇',
+    horse: '馬',
+    sheep: '羊',
+    monkey: '猴',
+    chicken: '雞',
+    dog: '狗',
+    pig: '豬',
+  },
+}
+
+// 언어별 "Year of the X" 표현 — 로케일 어순에 맞게 조합
+export function zodiacYearLabel(lang: AppLang, animal: ZodiacAnimal): string {
+  const name = ZODIAC_LABEL_I18N[lang]?.[animal] ?? ZODIAC_LABEL[animal]
+  switch (lang) {
+    case 'ko':
+      return `${name}띠`
+    case 'ja':
+    case 'zh-CN':
+    case 'zh-TW':
+      return `${name}年`
+    default:
+      return `Year of the ${name}`
+  }
+}
+
+// 언어별 띠 동물 이름만 (배지용)
+export function zodiacName(lang: AppLang, animal: ZodiacAnimal): string {
+  return ZODIAC_LABEL_I18N[lang]?.[animal] ?? ZODIAC_LABEL[animal]
 }
 
 // 태어난 해 → 띠 동물

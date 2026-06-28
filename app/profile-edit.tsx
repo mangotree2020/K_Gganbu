@@ -21,11 +21,12 @@ import { usePassport } from '@/features/passport/queries'
 import { useProfileStore } from '@/features/profile/store'
 import {
   zodiacImageByAnimal,
+  zodiacName,
   zodiacOf,
   ZODIAC_EMOJI,
-  ZODIAC_LABEL,
   type Gender,
 } from '@/features/profile/zodiac'
+import { useLocaleStore, useT } from '@/lib/i18n'
 import { palette, radius, shadows } from '@/theme/tokens'
 
 // 여권 dateOfBirth(ISO 'YYYY-MM-DD' 또는 MRZ 'YYMMDD') → 4자리 연도
@@ -51,6 +52,8 @@ function genderFromSex(sex: string | null): Gender | null {
 }
 
 export default function ProfileEditScreen() {
+  const t = useT()
+  const lang = useLocaleStore((s) => s.lang)
   const { data: passport } = usePassport()
   const store = useProfileStore()
 
@@ -85,7 +88,7 @@ export default function ProfileEditScreen() {
         ? await ImagePicker.requestCameraPermissionsAsync()
         : await ImagePicker.requestMediaLibraryPermissionsAsync()
     if (!perm.granted) {
-      Alert.alert('Permission needed', 'Allow access to set a profile photo.')
+      Alert.alert(t('profile.permTitle'), t('profile.permBody'))
       return
     }
     const opts: ImagePicker.ImagePickerOptions = {
@@ -111,11 +114,7 @@ export default function ProfileEditScreen() {
   return (
     <SafeAreaView style={ss.safe} edges={['top']}>
       <ScrollView contentContainerStyle={ss.scroll} showsVerticalScrollIndicator={false}>
-        <SheetHeader
-          title="Edit profile"
-          sub="Photo or your Korean zodiac character"
-          icon="person"
-        />
+        <SheetHeader title={t('profile.editTitle')} sub={t('profile.editSub')} icon="person" />
 
         {/* 아바타 프리뷰 */}
         <View style={ss.previewWrap}>
@@ -129,7 +128,7 @@ export default function ProfileEditScreen() {
           {!photoUri && animal && (
             <View style={ss.zodiacBadge}>
               <Text style={ss.zodiacBadgeText}>
-                {ZODIAC_EMOJI[animal]} {ZODIAC_LABEL[animal]}
+                {ZODIAC_EMOJI[animal]} {zodiacName(lang, animal)}
               </Text>
             </View>
           )}
@@ -139,32 +138,34 @@ export default function ProfileEditScreen() {
         <View style={ss.photoRow}>
           <Pressable style={[ss.photoBtn, shadows.card]} onPress={() => pick('camera')}>
             <Icon name="photo_camera" size={20} color={palette.blue[40]} />
-            <Text style={ss.photoBtnText}>Camera</Text>
+            <Text style={ss.photoBtnText}>{t('profile.camera')}</Text>
           </Pressable>
           <Pressable style={[ss.photoBtn, shadows.card]} onPress={() => pick('library')}>
             <Icon name="photo_library" size={20} color={palette.blue[40]} />
-            <Text style={ss.photoBtnText}>Gallery</Text>
+            <Text style={ss.photoBtnText}>{t('profile.gallery')}</Text>
           </Pressable>
           {photoUri && (
             <Pressable style={[ss.photoBtn, shadows.card]} onPress={() => setPhotoUri(null)}>
               <Icon name="block" size={20} color={palette.coral[40]} />
-              <Text style={[ss.photoBtnText, { color: palette.coral[40] }]}>Use zodiac</Text>
+              <Text style={[ss.photoBtnText, { color: palette.coral[40] }]}>
+                {t('profile.useZodiac')}
+              </Text>
             </Pressable>
           )}
         </View>
 
         {/* 이름 */}
-        <Text style={ss.label}>Name</Text>
+        <Text style={ss.label}>{t('profile.name')}</Text>
         <TextInput
           style={ss.input}
           value={displayName}
           onChangeText={setDisplayName}
-          placeholder="Your name"
+          placeholder={t('profile.namePlaceholder')}
           placeholderTextColor={palette.zinc[400]}
         />
 
         {/* 성별 */}
-        <Text style={ss.label}>Gender</Text>
+        <Text style={ss.label}>{t('profile.gender')}</Text>
         <View style={ss.segment}>
           {(['female', 'male'] as Gender[]).map((g) => {
             const on = gender === g
@@ -174,7 +175,7 @@ export default function ProfileEditScreen() {
                 style={[ss.segBtn, on && ss.segBtnOn]}
                 onPress={() => setGender(g)}>
                 <Text style={[ss.segText, on && ss.segTextOn]}>
-                  {g === 'female' ? '♀ Female' : '♂ Male'}
+                  {g === 'female' ? `♀ ${t('profile.female')}` : `♂ ${t('profile.male')}`}
                 </Text>
               </Pressable>
             )
@@ -182,22 +183,20 @@ export default function ProfileEditScreen() {
         </View>
 
         {/* 출생연도 */}
-        <Text style={ss.label}>Birth year</Text>
+        <Text style={ss.label}>{t('profile.birthYear')}</Text>
         <TextInput
           style={ss.input}
           value={yearText}
-          onChangeText={(t) => setYearText(t.replace(/[^0-9]/g, '').slice(0, 4))}
-          placeholder="e.g. 1992"
+          onChangeText={(v) => setYearText(v.replace(/[^0-9]/g, '').slice(0, 4))}
+          placeholder={t('profile.birthYearPlaceholder')}
           placeholderTextColor={palette.zinc[400]}
           keyboardType="number-pad"
           maxLength={4}
         />
-        <Text style={ss.hint}>
-          Sets your Korean zodiac animal automatically when no photo is chosen.
-        </Text>
+        <Text style={ss.hint}>{t('profile.birthYearHint')}</Text>
 
         <Pressable style={[ss.save, shadows.blue]} onPress={save}>
-          <Text style={ss.saveText}>Save</Text>
+          <Text style={ss.saveText}>{t('profile.save')}</Text>
         </Pressable>
       </ScrollView>
     </SafeAreaView>
