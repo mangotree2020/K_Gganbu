@@ -127,6 +127,20 @@ export default function PassportScreen() {
               <Text style={ss.infoText}>{t('passport.taxInfoBody')}</Text>
             </View>
 
+            {/* VAT 환급 추적 진입 (#26 Phase 2) */}
+            <Pressable
+              onPress={() => router.push('/tax-free')}
+              style={[ss.refundCta, shadows.card]}>
+              <View style={ss.refundIcon}>
+                <Icon name="local_activity" size={20} color={palette.teal[30]} filled />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={ss.refundTitle}>{t('taxfree.title')}</Text>
+                <Text style={ss.refundSub}>{t('taxfree.sub')}</Text>
+              </View>
+              <Icon name="chevron_right" size={20} color={palette.zinc[400]} />
+            </Pressable>
+
             <View style={{ flexDirection: 'row', gap: 10, marginTop: 14 }}>
               <Pressable
                 onPress={() => onScan('camera')}
@@ -270,6 +284,25 @@ const ss = StyleSheet.create({
   },
   infoTitle: { fontSize: 13, fontWeight: '800', color: palette.zinc[900] },
   infoText: { fontSize: 12, color: palette.zinc[600], lineHeight: 18, marginTop: 4 },
+  refundCta: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    backgroundColor: '#fff',
+    borderRadius: 16,
+    padding: 14,
+    marginTop: 12,
+  },
+  refundIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    backgroundColor: palette.teal[90],
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  refundTitle: { fontSize: 14, fontWeight: '800', color: palette.zinc[900] },
+  refundSub: { fontSize: 12, color: palette.zinc[500], marginTop: 2 },
   perk: { fontSize: 12.5, color: palette.zinc[700], fontWeight: '600', paddingVertical: 3 },
   consentBox: {
     flexDirection: 'row',
