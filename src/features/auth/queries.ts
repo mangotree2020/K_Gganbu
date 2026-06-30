@@ -124,6 +124,59 @@ export function useOAuthSignIn() {
   })
 }
 
+// LINE 로그인 (커스텀) — Supabase는 LINE 네이티브 미지원이라 직접 구현:
+// 앱이 LINE OAuth로 code 획득 → line-auth Edge Function이 검증·세션토큰 발급 →
+// verifyOtp(token_hash)로 세션 확립. 채널 ID(공개)는 EXPO_PUBLIC, 시크릿은 서버.
+const LINE_CHANNEL_ID = process.env.EXPO_PUBLIC_LINE_CHANNEL_ID
+export const LINE_ENABLED = !!LINE_CHANNEL_ID
+
+export function useLINESignIn() {
+  const setUser = useAuthStore((state) => state.setUser)
+  return useMutation({
+    mutationFn: async () => {
+      if (!LINE_CHANNEL_ID) throw new Error('LINE 로그인이 아직 설정되지 않았습니다')
+      // CSRF 방지용 state(난수). LINE은 redirect_uri가 채널 Callback URL과 정확히 일치해야 함.
+      const state = `${Math.random().toString(36).slice(2)}${Date.now().toString(36)}`
+      const authUrl =
+        'https://access.line.me/oauth2/v2.1/authorize?response_type=code' +
+        `&client_id=${LINE_CHANNEL_ID}` +
+        `&redirect_uri=${encodeURIComponent(redirectTo)}` +
+        `&state=${state}` +
+        `&scope=${encodeURIComponent('openid profile')}`
+
+      const result = await WebBrowser.openAuthSessionAsync(authUrl, redirectTo)
+      if (result.type !== 'success') throw new Error('로그인이 취소되었습니다')
+
+      const url = new URL(result.url)
+      const code = url.searchParams.get('code')
+      if (!code) {
+        const reason = url.searchParams.get('error_description') ?? url.searchParams.get('error')
+        throw new Error(reason ? `LINE 오류: ${reason}` : 'LINE 인가 코드를 받지 못했습니다')
+      }
+      if (url.searchParams.get('state') !== state) throw new Error('상태 검증 실패(보안)')
+
+      // Edge Function: code 검증 → magiclink 토큰
+      const { data, error } = await supabase.functions.invoke('line-auth', {
+        body: { code, redirectUri: redirectTo },
+      })
+      if (error) throw error
+      if (!data?.tokenHash) throw new Error(data?.message ?? 'LINE 로그인에 실패했습니다')
+
+      // 토큰으로 세션 확립
+      const { data: sess, error: vErr } = await supabase.auth.verifyOtp({
+        token_hash: data.tokenHash,
+        type: 'magiclink',
+      })
+      if (vErr) throw vErr
+      return sess.user
+    },
+    onSuccess: (user) => {
+      if (user) setUser(toAuthUser(user))
+      router.replace('/(tabs)' as never)
+    },
+  })
+}
+
 // 전화 OTP 발송 (NHN Cloud SMS provider 설정 필요)
 export function useSendOtp() {
   return useMutation({

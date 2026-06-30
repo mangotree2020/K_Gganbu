@@ -18,7 +18,7 @@ import { SafeAreaView } from 'react-native-safe-area-context'
 
 import { BrandMark } from '@/components/brand'
 import { Input } from '@/components/ui/input'
-import { useOAuthSignIn, useSignIn } from '@/features/auth/queries'
+import { LINE_ENABLED, useLINESignIn, useOAuthSignIn, useSignIn } from '@/features/auth/queries'
 import { loginSchema, type LoginFormData } from '@/features/auth/types'
 
 function GoogleIcon() {
@@ -93,6 +93,7 @@ function SocialBtn({ bg, textColor, borderColor, icon, label, onPress, testID }:
 export default function LoginScreen() {
   const { mutate: signIn, isPending, error } = useSignIn()
   const { mutate: oauthSignIn, error: oauthError } = useOAuthSignIn()
+  const { mutate: lineSignIn, error: lineError } = useLINESignIn()
   const [showPassword, setShowPassword] = useState(false)
   const [showEmailForm, setShowEmailForm] = useState(false)
   const scrollRef = useRef<ScrollView>(null)
@@ -201,10 +202,12 @@ export default function LoginScreen() {
               label="Continue with LINE"
               testID="social-line"
               onPress={() =>
-                Alert.alert(
-                  'LINE login',
-                  'Coming in Phase 2. Please use Google, Apple, or phone for now.',
-                )
+                LINE_ENABLED
+                  ? lineSignIn()
+                  : Alert.alert(
+                      'LINE login',
+                      'Coming soon. Please use Google, Apple, or phone for now.',
+                    )
               }
             />
           </View>
@@ -218,10 +221,10 @@ export default function LoginScreen() {
             </RNText>
           </View>
 
-          {oauthError && (
+          {(oauthError || lineError) && (
             <RNText
               style={{ fontSize: 12, color: '#EF4444', textAlign: 'center', marginBottom: 12 }}>
-              {oauthError.message}
+              {(oauthError ?? lineError)?.message}
             </RNText>
           )}
 

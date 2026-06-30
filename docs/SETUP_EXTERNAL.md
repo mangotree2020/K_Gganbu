@@ -130,6 +130,30 @@
 
 **검증**: `register`로 활성 파트너 쿠폰 생성 → 앱 쿠폰 탭에 노출 확인. 비활성 파트너/키 불일치 시 거부.
 
+## LINE 로그인 (커스텀 — Supabase 네이티브 미지원)
+
+**필요**: LINE Developers Login 채널 + 시크릿. 코드: `src/features/auth/queries.ts` `useLINESignIn`, Edge Function `line-auth`(배포됨, verify_jwt=false).
+
+> Supabase는 LINE provider가 없어 Google/Apple처럼 대시보드 토글로 끝나지 않는다.
+> 앱이 LINE OAuth로 code 획득 → `line-auth`가 토큰교환·id*token 검증 → magiclink 토큰 발급 →
+> 앱이 `verifyOtp(token_hash)`로 세션 확립(LINE sub→동일 계정 매핑, 이메일 없으면 `line*<sub>@users.kgganbu.app`).
+
+1. [LINE Developers](https://developers.line.biz) → Provider 생성 → **LINE Login 채널** 생성.
+2. 채널 **Callback URL**에 앱 redirect URI 등록(정확히 일치해야 함):
+   ```
+   travel-app://auth-callback
+   ```
+3. **Channel ID**(공개) → 앱 `.env`의 `EXPO_PUBLIC_LINE_CHANNEL_ID`.
+4. **Channel ID/Secret** → 서버 시크릿:
+   ```bash
+   supabase secrets set LINE_CHANNEL_ID=... LINE_CHANNEL_SECRET=...
+   # line-auth는 이미 배포됨(미설정 시 no_line_config 반환)
+   ```
+5. scope는 `openid profile`(이메일 scope는 LINE 심사 필요 → 초기 생략).
+
+**검증**: 로그인 화면 → "Continue with LINE"(`EXPO_PUBLIC_LINE_CHANNEL_ID` 있을 때만 활성) → LINE 인증 →
+앱 복귀 → `auth.users`에 `app_metadata.provider=line` 유저 + 세션 생성 확인. 미설정 시 버튼은 "Coming soon"으로 graceful degrade.
+
 ## 배포 후 점검 체크리스트
 
 - [ ] `supabase functions deploy` 11종 완료
