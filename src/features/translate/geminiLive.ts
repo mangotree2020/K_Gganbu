@@ -33,8 +33,9 @@ const WS_HOST = 'generativelanguage.googleapis.com'
 // 범용 Live 모델 — systemInstruction으로 양방향 통역 제어(언어 자동 감지).
 // (translate-preview는 KO→EN 고정이라 양방향 불가 → flash-live 채택)
 const MODEL = 'models/gemini-3.1-flash-live-preview'
-// 개발용 직접 키(테스트 전용) — 있으면 Supabase 토큰 없이 직결. 프로덕션은 비워둔다.
-const DEV_KEY = process.env.EXPO_PUBLIC_GEMINI_KEY
+// 개발용 직접 키(테스트 전용) — __DEV__ 빌드에서만 사용. 릴리스(프로덕션)는 항상
+// 서버 발급 ephemeral 토큰(gemini-live-token) 경로로 강제한다(임베드 키 노출 방지).
+const DEV_KEY = __DEV__ ? process.env.EXPO_PUBLIC_GEMINI_KEY : undefined
 // 통역 음성 — Gemini Live prebuilt 음성. Aoede: 따뜻하고 자연스러운 톤("친절한 로컬 친구")
 const VOICE_NAME = 'Aoede'
 
@@ -81,7 +82,7 @@ function interpreterInstruction(myLang: string, peerLang: string): string {
 type TokenGrant = { auth: string; isKey: boolean; wsHost: string; model: string }
 
 async function getLiveToken(appLang: string): Promise<TokenGrant | null> {
-  // 개발: 직접 키로 연결(?key=). 프로덕션: Supabase ephemeral 토큰(?access_token=).
+  // 개발(__DEV__): 직접 키로 연결(?key=). 프로덕션: Supabase ephemeral 토큰(?access_token=).
   if (DEV_KEY) return { auth: DEV_KEY, isKey: true, wsHost: WS_HOST, model: MODEL }
   try {
     const { data, error } = await supabase.functions.invoke('gemini-live-token', {
