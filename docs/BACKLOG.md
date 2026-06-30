@@ -46,7 +46,7 @@
 | #5  | 공통 UI·마스코트     | ✅   | Button/Card/Sheet/EmptyState + brand                                                                                                                                                                                                        |
 | #6  | 탭+플로팅 AI+SOS     | ✅   | 4탭 셸 + 전역 진입점                                                                                                                                                                                                                        |
 | #7  | Guest 모드           | ✅   | 익명 세션 + linkIdentity 승계                                                                                                                                                                                                               |
-| #8  | 소셜 로그인          | 🔶   | 코드 완료 / Supabase Google·Apple provider 설정                                                                                                                                                                                             |
+| #8  | 소셜 로그인          | 🔶   | **Google ✅ 검증**(2026-06-30 실기기 — provider:google, 실계정 비익명 세션, last_sign_in 당일). Apple은 provider 설정 대기                                                                                                                  |
 | #9  | 전화 OTP             | 🔶   | 코드 완료 / NHN Cloud SMS provider 설정                                                                                                                                                                                                     |
 | #10 | 온보딩 — 언어        | ✅   |                                                                                                                                                                                                                                             |
 | #11 | 온보딩 — 지역·관심사 | ✅   |                                                                                                                                                                                                                                             |
@@ -67,8 +67,8 @@
 
 > **키 연동 검증 (2026-06-30)**: USE_MOCK 미설정 = real 모드. Edge Function 14종 전부 ACTIVE.
 > 실 호출 검증 ✅ — translate(Google)·gganbu(Claude)·naver-search·naver-directions·places·place-reviews·gemini-live-token(ephemeral 발급).
-> 실기기 검증 ✅ — #16 음성통역 end-to-end(마이크 PCM→Gemini Live→자막+음성, ko↔en 왕복).
-> 미검증(외부/대면 필요) — #8 소셜·#9 OTP.
+> 실기기 검증 ✅ — #16 음성통역 end-to-end(마이크 PCM→Gemini Live→자막+음성, ko↔en 왕복), #8 Google 로그인(provider:google 실계정 세션).
+> 미설정 — #8 Apple provider, #9 Phone OTP(NHN Cloud SMS).
 > 🔶 항목 외부 설정 절차는 **`docs/SETUP_EXTERNAL.md`** 참조 (시크릿 이름·발급처·검증 포함).
 > ja 네이티브 검수는 `docs/I18N_JA_REVIEW.md`의 ⚠️ 5건 우선 진행.
 
