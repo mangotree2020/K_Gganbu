@@ -42,7 +42,7 @@
 | #1  | 프로젝트 초기 셋업   | ✅   | Expo Router·NativeWind·alias·lint 베이스라인                                                                                                                                                                                                                    |
 | #2  | Supabase 스키마·RLS  | ✅   | migration 5종 + 전 테이블 RLS                                                                                                                                                                                                                                   |
 | #3  | mock 서비스 레이어   | ✅   | USE_MOCK 토글 + withRetry 래퍼                                                                                                                                                                                                                                  |
-| #4  | 다국어(i18n) 기반    | ✅   | 5개 언어 + ja 1차 자체 검수(`I18N_JA_REVIEW.md`)                                                                                                                                                                                                                |
+| #4  | 다국어(i18n) 기반    | ✅   | 5개 언어 + ja 검수 완료(`I18N_JA_REVIEW.md`) — ⚠️ 5건 전부 종결(2026-06-30): findHospital `最寄りの`·tab.my `マイページ` 수정, home 코어액션 2건 N/A(dead 키), 안전문구 PASS                                                                                    |
 | #5  | 공통 UI·마스코트     | ✅   | Button/Card/Sheet/EmptyState + brand                                                                                                                                                                                                                            |
 | #6  | 탭+플로팅 AI+SOS     | ✅   | 4탭 셸 + 전역 진입점                                                                                                                                                                                                                                            |
 | #7  | Guest 모드           | ✅   | 익명 세션 + linkIdentity 승계                                                                                                                                                                                                                                   |
@@ -70,7 +70,7 @@
 > 실기기 검증 ✅ — #16 음성통역 end-to-end(마이크 PCM→Gemini Live→자막+음성, ko↔en 왕복), #8 Google 로그인(provider:google 실계정 세션).
 > 미설정 — #8 Apple provider, #9 Phone OTP(NHN Cloud SMS).
 > 🔶 항목 외부 설정 절차는 **`docs/SETUP_EXTERNAL.md`** 참조 (시크릿 이름·발급처·검증 포함).
-> ja 네이티브 검수는 `docs/I18N_JA_REVIEW.md`의 ⚠️ 5건 우선 진행.
+> ja 네이티브 검수 ⚠️ 5건 **전부 종결**(2026-06-30, `docs/I18N_JA_REVIEW.md` 3차). 잔여는 tips 장문 스팟체크(비차단).
 
 ---
 
