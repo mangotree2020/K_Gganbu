@@ -37,34 +37,37 @@
 
 **범례**: ✅ 구현 완료·검증 · 🔶 코드 완료 · 외부 설정 시 동작
 
-| #   | 항목                 | 상태 | 비고                                                                                             |
-| --- | -------------------- | ---- | ------------------------------------------------------------------------------------------------ |
-| #1  | 프로젝트 초기 셋업   | ✅   | Expo Router·NativeWind·alias·lint 베이스라인                                                     |
-| #2  | Supabase 스키마·RLS  | ✅   | migration 5종 + 전 테이블 RLS                                                                    |
-| #3  | mock 서비스 레이어   | ✅   | USE_MOCK 토글 + withRetry 래퍼                                                                   |
-| #4  | 다국어(i18n) 기반    | ✅   | 5개 언어 + ja 1차 자체 검수(`I18N_JA_REVIEW.md`)                                                 |
-| #5  | 공통 UI·마스코트     | ✅   | Button/Card/Sheet/EmptyState + brand                                                             |
-| #6  | 탭+플로팅 AI+SOS     | ✅   | 4탭 셸 + 전역 진입점                                                                             |
-| #7  | Guest 모드           | ✅   | 익명 세션 + linkIdentity 승계                                                                    |
-| #8  | 소셜 로그인          | 🔶   | 코드 완료 / Supabase Google·Apple provider 설정                                                  |
-| #9  | 전화 OTP             | 🔶   | 코드 완료 / NHN Cloud SMS provider 설정                                                          |
-| #10 | 온보딩 — 언어        | ✅   |                                                                                                  |
-| #11 | 온보딩 — 지역·관심사 | ✅   |                                                                                                  |
-| #12 | 홈 — 3대 버튼·위젯   | ✅   |                                                                                                  |
-| #13 | 텍스트 번역 mock     | ✅   |                                                                                                  |
-| #14 | 텍스트 번역 실 API   | 🔶   | Google Translation 단독 확정(§11) / API 키 필요                                                  |
-| #15 | 상황별 회화·보여주기 | ✅   | 오프라인 번들                                                                                    |
-| #16 | 음성 통역            | 🔶   | B안 직결(`geminiLive.ts`) 구현 / GEMINI_API_KEY·네이티브 PCM 마이크 대기                         |
-| #17 | K-Map 렌더링         | ✅   |                                                                                                  |
-| #18 | K-Map POI 검색 mock  | ✅   |                                                                                                  |
-| #19 | K-Map 길찾기·Naver   | 🔶   | 코드 완료 / 구형 API 폴백 제거·리뷰 Google Places 실데이터 / Naver 키(검증됨)·Edge Function 배포 |
-| #20 | K-Map 즐겨찾기       | ✅   |                                                                                                  |
-| #21 | AI 깐부 채팅 mock    | ✅   |                                                                                                  |
-| #22 | AI 깐부 Claude·RAG   | 🔶   | 코드 완료 / Claude·TourAPI 키 필요                                                               |
-| #23 | 쿠폰함 저장·목록     | ✅   |                                                                                                  |
-| #24 | 쿠폰 QR one-time     | ✅   |                                                                                                  |
-| #25 | 긴급 도움(SOS)       | ✅   | 오프라인 동작                                                                                    |
+| #   | 항목                 | 상태 | 비고                                                                                                                                                                                                              |
+| --- | -------------------- | ---- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| #1  | 프로젝트 초기 셋업   | ✅   | Expo Router·NativeWind·alias·lint 베이스라인                                                                                                                                                                      |
+| #2  | Supabase 스키마·RLS  | ✅   | migration 5종 + 전 테이블 RLS                                                                                                                                                                                     |
+| #3  | mock 서비스 레이어   | ✅   | USE_MOCK 토글 + withRetry 래퍼                                                                                                                                                                                    |
+| #4  | 다국어(i18n) 기반    | ✅   | 5개 언어 + ja 1차 자체 검수(`I18N_JA_REVIEW.md`)                                                                                                                                                                  |
+| #5  | 공통 UI·마스코트     | ✅   | Button/Card/Sheet/EmptyState + brand                                                                                                                                                                              |
+| #6  | 탭+플로팅 AI+SOS     | ✅   | 4탭 셸 + 전역 진입점                                                                                                                                                                                              |
+| #7  | Guest 모드           | ✅   | 익명 세션 + linkIdentity 승계                                                                                                                                                                                     |
+| #8  | 소셜 로그인          | 🔶   | 코드 완료 / Supabase Google·Apple provider 설정                                                                                                                                                                   |
+| #9  | 전화 OTP             | 🔶   | 코드 완료 / NHN Cloud SMS provider 설정                                                                                                                                                                           |
+| #10 | 온보딩 — 언어        | ✅   |                                                                                                                                                                                                                   |
+| #11 | 온보딩 — 지역·관심사 | ✅   |                                                                                                                                                                                                                   |
+| #12 | 홈 — 3대 버튼·위젯   | ✅   |                                                                                                                                                                                                                   |
+| #13 | 텍스트 번역 mock     | ✅   |                                                                                                                                                                                                                   |
+| #14 | 텍스트 번역 실 API   | ✅   | Google Translation 단독(§11) — 2026-06-30 실 호출 검증(provider:google, en↔ko 정상)                                                                                                                               |
+| #15 | 상황별 회화·보여주기 | ✅   | 오프라인 번들                                                                                                                                                                                                     |
+| #16 | 음성 통역            | 🔶   | B안 직결(`geminiLive.ts`) / 서버 `GEMINI_API_KEY` 미설정(`gemini-live-token`→no_key), 단 클라이언트 `EXPO_PUBLIC_GEMINI_KEY`(DEV_KEY)로 직결 동작 — ephemeral이라 프로덕션은 서버 발급 필요 + 네이티브 PCM 마이크 |
+| #17 | K-Map 렌더링         | ✅   |                                                                                                                                                                                                                   |
+| #18 | K-Map POI 검색 mock  | ✅   |                                                                                                                                                                                                                   |
+| #19 | K-Map 길찾기·Naver   | ✅   | 2026-06-30 실 호출 검증 — naver-search(실 POI)·naver-directions(경로 259점·TM128→WGS84)·places·place-reviews 모두 200                                                                                             |
+| #20 | K-Map 즐겨찾기       | ✅   |                                                                                                                                                                                                                   |
+| #21 | AI 깐부 채팅 mock    | ✅   |                                                                                                                                                                                                                   |
+| #22 | AI 깐부 Claude·RAG   | ✅   | 2026-06-30 실 호출 검증 — gganbu→실 Claude 응답(부산 컨텍스트 반영). TourAPI RAG 컨텍스트 포함                                                                                                                    |
+| #23 | 쿠폰함 저장·목록     | ✅   |                                                                                                                                                                                                                   |
+| #24 | 쿠폰 QR one-time     | ✅   |                                                                                                                                                                                                                   |
+| #25 | 긴급 도움(SOS)       | ✅   | 오프라인 동작                                                                                                                                                                                                     |
 
+> **키 연동 검증 (2026-06-30)**: USE_MOCK 미설정 = real 모드. Edge Function 14종 전부 ACTIVE.
+> 실 호출 검증 ✅ — translate(Google)·gganbu(Claude)·naver-search·naver-directions·places·place-reviews.
+> 미설정 ⛔ — 서버 `GEMINI_API_KEY`(#16, 클라이언트 DEV_KEY로 우회 동작). 미검증(외부/대면 필요) — #8 소셜·#9 OTP.
 > 🔶 항목 외부 설정 절차는 **`docs/SETUP_EXTERNAL.md`** 참조 (시크릿 이름·발급처·검증 포함).
 > ja 네이티브 검수는 `docs/I18N_JA_REVIEW.md`의 ⚠️ 5건 우선 진행.
 
@@ -421,7 +424,7 @@
 ## [#26] 여권 OCR & 쇼핑 면세 혜택
 
 **라벨**: feature/passport
-**상태**: ✅ Phase 1 구현·실기기 검증 완료(서버 저장 채택) · 🔜 Phase 2/3 잔여
+**상태**: ✅ Phase 1 구현·실기기 검증 완료(서버 저장 채택) · ✅ Phase 2 환급 추적·영수증 스캐너 완료 · 🔜 Phase 3 잔여
 **의존성**: My 탭 디자인(완료), #4(i18n), 카메라 권한, Google Vision(설정됨)
 **범위**: My 메뉴에서 여권 촬영 → MRZ OCR(Google Vision) → 여권 정보 파싱·저장 → 외국인 쇼핑 면세(Tax Refund) 혜택 제공
 **상세 계획**: `docs/tasks/passport-ocr.md`
@@ -435,10 +438,13 @@
 - [x] 촬영/갤러리 + just-in-time 권한, MRZ 실패 재촬영 안내, My 카드 등록 상태 연동, passport.\* i18n 5종
 - [x] 실기기 검증: 스캔→OCR→DB 기록 + 실 여권 등록 표시 확인
 
-**Phase 2/3 — 잔여** (디자인 등록 카드의 퀵액션·운영)
+**Phase 2 — 완료** (커밋 `fecf3db`, 디자인 등록 카드 퀵액션)
 
-- [ ] VAT 환급 추적(refund tracker) — 영수증 누적·환급 예상액
-- [ ] 영수증 스캐너(receipt scanner) — 구매 영수증 OCR·적립
-- [ ] 공항 환급 QR(airport QR) — 김해공항 환급 청구 연계
+- [x] VAT 환급 추적(refund tracker) — 영수증 누적·환급 예상액 (`tax_free_receipts` + `features/taxfree` 순수로직·단위테스트 6건 + `app/tax-free.tsx` 요약)
+- [x] 영수증 스캐너(receipt scanner) — 구매 영수증 OCR·적립 (Edge Function `receipt-ocr`: Vision OCR → 합계/날짜/상호 휴리스틱 추출·저장, ACTIVE)
+- [~] 공항 환급 QR(airport QR) — 여권번호 기반 정적 QR 표시까지 구현 / 김해공항 실 환급 청구 연계는 Phase 3
+
+**Phase 3 — 잔여** (외부 파트너·인프라 의존)
+
 - [ ] 제휴 매장 즉시면세 연동 / Web Admin(별도 앱) 스캔 목록·재처리
-- [ ] 개인정보: 여권 이미지 보관 정책 정밀화(보관기간·자동삭제·암호화 강화) — PIPA 검토
+- [ ] 개인정보: 여권·영수증 이미지 보관 정책 정밀화(보관기간·자동삭제·암호화 강화) — PIPA 검토
