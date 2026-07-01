@@ -129,6 +129,10 @@ export function useOAuthSignIn() {
 // verifyOtp(token_hash)로 세션 확립. 채널 ID(공개)는 EXPO_PUBLIC, 시크릿은 서버.
 const LINE_CHANNEL_ID = process.env.EXPO_PUBLIC_LINE_CHANNEL_ID
 export const LINE_ENABLED = !!LINE_CHANNEL_ID
+// LINE은 redirect_uri로 커스텀 스킴을 불허(https만) → https 중계 함수(line-callback)를
+// redirect_uri로 쓰고, 그 함수가 앱 스킴(travel-app://auth-callback)으로 302 바운스한다.
+// 토큰교환도 동일 redirect_uri여야 하므로 line-auth에 이 https URL을 넘긴다.
+const LINE_REDIRECT = `${process.env.EXPO_PUBLIC_SUPABASE_URL}/functions/v1/line-callback`
 
 export function useLINESignIn() {
   const setUser = useAuthStore((state) => state.setUser)
@@ -140,10 +144,11 @@ export function useLINESignIn() {
       const authUrl =
         'https://access.line.me/oauth2/v2.1/authorize?response_type=code' +
         `&client_id=${LINE_CHANNEL_ID}` +
-        `&redirect_uri=${encodeURIComponent(redirectTo)}` +
+        `&redirect_uri=${encodeURIComponent(LINE_REDIRECT)}` +
         `&state=${state}` +
         `&scope=${encodeURIComponent('openid profile')}`
 
+      // authorize는 https 중계로 가지만, 브라우저 세션은 앱 스킴 착지 시 종료
       const result = await WebBrowser.openAuthSessionAsync(authUrl, redirectTo)
       if (result.type !== 'success') throw new Error('로그인이 취소되었습니다')
 
@@ -155,9 +160,9 @@ export function useLINESignIn() {
       }
       if (url.searchParams.get('state') !== state) throw new Error('상태 검증 실패(보안)')
 
-      // Edge Function: code 검증 → magiclink 토큰
+      // Edge Function: code 검증 → magiclink 토큰 (토큰교환 redirect_uri는 authorize와 동일해야 함)
       const { data, error } = await supabase.functions.invoke('line-auth', {
-        body: { code, redirectUri: redirectTo },
+        body: { code, redirectUri: LINE_REDIRECT },
       })
       if (error) throw error
       if (!data?.tokenHash) throw new Error(data?.message ?? 'LINE 로그인에 실패했습니다')

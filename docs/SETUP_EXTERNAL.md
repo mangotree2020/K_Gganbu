@@ -137,11 +137,14 @@
 > Supabase는 LINE provider가 없어 Google/Apple처럼 대시보드 토글로 끝나지 않는다.
 > 앱이 LINE OAuth로 code 획득 → `line-auth`가 토큰교환·`id_token` 검증 → magiclink 토큰 발급 →
 > 앱이 `verifyOtp(token_hash)`로 세션 확립(LINE sub→동일 계정 매핑, 이메일 없으면 `line_<sub>@users.kgganbu.app`).
+>
+> **커스텀 스킴 이슈**: LINE은 redirect_uri로 커스텀 스킴(`travel-app://`)을 불허(https만) →
+> https 중계 함수 `line-callback`이 LINE 콜백을 받아 앱 스킴으로 302 바운스한다.
 
 1. [LINE Developers](https://developers.line.biz) → Provider 생성 → **LINE Login 채널** 생성.
-2. 채널 **Callback URL**에 앱 redirect URI 등록(정확히 일치해야 함):
+2. 채널 **Callback URL**에 **https 중계 함수 URL** 등록(커스텀 스킴 불가):
    ```
-   travel-app://auth-callback
+   https://ltdajglszqkgneegjryb.supabase.co/functions/v1/line-callback
    ```
 3. **Channel ID**(공개) → 앱 `.env`의 `EXPO_PUBLIC_LINE_CHANNEL_ID`.
 4. **Channel ID/Secret** → 서버 시크릿:
