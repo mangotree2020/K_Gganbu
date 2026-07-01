@@ -325,6 +325,9 @@ function PlaceCard({
   rating,
   badge,
   imageUrl,
+  extId,
+  lat,
+  lng,
 }: {
   cat: string
   name: string
@@ -332,13 +335,26 @@ function PlaceCard({
   rating?: number
   badge?: string
   imageUrl?: string | null
+  extId?: string
+  lat?: number | null
+  lng?: number | null
 }) {
   return (
     <Pressable
       onPress={() =>
         router.push({
           pathname: '/place',
-          params: { cat, name, sub, rating: rating ? String(rating) : '' },
+          params: {
+            cat,
+            name,
+            sub,
+            rating: rating ? String(rating) : '',
+            badge: badge ?? '',
+            img: imageUrl ?? '',
+            extId: extId ?? '',
+            lat: lat != null ? String(lat) : '',
+            lng: lng != null ? String(lng) : '',
+          },
         })
       }
       style={[ss.placeCard, shadows.card]}>
@@ -580,7 +596,15 @@ export default function HomeScreen() {
                   onPress={() =>
                     router.push({
                       pathname: '/place',
-                      params: { cat: p.cat, name: p.name, sub: p.address ?? 'Busan' },
+                      params: {
+                        cat: p.cat,
+                        name: p.name,
+                        sub: p.address ?? 'Busan',
+                        img: p.imageUrl ?? '',
+                        extId: p.id,
+                        lat: p.lat != null ? String(p.lat) : '',
+                        lng: p.lng != null ? String(p.lng) : '',
+                      },
                     })
                   }
                   style={[ss.pickCard, { width: SCREEN_W - 32 }, shadows.card]}>
@@ -663,6 +687,9 @@ export default function HomeScreen() {
                     name={p.name}
                     sub={p.address ?? 'Busan'}
                     imageUrl={p.imageUrl}
+                    extId={p.id}
+                    lat={p.lat}
+                    lng={p.lng}
                   />
                 ))
               : PLACES.map((p) => (
@@ -673,6 +700,7 @@ export default function HomeScreen() {
                     sub={p.sub}
                     rating={p.rating}
                     badge={p.badge}
+                    extId={p.id}
                   />
                 ))}
           </ScrollView>

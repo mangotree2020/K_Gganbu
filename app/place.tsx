@@ -1,8 +1,10 @@
 import { router, useLocalSearchParams } from 'expo-router'
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
+import { useMemo } from 'react'
+import { Image, Linking, Pressable, Share, ScrollView, StyleSheet, Text, View } from 'react-native'
 
 import { Icon, Pill } from '@/components/brand'
 import { PlaceThumb } from '@/components/PlaceThumb'
+import { useFavorites, useToggleFavorite } from '@/features/favorites/queries'
 import { useT } from '@/lib/i18n'
 import { palette } from '@/theme/tokens'
 
@@ -16,6 +18,10 @@ export default function PlaceScreen() {
     rating?: string
     dist?: string
     desc?: string
+    img?: string
+    extId?: string
+    lat?: string
+    lng?: string
   }>()
 
   const name = p.name ?? 'Mipojeong'
@@ -23,15 +29,60 @@ export default function PlaceScreen() {
   const cat = p.cat ?? 'seafood'
   const rating = p.rating ?? '4.7'
   const dist = p.dist ?? '380m'
+  const img = p.img || null
+  const lat = p.lat ? Number(p.lat) : null
+  const lng = p.lng ? Number(p.lng) : null
+  const extId = p.extId || `poi-${name}`
   const desc =
     p.desc ??
     "Beloved by locals for fresh, no-frills seafood. Try the seaside terrace — it's where Haeundae sunsets feel infinite."
+
+  // 즐겨찾기 상태 (extId 기준)
+  const { data: favorites } = useFavorites()
+  const toggleFav = useToggleFavorite()
+  const isFav = useMemo(
+    () => (favorites ?? []).some((f) => f.place_ext_id === extId),
+    [favorites, extId],
+  )
+
+  // 길찾기 — 좌표 있으면 목적지 좌표, 없으면 이름 검색으로 구글맵 열기
+  const openDirections = () => {
+    const url =
+      lat != null && lng != null
+        ? `https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}`
+        : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(name)}`
+    Linking.openURL(url)
+  }
+
+  const onShare = () => {
+    Share.share({ message: `${name} · ${sub}\nK-Gganbu` }).catch(() => {})
+  }
+
+  const onBookmark = () => {
+    toggleFav.mutate({
+      extId,
+      name,
+      address: sub,
+      lat,
+      lng,
+      imageUrl: img,
+      cat,
+    })
+  }
 
   return (
     <View style={ss.container}>
       <ScrollView showsVerticalScrollIndicator={false}>
         <View>
-          <PlaceThumb category={cat} height={180} />
+          {img ? (
+            <Image
+              source={{ uri: img }}
+              style={{ width: '100%', height: 180 }}
+              resizeMode="cover"
+            />
+          ) : (
+            <PlaceThumb category={cat} height={180} />
+          )}
           <Pressable onPress={() => router.back()} style={ss.close}>
             <Icon name="close" size={18} color="#fff" />
           </Pressable>
@@ -73,14 +124,22 @@ export default function PlaceScreen() {
           <Text style={ss.desc}>{desc}</Text>
 
           <View style={{ flexDirection: 'row', gap: 8, marginTop: 16 }}>
-            <Pressable style={ss.dirBtn}>
+            <Pressable style={ss.dirBtn} onPress={openDirections}>
               <Icon name="navigation" size={16} color="#fff" filled />
               <Text style={ss.dirText}>{t('place.directions')}</Text>
             </Pressable>
-            <Pressable style={ss.iconBtn}>
-              <Icon name="bookmark_add" size={18} color={palette.zinc[700]} />
+            <Pressable
+              style={[ss.iconBtn, isFav && ss.iconBtnActive]}
+              onPress={onBookmark}
+              disabled={toggleFav.isPending}>
+              <Icon
+                name={isFav ? 'bookmark' : 'bookmark_add'}
+                size={18}
+                color={isFav ? palette.coral[50] : palette.zinc[700]}
+                filled={isFav}
+              />
             </Pressable>
-            <Pressable style={ss.iconBtn}>
+            <Pressable style={ss.iconBtn} onPress={onShare}>
               <Icon name="share" size={18} color={palette.zinc[700]} />
             </Pressable>
           </View>
@@ -129,4 +188,5 @@ const ss = StyleSheet.create({
     paddingVertical: 11,
     alignItems: 'center',
   },
+  iconBtnActive: { borderColor: palette.coral[50], backgroundColor: palette.coral[95] },
 })
