@@ -77,6 +77,7 @@ function RootLayoutNav() {
         <Stack.Screen name="passport" options={{ presentation: 'modal' }} />
         <Stack.Screen name="tax-free" options={{ presentation: 'modal' }} />
         <Stack.Screen name="profile-edit" options={{ presentation: 'modal' }} />
+        <Stack.Screen name="notifications" options={{ presentation: 'modal' }} />
         {/* cruise는 (tabs)/cruise 탭 화면으로 이동 — 크루즈 모드에서도 탭바 유지 */}
         <Stack.Screen name="tips" options={{ presentation: 'modal' }} />
         <Stack.Screen name="allergy" options={{ presentation: 'modal' }} />

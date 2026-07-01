@@ -13,6 +13,7 @@ import { HeroBackdrop } from '@/components/HeroBackdrop'
 import { usePlaces, type Poi } from '@/features/map/queries'
 import { useGganbuGreeting } from '@/features/gganbu/useGganbuGreeting'
 import { ProfileAvatar } from '@/features/profile/Avatar'
+import { unreadCount, useInboxStore } from '@/features/notifications/inbox'
 import { conditionIcon, conditionLabelKey, useWeather } from '@/features/weather/queries'
 import { useCityLabel } from '@/features/weather/useCityLabel'
 import { useCurrentLocation } from '@/hooks/useCurrentLocation'
@@ -444,6 +445,7 @@ const REVIEWS = [
 export default function HomeScreen() {
   const t = useT()
   const lang = useLocaleStore((s) => s.lang)
+  const notifUnread = unreadCount(useInboxStore((s) => s.items))
   const { data: placesData } = usePlaces(lang, 12)
   const pois = placesData?.pois
   const poisMock = placesData?.provider === 'mock'
@@ -518,12 +520,16 @@ export default function HomeScreen() {
                 <Icon name="expand_more" size={14} color="#fff" />
               </Pressable>
               <View style={{ flexDirection: 'row', gap: 8 }}>
-                <View style={ss.iconBtn}>
+                <Pressable
+                  style={ss.iconBtn}
+                  onPress={() => router.push('/notifications' as never)}>
                   <Icon name="notifications" size={18} color="#fff" filled />
-                  <View style={ss.iconBadge}>
-                    <Text style={ss.iconBadgeText}>3</Text>
-                  </View>
-                </View>
+                  {notifUnread > 0 && (
+                    <View style={ss.iconBadge}>
+                      <Text style={ss.iconBadgeText}>{notifUnread > 9 ? '9+' : notifUnread}</Text>
+                    </View>
+                  )}
+                </Pressable>
                 <Pressable style={ss.iconBtn} onPress={() => router.push('/profile-edit' as never)}>
                   <ProfileAvatar size={32} />
                 </Pressable>
