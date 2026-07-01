@@ -12,6 +12,7 @@ import { FallbackBadge } from '@/components/FallbackBadge'
 import { HeroBackdrop } from '@/components/HeroBackdrop'
 import { usePlaces, type Poi } from '@/features/map/queries'
 import { useGganbuGreeting } from '@/features/gganbu/useGganbuGreeting'
+import { ProfileAvatar } from '@/features/profile/Avatar'
 import { conditionIcon, conditionLabelKey, useWeather } from '@/features/weather/queries'
 import { useCityLabel } from '@/features/weather/useCityLabel'
 import { useCurrentLocation } from '@/hooks/useCurrentLocation'
@@ -507,10 +508,8 @@ export default function HomeScreen() {
                     <Text style={ss.iconBadgeText}>3</Text>
                   </View>
                 </View>
-                <Pressable
-                  style={ss.iconBtn}
-                  onPress={() => router.push('/(tabs)/profile' as never)}>
-                  <Icon name="person" size={18} color="#fff" filled />
+                <Pressable style={ss.iconBtn} onPress={() => router.push('/profile-edit' as never)}>
+                  <ProfileAvatar size={32} />
                 </Pressable>
               </View>
             </View>
