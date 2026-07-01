@@ -153,33 +153,8 @@ export default function LoginScreen() {
             </RNText>
           </View>
 
-          {/* 소셜 로그인 버튼 */}
+          {/* 소셜 로그인 버튼 — 순서: LINE · Google · Apple · OTP · Email */}
           <View style={{ gap: 10, marginBottom: 16 }}>
-            <SocialBtn
-              testID="social-google"
-              bg="#fff"
-              textColor="#18181B"
-              borderColor="#E4E4E7"
-              icon={<GoogleIcon />}
-              label="Continue with Google"
-              onPress={() => oauthSignIn('google')}
-            />
-            <SocialBtn
-              testID="social-apple"
-              bg="#000"
-              textColor="#fff"
-              icon={<AppleIcon color="#fff" />}
-              label="Continue with Apple"
-              onPress={() => oauthSignIn('apple')}
-            />
-            <SocialBtn
-              testID="social-phone"
-              bg="#0EA5E9"
-              textColor="#fff"
-              icon={<MessageSquare size={18} color="#fff" />}
-              label="Continue with phone (OTP)"
-              onPress={() => router.push('/(auth)/phone')}
-            />
             <SocialBtn
               bg="#06C755"
               textColor="#fff"
@@ -210,6 +185,43 @@ export default function LoginScreen() {
                     )
               }
             />
+            <SocialBtn
+              testID="social-google"
+              bg="#fff"
+              textColor="#18181B"
+              borderColor="#E4E4E7"
+              icon={<GoogleIcon />}
+              label="Continue with Google"
+              onPress={() => oauthSignIn('google')}
+            />
+            <SocialBtn
+              testID="social-apple"
+              bg="#000"
+              textColor="#fff"
+              icon={<AppleIcon color="#fff" />}
+              label="Continue with Apple"
+              onPress={() => oauthSignIn('apple')}
+            />
+            <SocialBtn
+              testID="social-phone"
+              bg="#0EA5E9"
+              textColor="#fff"
+              icon={<MessageSquare size={18} color="#fff" />}
+              label="Continue with phone (OTP)"
+              onPress={() => router.push('/(auth)/phone')}
+            />
+            <SocialBtn
+              testID="social-email"
+              bg="#fff"
+              textColor="#18181B"
+              borderColor="#E4E4E7"
+              icon={<Mail size={18} color="#18181B" />}
+              label="Continue with email"
+              onPress={() => {
+                setShowEmailForm((v) => !v)
+                if (!showEmailForm) scrollToBottom()
+              }}
+            />
           </View>
 
           {/* Phone OTP 안내 */}
@@ -228,21 +240,7 @@ export default function LoginScreen() {
             </RNText>
           )}
 
-          {/* Use email instead 토글 */}
-          <TouchableOpacity
-            testID="email-toggle"
-            onPress={() => {
-              setShowEmailForm((v) => !v)
-              if (!showEmailForm) scrollToBottom()
-            }}
-            activeOpacity={0.7}
-            style={{ alignItems: 'center', marginBottom: showEmailForm ? 16 : 0 }}>
-            <RNText style={{ fontSize: 14, color: '#3F3F46', fontWeight: '500' }}>
-              Use email instead {showEmailForm ? '↑' : '↓'}
-            </RNText>
-          </TouchableOpacity>
-
-          {/* 이메일 폼 (토글) */}
+          {/* 이메일 폼 (Continue with email 버튼으로 토글) */}
           {showEmailForm && (
             <View>
               {/* 이메일 입력 */}
