@@ -59,6 +59,20 @@ SMS 실비(~160원/건) 방어. **Auth → Rate Limits**로 총량 상한:
 
 > **CAPTCHA는 보류(관측 후)**: Supabase CAPTCHA는 전역 토글이라 sign-up/sign-in/reset **+ 익명 sign-in**까지 강제 → 게스트 우선(첫 실행 `signInAnonymously`, §7/§14) UX와 충돌(첫 실행 CAPTCHA). 실제 봇 남용 관측 시 도입하되, 게스트 UX 보존을 위해 **OTP 전용 Edge Function 게이트웨이**(Turnstile 서버검증+레이트리밋 후 OTP) 방식 우선 검토. hCaptcha/Turnstile 공식 컴포넌트는 웹 전용이라 RN은 WebView 래퍼 필요.
 
+### Auth 이메일 발송 (커스텀 SMTP) — 🔜 프로덕션 TODO (현재 비차단)
+
+**현황**: Auth → Rate Limits의 **"Rate limit for sending emails = 2/h"** 는 Supabase **내장 이메일 서비스 기본 상한**(회색 잠금 = 커스텀 SMTP 없이는 변경 불가). 에러 아님.
+
+**영향(제한적)**: Auth 이메일 발송 경로는 ① 이메일 가입 확인메일 ② 비밀번호 재설정뿐. 우리 앱은 게스트/소셜/전화 OTP 중심이고 이메일은 부차 옵션이라 현재 비차단. LINE 플로우는 메일 미발송(`admin.createUser` email_confirm + `generateLink` 토큰 반환).
+
+**계획**: 내장 이메일은 dev/test 전용(저상한·낮은 전달률) → 프로덕션은 **커스텀 SMTP** 필수. **회사가 Google Workspace(유료 구글메일) 보유 → 자체 SMTP 가능:**
+
+- **Gmail SMTP**: `smtp.gmail.com:587`(TLS), user=워크스페이스 계정, pass=**앱 비밀번호**(계정 2FA 필요). ~2,000통/일.
+- **Workspace SMTP relay(프로덕션 권장)**: `smtp-relay.gmail.com:587`. Google Admin 콘솔 → Apps → Gmail → Routing → **SMTP relay service** 설정(허용 발신자/인증). ~10,000통/일, 도메인 발신(예: `noreply@mangonw.com`)으로 브랜딩·스팸함 회피.
+- **Supabase 적용**: Auth → Emails → **SMTP Settings**에 host/port/user/pass/sender 입력 → 저장 후 이메일 Rate limit 상향(기본 30/h~, 조정 가능).
+
+> 착수 조건: 이메일 가입 트래픽이 유의미해지거나 출시 준비 시. 그 전까지는 SMS Rate Limit·소셜/OTP로 충분.
+
 ## #14 텍스트 번역 (Google Cloud Translation)
 
 **필요**: `GOOGLE_TRANSLATION_API_KEY` (코드: `supabase/functions/translate`). PLANNING §11에서 **Google Cloud Translation 단독**으로 확정(Papago 폐기).
@@ -178,3 +192,4 @@ SMS 실비(~160원/건) 방어. **Auth → Rate Limits**로 총량 상한:
 - [ ] 번역·AI·지도 실 API 응답(폴백 배지 미표시) 확인
 - [ ] 음성통역 키·Agent 워커 미설정 시에도 친화 폴백 동작
 - [ ] `get_advisors`로 Supabase 보안/성능 권고 점검
+- [ ] **Auth 커스텀 SMTP**(Google Workspace SMTP relay) 설정 + 이메일 Rate limit 상향 — 이메일 가입/재설정 메일 전달률·상한 확보(§#9 하위 "Auth 이메일 발송")

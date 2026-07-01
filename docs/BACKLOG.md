@@ -72,6 +72,9 @@
 > 미설정 — #8 Apple provider(D-U-N-S 대기, ~7/7). 그 외 인증 전부 검증 완료.
 > 🔶 항목 외부 설정 절차는 **`docs/SETUP_EXTERNAL.md`** 참조 (시크릿 이름·발급처·검증 포함).
 > ja 네이티브 검수 ⚠️ 5건 **전부 종결**(2026-06-30, `docs/I18N_JA_REVIEW.md` 3차). 잔여는 tips 장문 스팟체크(비차단).
+>
+> **🔜 프로덕션 준비 TODO(비차단, 나중에 처리)**:
+> ① Apple provider 설정(D-U-N-S 발급 후) ② Twilio 실 SMS 운영(업그레이드 완료, 발신 정책 점검) ③ **Auth 커스텀 SMTP** — 회사 Google Workspace(유료 구글메일) 보유 → SMTP relay로 이메일 가입/재설정 메일 전달률·상한 확보(내장 2/h는 dev용). 상세: `docs/SETUP_EXTERNAL.md` #9 "Auth 이메일 발송". ④ OTP 봇 남용 관측 시 CAPTCHA(OTP 전용 게이트웨이). ⑤ 노출 시크릿 로테이션(Twilio Auth Token·LINE Channel Secret).
 
 ---
 
