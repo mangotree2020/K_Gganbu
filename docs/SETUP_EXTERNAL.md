@@ -49,6 +49,15 @@
 
 **검증(2026-07-01 완료)**: 테스트번호로 발송→verifyOtp(type:sms)→세션 JWT 발급 확인. 실 SMS 발송은 업그레이드 후.
 
+### OTP 남용/비용 방지 (2026-07-01 결정 — Rate Limit 우선)
+
+SMS 실비(~160원/건) 방어. **Auth → Rate Limits**로 총량 상한:
+
+- **OTP 발송 한도**: 기본 360/시간 → **50/시간 하향**(초기). 최악 비용 상한 확보(50×160≈8,000원/시간), 사용자 증가 시 상향.
+- OTP 60초 재요청 간격(앱 `phone.tsx` 60초 쿨다운도 적용).
+
+> **CAPTCHA는 보류(관측 후)**: Supabase CAPTCHA는 전역 토글이라 sign-up/sign-in/reset **+ 익명 sign-in**까지 강제 → 게스트 우선(첫 실행 `signInAnonymously`, §7/§14) UX와 충돌(첫 실행 CAPTCHA). 실제 봇 남용 관측 시 도입하되, 게스트 UX 보존을 위해 **OTP 전용 Edge Function 게이트웨이**(Turnstile 서버검증+레이트리밋 후 OTP) 방식 우선 검토. hCaptcha/Turnstile 공식 컴포넌트는 웹 전용이라 RN은 WebView 래퍼 필요.
+
 ## #14 텍스트 번역 (Google Cloud Translation)
 
 **필요**: `GOOGLE_TRANSLATION_API_KEY` (코드: `supabase/functions/translate`). PLANNING §11에서 **Google Cloud Translation 단독**으로 확정(Papago 폐기).
