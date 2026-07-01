@@ -36,16 +36,18 @@
 
 **검증**: Guest로 진입 → 쿠폰 저장 시 로그인 시트 → Google/Apple 로그인 → 로그인 후에도 동일 `user_id` 유지(저장 쿠폰 그대로) 확인.
 
-## #9 전화번호 OTP 로그인
+## #9 전화번호 OTP 로그인 (Twilio Verify)
 
-**필요**: Supabase Phone Auth + NHN Cloud SMS 커스텀 provider (코드: `useSendOtp`/`useVerifyOtp`, 화면 `app/(auth)/phone.tsx`).
+**필요**: Supabase Phone Auth + **Twilio Verify** (PLANNING 원안 NHN→Twilio 변경, 일본 우선 국제발송 적합). 코드: `useSendOtp`/`useVerifyOtp`, 화면 `app/(auth)/phone.tsx`.
 
-1. **Authentication → Providers → Phone** 활성화.
-2. **SMS provider = Custom** 선택 후 NHN Cloud SMS 발송 웹훅/연동 구성 (NHN Cloud Console에서 SMS 상품 신청 → 발신번호 사전등록 → App Key/Secret 발급).
-3. 발신번호(한국)·국제 발송 허용 여부 확인. 앱은 E.164(`+국가코드`)로 전송하며 11개국 국가코드 선택 UI 제공.
-4. **Rate limit**: Supabase Auth의 SMS 전송 한도·재시도 정책 확인 (앱은 60초 재발송 쿨다운 적용).
+1. **Authentication → Providers → Phone** 활성화 + **SMS provider = Twilio Verify**.
+2. Twilio에서 **Verify Service** 생성 → Supabase에 **Account SID / Auth Token / Verify Service SID(`VA…`)** 입력. (일반 "Twilio"+`MG…`/번호도 가능하나 Verify가 OTP 전용·간편)
+3. 앱은 E.164(`+국가코드`, 국내 0 제거)로 전송, 11개국 국가코드 선택 UI. Geo Permissions에서 대상국(예: Korea +82) 허용.
+4. **Rate limit**: Supabase SMS 한도 확인(앱은 60초 재발송 쿨다운).
 
-**검증**: 실제 번호로 코드 발송 → 6자리 입력 → 인증 성공. 만료/오입력/한도 시 친화 메시지 노출 확인.
+**테스트(실 SMS 없이)**: Supabase Phone 설정의 **Test Phone Numbers and OTPs**에 `+821090989425=789012` 형식 등록 → 그 번호로 signInWithOtp는 실 발송 없이 성공, verifyOtp는 등록 OTP로 통과. (Twilio trial은 verified 번호만 실발송 → 실 SMS는 **계정 업그레이드** 필요)
+
+**검증(2026-07-01 완료)**: 테스트번호로 발송→verifyOtp(type:sms)→세션 JWT 발급 확인. 실 SMS 발송은 업그레이드 후.
 
 ## #14 텍스트 번역 (Google Cloud Translation)
 
