@@ -474,13 +474,21 @@ export default function MapScreen() {
   const showNaver = provider === 'naver' || provider === 'blend'
 
   // 외부 지도 앱 딥링크 (현지인=Naver / 외국인=Google)
+  // Naver: 공식 앱 스킴 nmap://place(좌표+이름 → 정확한 장소 핀) → 미설치 시 웹 지도 검색 폴백
+  // Google: Place ID(review-insights가 확보)로 장소 상세 연결 → 없으면 좌표 핀 폴백
   const openExternal = (kind: 'naver' | 'google') => {
     if (!place?.lat || !place?.lng) return
     const name = encodeURIComponent(place.name)
-    const url =
-      kind === 'naver'
-        ? `https://map.naver.com/v5/search/${name}`
-        : `https://www.google.com/maps/search/?api=1&query=${place.lat},${place.lng}`
+    if (kind === 'naver') {
+      const app = `nmap://place?lat=${place.lat}&lng=${place.lng}&name=${name}&appname=com.mangonw.gganbu`
+      const web = `https://map.naver.com/p/search/${name}`
+      Linking.openURL(app).catch(() => Linking.openURL(web).catch(() => {}))
+      return
+    }
+    const placeId = insights?.placeKey
+    const url = placeId
+      ? `https://www.google.com/maps/search/?api=1&query=${name}&query_place_id=${placeId}`
+      : `https://www.google.com/maps/search/?api=1&query=${place.lat},${place.lng}`
     Linking.openURL(url).catch(() => {})
   }
 

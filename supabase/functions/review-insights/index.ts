@@ -31,6 +31,7 @@ type Insights = {
   total: number
   provider: 'live' | 'cache' | 'mock'
   sources?: { google: number; naver: number } // 요약에 반영된 소스별 건수
+  placeKey?: string // Google place_id — 외부 지도 딥링크(query_place_id)용
 }
 
 // 키 미설정/실패 폴백 — 언어별 샘플 요약
@@ -245,6 +246,7 @@ Deno.serve(async (req) => {
         total: cached.total,
         provider: 'cache',
         sources: cached.sources ?? undefined,
+        placeKey: placeId,
       } satisfies Insights)
     }
 
@@ -297,6 +299,7 @@ Deno.serve(async (req) => {
       total: koRes.total || fgRes.total || reviews.length,
       provider: 'live',
       sources: { google: reviews.length, naver: naverPosts.length },
+      placeKey: placeId,
     }
 
     // 6) 저장(upsert) — 요약·번역 중 하나라도 생성됐을 때만 (빈 캐시 방지)

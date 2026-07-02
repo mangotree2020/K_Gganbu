@@ -13,6 +13,7 @@ export type ReviewInsights = {
   total: number
   provider: 'live' | 'cache' | 'mock'
   sources?: { google: number; naver: number } // 요약에 반영된 소스별 건수
+  placeKey?: string // Google place_id — 외부 지도 딥링크(query_place_id)용
 }
 
 // 키/네트워크 실패 폴백 — 요약 카드만 샘플 표시(번역 힌트는 없음)
