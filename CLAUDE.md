@@ -5,6 +5,10 @@
 이 프로젝트의 전체 기획·아키텍처·결정사항은 @docs/PLANNING.md 를 따른다.
 작업 전 반드시 해당 문서를 우선 참조할 것.
 
+사업전략·BM 검증은 `docs/BUSINESS_STRATEGY.md`(기능×BM×개발 매칭표 §6이 싱크 기준),
+제품 요구사항(PO)은 `docs/PRODUCT_REQUIREMENTS.md`를 따른다.
+신규 기능은 BM 문서 §6 등재 → PRD REQ 추가 → BACKLOG 분해 순서를 지킬 것.
+
 ## 프로젝트 개요
 
 Expo SDK 56 기반 React Native 여행 앱. Supabase 인증, Zustand 상태관리, TanStack Query 서버 상태, NativeWind v4 스타일링을 사용합니다.
