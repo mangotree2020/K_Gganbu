@@ -1,5 +1,6 @@
 // 장소(POI) — TourAPI Edge Function 호출 + mock 폴백 (mock-first)
 import { keepPreviousData, useQuery } from '@tanstack/react-query'
+import { storage } from '@/lib/mmkv'
 import { supabase } from '@/lib/supabase'
 
 export type Poi = {
@@ -126,12 +127,27 @@ export function usePlaces(lang = 'en', rows = 12) {
 
 // 지도 마커용 — 좌표가 있는 POI만 (TourAPI 실데이터, PLANNING §17).
 // contentTypeId 지정 시 해당 카테고리만 조회(필터용).
+// 마지막 성공 POI를 MMKV에 보관 — 오프라인/선내 저속망 폴백 (REQ-CR-2)
+const POI_CACHE_KEY = (lang: string, ct?: string) => `map:pois:${lang}:${ct ?? 'all'}`
+
 export function useMapPois(lang = 'en', rows = 20, contentTypeId?: string) {
   return useQuery({
     queryKey: ['map-pois', lang, rows, contentTypeId ?? 'all'],
     staleTime: 24 * 60 * 60 * 1000,
     placeholderData: keepPreviousData, // 카테고리 전환 시 이전 결과 유지(깜빡임 방지)
     queryFn: async (): Promise<PoiResult> => {
+      // 네트워크 실패 시: 마지막 성공 결과(실데이터) → 없으면 mock
+      const offlineFallback = (): PoiResult => {
+        const raw = storage.getString(POI_CACHE_KEY(lang, contentTypeId))
+        if (raw) {
+          try {
+            return { pois: JSON.parse(raw) as Poi[], provider: 'tourapi' }
+          } catch {
+            // 캐시 손상 — mock으로
+          }
+        }
+        return { pois: MOCK_POIS, provider: 'mock' }
+      }
       try {
         const { data, error } = await supabase.functions.invoke('places', {
           body: { lang, areaCode: 6, rows, contentTypeId },
@@ -150,11 +166,13 @@ export function useMapPois(lang = 'en', rows = 20, contentTypeId?: string) {
             cat: toCat(p.contentTypeId),
           }))
           .filter((p) => p.lat && p.lng) // 좌표 필수
-        return mapped.length
-          ? { pois: mapped, provider: 'tourapi' }
-          : { pois: MOCK_POIS, provider: 'mock' }
+        if (mapped.length) {
+          storage.set(POI_CACHE_KEY(lang, contentTypeId), JSON.stringify(mapped))
+          return { pois: mapped, provider: 'tourapi' }
+        }
+        return offlineFallback()
       } catch {
-        return { pois: MOCK_POIS, provider: 'mock' }
+        return offlineFallback()
       }
     },
   })

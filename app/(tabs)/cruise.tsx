@@ -1,10 +1,11 @@
 import { LinearGradient } from 'expo-linear-gradient'
 import { router } from 'expo-router'
-import { useState } from 'react'
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
+import { useEffect, useState } from 'react'
+import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 
 import { Icon, Pill } from '@/components/brand'
+import { clearReturnAlarm, getReturnTime, setReturnAlarm } from '@/features/cruise/returnAlarm'
 import { useT } from '@/lib/i18n'
 import { palette, shadows } from '@/theme/tokens'
 
@@ -57,9 +58,62 @@ const QUICK = [
   },
 ]
 
+const fmtHM = (d: Date) =>
+  `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
+
 export default function CruiseScreen() {
   const t = useT()
   const [hours, setHours] = useState(4)
+  // 승선 복귀 알림 (REQ-CR-3): 시간탭+15분 미세조정으로 복귀 시각을 정해 로컬 알림 예약
+  const [offsetMin, setOffsetMin] = useState(0)
+  const [returnTime, setReturnTimeState] = useState<Date | null>(() => getReturnTime())
+  // 렌더 순수성: now는 상태로 관리(30초 주기 갱신) — 렌더 중 Date.now() 직접 호출 금지
+  const [now, setNow] = useState(() => Date.now())
+  useEffect(() => {
+    const iv = setInterval(() => setNow(Date.now()), 30_000)
+    return () => clearInterval(iv)
+  }, [])
+
+  const target = returnTime ?? new Date(now + hours * 3_600_000 + offsetMin * 60_000)
+  const remainMs = returnTime && now ? returnTime.getTime() - now : null
+  const remainLabel =
+    remainMs == null
+      ? '—'
+      : remainMs <= 0
+        ? t('cruise.overdue')
+        : `${Math.floor(remainMs / 3_600_000)}h ${Math.floor((remainMs % 3_600_000) / 60_000)}m`
+  const statusLabel =
+    remainMs == null
+      ? t('cruise.notSet')
+      : remainMs <= 0
+        ? t('cruise.overdue')
+        : remainMs <= 30 * 60_000
+          ? t('cruise.imminent')
+          : t('cruise.onTour')
+  const statusColor =
+    remainMs == null ? 'rgba(255,255,255,.75)' : remainMs <= 30 * 60_000 ? '#FCA5A5' : '#86EFAC'
+
+  const onSetAlarm = async () => {
+    const when = new Date(Date.now() + hours * 3_600_000 + offsetMin * 60_000)
+    const res = await setReturnAlarm(when, {
+      title: t('cruise.alarmTitle'),
+      before: t('cruise.alarmBefore'),
+      now: t('cruise.alarmNow'),
+      confirmed: t('cruise.alarmConfirmed'),
+    })
+    if (res === 'scheduled') setReturnTimeState(when)
+    else
+      Alert.alert(
+        t('cruise.alarmTitle'),
+        t(res === 'no-permission' ? 'cruise.noPermission' : 'cruise.alarmUnavailable'),
+      )
+  }
+  const onClearAlarm = async () => {
+    await clearReturnAlarm()
+    setReturnTimeState(null)
+    setOffsetMin(0)
+  }
+
   return (
     <View style={ss.container}>
       <LinearGradient colors={['#1D4ED8', '#0EA5E9']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}>
@@ -77,12 +131,12 @@ export default function CruiseScreen() {
             </Pressable>
           </View>
 
-          {/* 타이머 */}
+          {/* 타이머 — 실데이터: 설정된 복귀 시각·남은 시간·상태 (미설정 시 프리뷰 표시) */}
           <View style={ss.timer}>
             {[
-              { lbl: t('cruise.return'), val: '15:00', color: '#fff' },
-              { lbl: t('cruise.remaining'), val: '5h 18m', color: '#fff' },
-              { lbl: t('cruise.statusLabel'), val: t('cruise.onTour'), color: '#86EFAC' },
+              { lbl: t('cruise.return'), val: fmtHM(target), color: '#fff' },
+              { lbl: t('cruise.remaining'), val: remainLabel, color: '#fff' },
+              { lbl: t('cruise.statusLabel'), val: statusLabel, color: statusColor },
             ].map((b) => (
               <View key={b.lbl}>
                 <Text style={ss.timerLbl}>{b.lbl}</Text>
@@ -98,7 +152,10 @@ export default function CruiseScreen() {
               return (
                 <Pressable
                   key={h}
-                  onPress={() => setHours(h)}
+                  onPress={() => {
+                    setHours(h)
+                    setOffsetMin(0)
+                  }}
                   style={[ss.hourBtn, { backgroundColor: on ? '#fff' : 'rgba(255,255,255,.18)' }]}>
                   <Text
                     style={{
@@ -111,6 +168,39 @@ export default function CruiseScreen() {
                 </Pressable>
               )
             })}
+          </View>
+
+          {/* 복귀 알림 (REQ-CR-3) — 미설정: ±15분 조정 + 설정 / 설정됨: 해제 */}
+          <View style={ss.alarmRow}>
+            {!returnTime ? (
+              <>
+                <Pressable
+                  style={ss.adjBtn}
+                  onPress={() => setOffsetMin((m) => m - 15)}
+                  hitSlop={6}>
+                  <Text style={ss.adjText}>-15m</Text>
+                </Pressable>
+                <Pressable style={ss.alarmBtn} onPress={onSetAlarm}>
+                  <Icon name="notifications" size={14} color={palette.cruise.base} filled />
+                  <Text style={ss.alarmBtnText}>
+                    {t('cruise.setAlarm')} · {fmtHM(target)}
+                  </Text>
+                </Pressable>
+                <Pressable
+                  style={ss.adjBtn}
+                  onPress={() => setOffsetMin((m) => m + 15)}
+                  hitSlop={6}>
+                  <Text style={ss.adjText}>+15m</Text>
+                </Pressable>
+              </>
+            ) : (
+              <Pressable style={ss.alarmBtn} onPress={onClearAlarm}>
+                <Icon name="notifications" size={14} color={palette.zinc[500]} />
+                <Text style={[ss.alarmBtnText, { color: palette.zinc[600] }]}>
+                  {t('cruise.clearAlarm')} · {fmtHM(returnTime)}
+                </Text>
+              </Pressable>
+            )}
           </View>
         </SafeAreaView>
       </LinearGradient>
@@ -235,9 +325,33 @@ const ss = StyleSheet.create({
     gap: 6,
     marginHorizontal: 18,
     marginTop: 12,
-    paddingBottom: 16,
   },
   hourBtn: { flex: 1, borderRadius: 999, paddingVertical: 8, alignItems: 'center' },
+  alarmRow: {
+    flexDirection: 'row',
+    gap: 6,
+    marginHorizontal: 18,
+    marginTop: 8,
+    paddingBottom: 16,
+  },
+  alarmBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    backgroundColor: '#fff',
+    borderRadius: 999,
+    paddingVertical: 9,
+  },
+  alarmBtnText: { color: palette.cruise.base, fontSize: 12, fontWeight: '800' },
+  adjBtn: {
+    borderRadius: 999,
+    paddingHorizontal: 12,
+    justifyContent: 'center',
+    backgroundColor: 'rgba(255,255,255,.18)',
+  },
+  adjText: { color: '#fff', fontSize: 11, fontWeight: '700' },
 
   itinCard: {
     backgroundColor: '#fff',
