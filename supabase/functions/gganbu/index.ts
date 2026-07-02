@@ -17,6 +17,18 @@ type Body = {
   stream?: boolean
 }
 
+// 모델 티어링 (PRD REQ-AI-4, BM§3.3) — 단순 질의는 Haiku(저비용·즉답),
+// 복잡 질의(일정/코스 생성·장문·긴 대화)는 Sonnet으로 품질 확보.
+const COMPLEX_HINT =
+  /일정|계획|코스|스케줄|짜\s?줘|plan|itinerar|schedule|route|course|day.?trip|プラン|日程|行程|规划|規劃|안내해\s?줘/i
+function pickModel(messages: Msg[]): { model: string; maxTokens: number } {
+  const last = messages[messages.length - 1]?.text ?? ''
+  const complex = last.length > 200 || COMPLEX_HINT.test(last) || messages.length > 8
+  return complex
+    ? { model: 'claude-sonnet-5', maxTokens: 768 }
+    : { model: 'claude-haiku-4-5-20251001', maxTokens: 512 }
+}
+
 const SERVICE: Record<string, string> = {
   ko: 'KorService2',
   en: 'EngService2',
@@ -117,6 +129,8 @@ Deno.serve(async (req) => {
     const useRag = new URL(req.url).searchParams.get('rag') === '1'
     const rag = useRag ? await ragContext(dialect ? 'ko' : language) : ''
 
+    // 모델 티어링 — 질의 복잡도에 따라 Haiku(단순)/Sonnet(복잡) 선택
+    const tier = pickModel(messages)
     const res = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: {
@@ -125,9 +139,8 @@ Deno.serve(async (req) => {
         'content-type': 'application/json',
       },
       body: JSON.stringify({
-        // 속도 우선 — Haiku(가장 빠른 모델) + 짧은 max_tokens로 즉시 응답
-        model: 'claude-haiku-4-5-20251001',
-        max_tokens: 512,
+        model: tier.model,
+        max_tokens: tier.maxTokens,
         stream, // 스트리밍 요청 시 토큰 단위로 흘려보냄(체감 즉시 응답)
         system: systemPrompt(language, location, rag, dialect, context),
         messages: messages.map((m) => ({ role: m.role, content: m.text })),
@@ -184,6 +197,7 @@ Deno.serve(async (req) => {
           ...cors,
           'Content-Type': 'text/plain; charset=utf-8',
           'Cache-Control': 'no-cache',
+          'x-kgb-model': tier.model, // 티어링 검증·계측용
         },
       })
     }
@@ -209,7 +223,7 @@ Deno.serve(async (req) => {
     }
 
     return new Response(JSON.stringify({ reply }), {
-      headers: { ...cors, 'Content-Type': 'application/json' },
+      headers: { ...cors, 'Content-Type': 'application/json', 'x-kgb-model': tier.model },
     })
   } catch (e) {
     return new Response(JSON.stringify({ error: String(e) }), {
