@@ -120,19 +120,15 @@ Deno.serve(async (req) => {
     return json({ error: 'invalid_body' }, 400)
   }
 
-  // 1. Storage 업로드 (폴더 = auth uid)
-  const ext = mimeType.includes('png') ? 'png' : mimeType.includes('webp') ? 'webp' : 'jpg'
-  const path = `${authId}/${Date.now()}.${ext}`
-  const bytes = Uint8Array.from(atob(imageBase64), (c) => c.charCodeAt(0))
-  const up = await admin.storage
-    .from('passport-images')
-    .upload(path, bytes, { contentType: mimeType, upsert: false })
-  if (up.error) return json({ error: 'storage_failed', detail: up.error.message }, 500)
+  // 1. 원본 이미지는 저장하지 않는다 (REQ-PP-3 보안 요건).
+  //    Vision OCR은 base64를 직접 사용하므로 Storage 보관이 불필요 — 메모리에서만 처리 후 폐기.
+  //    (기존 passport-images 버킷은 정리 완료, 신규 업로드 없음)
+  void mimeType
 
-  // 2. scan 레코드(pending)
+  // 2. scan 레코드(pending) — 이미지 미보관이므로 image_path 없음
   const ins = await admin
     .from('passport_scans')
-    .insert({ user_id: userId, image_path: path, status: 'pending' })
+    .insert({ user_id: userId, image_path: null, status: 'pending' })
     .select('id')
     .single()
   if (ins.error || !ins.data) return json({ error: 'db_insert_failed' }, 500)

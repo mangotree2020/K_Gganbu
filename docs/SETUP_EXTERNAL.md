@@ -183,6 +183,20 @@ SMS 실비(~160원/건) 방어. **Auth → Rate Limits**로 총량 상한:
 **검증**: 로그인 화면 → "Continue with LINE"(`EXPO_PUBLIC_LINE_CHANNEL_ID` 있을 때만 활성) → LINE 인증 →
 앱 복귀 → `auth.users`에 `app_metadata.provider=line` 유저 + 세션 생성 확인. 미설정 시 버튼은 "Coming soon"으로 graceful degrade.
 
+## FCM 푸시 실 전송 (REQ-NT-1 — 코드 완료 2026-07-02)
+
+**필요**: Firebase 콘솔 서비스 계정 키 + 실기기 재빌드. 코드: `src/features/notifications/services.ts`(실 어댑터, lazy require·mock 폴백), Edge Function `push-send`(배포됨), `device_tokens` 테이블(적용됨).
+
+1. `@react-native-firebase/messaging` 설치됨(네이티브 모듈) → **`npm run prebuild` 후 실기기 재빌드 1회 필요**. 재빌드 전 구 빌드에서는 mock 경로로 degrade(크래시 없음).
+2. Firebase 콘솔 → 프로젝트 설정 → **서비스 계정** → "새 비공개 키 생성"(JSON) → 서버 시크릿:
+   ```bash
+   supabase secrets set FCM_SERVICE_ACCOUNT='<JSON 파일 내용 전체>'
+   ```
+3. 발송 게이트: `push-send`는 `x-admin-key`(ADMIN_API_KEY, partner-coupon과 공유) 필수 — 클라이언트 직접 호출 불가.
+
+**검증**: 프로필 알림 opt-in → `device_tokens`에 실 토큰 행 생성 확인 →
+`curl -X POST .../push-send -H "x-admin-key: $ADMIN_API_KEY" -d '{"user_id":"<uuid>","title":"Test","body":"Hello"}'` → 기기 알림 도착.
+
 ## 배포 후 점검 체크리스트
 
 - [ ] `supabase functions deploy` 11종 완료
