@@ -367,43 +367,45 @@ export default function MapScreen() {
     googleRef.current?.setMapType(next)
   }
 
-  // 시트 드래그 — grabber에서 위로 끌면 펼침, 아래로 끌면 접힘(탭하면 토글).
+  // 시트 드래그 — grabber(탭 토글 포함)와 장소 헤더(드래그만 — 버튼 탭은 통과) 두 영역.
   // ref는 제스처 콜백에서만 읽으므로(렌더 아님) refs 룰 비활성화.
   /* eslint-disable react-hooks/refs */
-  const sheetPan = useMemo(
-    () =>
-      PanResponder.create({
-        onStartShouldSetPanResponder: () => true, // 탭도 캡처(탭 토글 지원)
-        onMoveShouldSetPanResponder: (_e, g) => Math.abs(g.dy) > 4,
-        onPanResponderMove: (_e, g) => {
-          const h = Math.max(SHEET_MINI, Math.min(SHEET_FULL, sheetBaseRef.current - g.dy))
-          sheetH.setValue(h)
-        },
-        onPanResponderRelease: (_e, g) => {
-          let snap: number
-          if (Math.abs(g.dy) < 5) {
-            // 탭 — 다음 스냅으로 순환(MINI→HALF→FULL→MINI)
-            const idx = SHEET_SNAPS.indexOf(sheetBaseRef.current)
-            snap = SHEET_SNAPS[(idx + 1) % SHEET_SNAPS.length]
-          } else {
-            // 드래그 — 끝 위치에서 최근접 스냅
-            const target = sheetBaseRef.current - g.dy
-            snap = SHEET_SNAPS.reduce(
-              (best, s) => (Math.abs(s - target) < Math.abs(best - target) ? s : best),
-              SHEET_SNAPS[0],
-            )
-          }
-          sheetBaseRef.current = snap
-          Animated.spring(sheetH, {
-            toValue: snap,
-            useNativeDriver: false,
-            bounciness: 2,
-            speed: 16,
-          }).start()
-        },
-      }),
-    [sheetH],
-  )
+  const makeSheetPan = (tapToggle: boolean) =>
+    PanResponder.create({
+      // tapToggle 영역은 탭도 캡처(탭=스냅 순환), 헤더 영역은 움직일 때만 캡처
+      onStartShouldSetPanResponder: () => tapToggle,
+      onMoveShouldSetPanResponder: (_e, g) => Math.abs(g.dy) > (tapToggle ? 4 : 6),
+      onPanResponderMove: (_e, g) => {
+        const h = Math.max(SHEET_MINI, Math.min(SHEET_FULL, sheetBaseRef.current - g.dy))
+        sheetH.setValue(h)
+      },
+      onPanResponderRelease: (_e, g) => {
+        let snap: number
+        if (tapToggle && Math.abs(g.dy) < 5) {
+          // 탭 — 다음 스냅으로 순환(MINI→HALF→FULL→MINI)
+          const idx = SHEET_SNAPS.indexOf(sheetBaseRef.current)
+          snap = SHEET_SNAPS[(idx + 1) % SHEET_SNAPS.length]
+        } else {
+          // 드래그 — 끝 위치에서 최근접 스냅
+          const target = sheetBaseRef.current - g.dy
+          snap = SHEET_SNAPS.reduce(
+            (best, s) => (Math.abs(s - target) < Math.abs(best - target) ? s : best),
+            SHEET_SNAPS[0],
+          )
+        }
+        sheetBaseRef.current = snap
+        Animated.spring(sheetH, {
+          toValue: snap,
+          useNativeDriver: false,
+          bounciness: 2,
+          speed: 16,
+        }).start()
+      },
+    })
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const sheetPan = useMemo(() => makeSheetPan(true), [sheetH])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const sheetHeadPan = useMemo(() => makeSheetPan(false), [sheetH])
   /* eslint-enable react-hooks/refs */
 
   // 즐겨찾기 (BACKLOG #20)
@@ -439,12 +441,17 @@ export default function MapScreen() {
     [sortedPlaces],
   )
 
+  // 마지막 경로 보관 — 지도 전환(unmount→mount) 시에도 양 지도에 경로가 유지되도록
+  // 각 지도 onReady에서 재주입한다 (Naver/Google/Blend 어디서든 동일 표시)
+  const routePathRef = useRef<LatLng[] | null>(null)
+
   const selectPlace = (p: Poi) => {
     setSelected(p.id)
     // 다른 장소 선택 시 기존 경로·리뷰 필터 초기화
     if (p.id !== selectedId) {
       setRouteInfo(null)
       setReviewFilter(null)
+      routePathRef.current = null
       naverRef.current?.clearRoute()
       googleRef.current?.clearRoute()
     }
@@ -463,6 +470,7 @@ export default function MapScreen() {
     const res = await fetchRoute(start, goal)
     setRouteInfo({ distance: res.distance, duration: res.duration, mock: res.provider === 'mock' })
     // 양 지도에 경로 오버레이 (각 핸들이 전체 경로가 보이도록 영역 맞춤)
+    routePathRef.current = res.path
     naverRef.current?.drawRoute(res.path)
     googleRef.current?.drawRoute(res.path)
     setRouting(false)
@@ -470,6 +478,7 @@ export default function MapScreen() {
 
   const clearRoute = () => {
     setRouteInfo(null)
+    routePathRef.current = null
     naverRef.current?.clearRoute()
     googleRef.current?.clearRoute()
   }
@@ -544,9 +553,11 @@ export default function MapScreen() {
               const p = places.find((x) => x.id === id)
               if (p) selectPlace(p)
             }}
-            onReady={() =>
+            onReady={() => {
               googleRef.current?.setMyLocation(coords.latitude, coords.longitude, WALK_ZOOM)
-            }
+              // 지도 전환으로 재마운트돼도 진행 중 경로 유지
+              if (routePathRef.current) googleRef.current?.drawRoute(routePathRef.current)
+            }}
             onAuthError={(m) => setMapError(m)}
           />
         )}
@@ -571,6 +582,8 @@ export default function MapScreen() {
                 naverRef.current?.setMyLocation(coords.latitude, coords.longitude, WALK_ZOOM)
                 // HTML 재생성(마커/언어 변경) 시 opacity가 초기화되므로 ready마다 재적용
                 naverRef.current?.setOpacity(naverOpacityRef.current)
+                // 지도 전환으로 재마운트돼도 진행 중 경로 유지
+                if (routePathRef.current) naverRef.current?.drawRoute(routePathRef.current)
               }}
               onAuthError={(m) => setMapError(m)}
             />
@@ -774,12 +787,9 @@ export default function MapScreen() {
           <View style={ss.grabber} />
         </View>
         {place ? (
-          <ScrollView
-            showsVerticalScrollIndicator
-            contentContainerStyle={{ paddingBottom: 28 }}
-            keyboardShouldPersistTaps="handled">
-            {/* 컴팩트 선택 장소 헤드 */}
-            <View style={ss.placeHead}>
+          <>
+            {/* 컴팩트 선택 장소 헤드 — 시트 드래그 확장 영역(버튼 탭은 통과, 상하 드래그만 캡처) */}
+            <View style={ss.placeHead} {...sheetHeadPan.panHandlers}>
               <View style={ss.placeThumb}>
                 {place.imageUrl ? (
                   <Image source={{ uri: place.imageUrl }} style={{ width: 46, height: 46 }} />
@@ -811,199 +821,203 @@ export default function MapScreen() {
                 )}
               </Pressable>
             </View>
-
-            {/* 경로 요약 (Naver Directions) */}
-            {routeInfo && (
-              <View style={ss.routeBar}>
-                <Icon name="route" size={15} color={palette.blue[40]} />
-                <Text style={ss.routeText}>
-                  {routeInfo.distance > 0
-                    ? `${(routeInfo.distance / 1000).toFixed(1)}km · ${t('map.approx')} ${Math.max(1, Math.round(routeInfo.duration / 60000))}${t('map.min')}`
-                    : t('map.routeShow')}
-                </Text>
-                {routeInfo.mock && <FallbackBadge label="Sample route" />}
-                <Pressable onPress={clearRoute} hitSlop={8}>
-                  <Icon name="close" size={16} color={palette.zinc[500]} />
-                </Pressable>
-              </View>
-            )}
-
-            {/* 주변 추천 — 현재 위치로부터 거리순 (가로 카드, 좌우 스와이프) */}
-            <View style={ss.sectionTitleRow}>
-              <Text style={ss.sectionTitle}>
-                {catFilter ? catLabel(t, catFilter) : t('map.nearbyByDistance')}
-              </Text>
-              {poisFetching && <ActivityIndicator size="small" color={palette.blue[50]} />}
-            </View>
             <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              contentContainerStyle={{ gap: 10, paddingBottom: 4 }}>
-              {sortedPlaces.map((p) => {
-                const on = p.id === selectedId
-                return (
-                  <Pressable
-                    key={p.id}
-                    onPress={() => selectPlace(p)}
-                    style={[
-                      ss.attrCardH,
-                      on && { borderColor: catColor(p.cat), borderWidth: 1.5 },
-                    ]}>
-                    <View style={ss.attrThumbH}>
-                      {p.imageUrl ? (
-                        <Image source={{ uri: p.imageUrl }} style={{ width: 150, height: 92 }} />
-                      ) : (
-                        <PlaceThumb category={p.cat} height={92} />
-                      )}
-                    </View>
-                    <View style={{ padding: 8, paddingTop: 6 }}>
-                      <Text style={ss.attrName} numberOfLines={1}>
-                        {p.name}
-                      </Text>
-                      <View style={ss.attrMetaRow}>
-                        <View style={[ss.catDot, { backgroundColor: catColor(p.cat) }]} />
-                        <Text style={ss.attrMeta} numberOfLines={1}>
-                          {catLabel(t, p.cat)}
-                        </Text>
-                        {p.dist !== Infinity && (
-                          <Text style={ss.attrDist}> · {fmtDistance(p.dist)}</Text>
+              showsVerticalScrollIndicator
+              contentContainerStyle={{ paddingBottom: 28 }}
+              keyboardShouldPersistTaps="handled">
+              {/* 경로 요약 (Naver Directions) */}
+              {routeInfo && (
+                <View style={ss.routeBar}>
+                  <Icon name="route" size={15} color={palette.blue[40]} />
+                  <Text style={ss.routeText}>
+                    {routeInfo.distance > 0
+                      ? `${(routeInfo.distance / 1000).toFixed(1)}km · ${t('map.approx')} ${Math.max(1, Math.round(routeInfo.duration / 60000))}${t('map.min')}`
+                      : t('map.routeShow')}
+                  </Text>
+                  {routeInfo.mock && <FallbackBadge label="Sample route" />}
+                  <Pressable onPress={clearRoute} hitSlop={8}>
+                    <Icon name="close" size={16} color={palette.zinc[500]} />
+                  </Pressable>
+                </View>
+              )}
+
+              {/* 주변 추천 — 현재 위치로부터 거리순 (가로 카드, 좌우 스와이프) */}
+              <View style={ss.sectionTitleRow}>
+                <Text style={ss.sectionTitle}>
+                  {catFilter ? catLabel(t, catFilter) : t('map.nearbyByDistance')}
+                </Text>
+                {poisFetching && <ActivityIndicator size="small" color={palette.blue[50]} />}
+              </View>
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={{ gap: 10, paddingBottom: 4 }}>
+                {sortedPlaces.map((p) => {
+                  const on = p.id === selectedId
+                  return (
+                    <Pressable
+                      key={p.id}
+                      onPress={() => selectPlace(p)}
+                      style={[
+                        ss.attrCardH,
+                        on && { borderColor: catColor(p.cat), borderWidth: 1.5 },
+                      ]}>
+                      <View style={ss.attrThumbH}>
+                        {p.imageUrl ? (
+                          <Image source={{ uri: p.imageUrl }} style={{ width: 150, height: 92 }} />
+                        ) : (
+                          <PlaceThumb category={p.cat} height={92} />
                         )}
                       </View>
-                    </View>
-                  </Pressable>
-                )
-              })}
-            </ScrollView>
+                      <View style={{ padding: 8, paddingTop: 6 }}>
+                        <Text style={ss.attrName} numberOfLines={1}>
+                          {p.name}
+                        </Text>
+                        <View style={ss.attrMetaRow}>
+                          <View style={[ss.catDot, { backgroundColor: catColor(p.cat) }]} />
+                          <Text style={ss.attrMeta} numberOfLines={1}>
+                            {catLabel(t, p.cat)}
+                          </Text>
+                          {p.dist !== Infinity && (
+                            <Text style={ss.attrDist}> · {fmtDistance(p.dist)}</Text>
+                          )}
+                        </View>
+                      </View>
+                    </Pressable>
+                  )
+                })}
+              </ScrollView>
 
-            {/* 리뷰 — 두 관점 요약(실데이터, 언어별 분리) + 개별 리뷰 목록 */}
-            <View style={ss.sectionTitleRow}>
-              <Text style={ss.sectionTitle}>{t('map.reviews')}</Text>
-              {reviews?.rating != null && (
-                <Text style={ss.reviewOverall}>
-                  ★ {reviews.rating.toFixed(1)} · {reviews.total}
-                </Text>
-              )}
-              {reviewsMock && <FallbackBadge label="Sample" />}
-            </View>
-            {/* AI 리뷰 요약(REQ-REV-1) — 장소×언어 서버 캐시로 사용자 간 재사용 */}
-            {insights?.summary ? (
-              <View style={ss.aiSummaryCard}>
-                <View style={ss.aiSummaryHead}>
-                  <Icon name="auto_awesome" size={14} color={palette.blue[50]} filled />
-                  <Text style={ss.aiSummaryTitle}>{t('map.aiSummary')}</Text>
-                  {insights.provider === 'mock' && <FallbackBadge label="Sample" />}
-                </View>
-                <Text style={ss.aiSummaryText}>{insights.summary}</Text>
-                {insights.sources && (
-                  <Text style={ss.aiSummarySrc}>
-                    Google {insights.sources.google} · Naver blog {insights.sources.naver}
+              {/* 리뷰 — 두 관점 요약(실데이터, 언어별 분리) + 개별 리뷰 목록 */}
+              <View style={ss.sectionTitleRow}>
+                <Text style={ss.sectionTitle}>{t('map.reviews')}</Text>
+                {reviews?.rating != null && (
+                  <Text style={ss.reviewOverall}>
+                    ★ {reviews.rating.toFixed(1)} · {reviews.total}
                   </Text>
                 )}
+                {reviewsMock && <FallbackBadge label="Sample" />}
               </View>
-            ) : null}
-            <View style={ss.reviewRow}>
-              {/* 카드 = 출처 필터(탭하면 해당 리뷰만). 우측 상단 아이콘만 지도 앱 호출 */}
-              <Pressable
-                onPress={() => setReviewFilter((f) => (f === 'korean' ? null : 'korean'))}
-                style={[
-                  ss.reviewCard,
-                  { borderColor: '#03C75A' },
-                  reviewFilter === 'korean' && ss.reviewCardSelN,
-                  reviewFilter === 'foreign' && ss.reviewCardDim,
-                ]}>
-                <View style={ss.reviewCardHead}>
-                  <View style={[ss.platformBadge, { backgroundColor: '#03C75A' }]}>
-                    <Text style={ss.platformBadgeText}>N</Text>
+              {/* AI 리뷰 요약(REQ-REV-1) — 장소×언어 서버 캐시로 사용자 간 재사용 */}
+              {insights?.summary ? (
+                <View style={ss.aiSummaryCard}>
+                  <View style={ss.aiSummaryHead}>
+                    <Icon name="auto_awesome" size={14} color={palette.blue[50]} filled />
+                    <Text style={ss.aiSummaryTitle}>{t('map.aiSummary')}</Text>
+                    {insights.provider === 'mock' && <FallbackBadge label="Sample" />}
                   </View>
-                  <Text style={ss.reviewCardTitle}>{t('map.reviewKorean')}</Text>
-                  <Pressable
-                    onPress={() => openExternal('naver')}
-                    hitSlop={10}
-                    style={ss.reviewExtBtn}>
-                    <Icon name="open_in_new" size={15} color="#03C75A" />
-                  </Pressable>
-                </View>
-                {reviews?.korean ? (
-                  <>
-                    <View style={ss.reviewStars}>
-                      {[1, 2, 3, 4, 5].map((i) => (
-                        <Icon
-                          key={i}
-                          name="star"
-                          size={11}
-                          color={
-                            i <= Math.round(reviews.korean!.score)
-                              ? palette.amber[50]
-                              : palette.zinc[200]
-                          }
-                          filled
-                        />
-                      ))}
-                      <Text style={ss.reviewScore}>{reviews.korean.score.toFixed(1)}</Text>
-                    </View>
-                    <Text style={ss.reviewQuote} numberOfLines={2}>
-                      “{reviews.korean.text}”
+                  <Text style={ss.aiSummaryText}>{insights.summary}</Text>
+                  {insights.sources && (
+                    <Text style={ss.aiSummarySrc}>
+                      Google {insights.sources.google} · Naver blog {insights.sources.naver}
                     </Text>
-                  </>
-                ) : (
-                  <Text style={ss.reviewNone}>{t('map.reviewNone')}</Text>
-                )}
-              </Pressable>
-              <Pressable
-                onPress={() => setReviewFilter((f) => (f === 'foreign' ? null : 'foreign'))}
-                style={[
-                  ss.reviewCard,
-                  { borderColor: '#4285F4' },
-                  reviewFilter === 'foreign' && ss.reviewCardSelG,
-                  reviewFilter === 'korean' && ss.reviewCardDim,
-                ]}>
-                <View style={ss.reviewCardHead}>
-                  <View style={[ss.platformBadge, { backgroundColor: '#4285F4' }]}>
-                    <Text style={ss.platformBadgeText}>G</Text>
+                  )}
+                </View>
+              ) : null}
+              <View style={ss.reviewRow}>
+                {/* 카드 = 출처 필터(탭하면 해당 리뷰만). 우측 상단 아이콘만 지도 앱 호출 */}
+                <Pressable
+                  onPress={() => setReviewFilter((f) => (f === 'korean' ? null : 'korean'))}
+                  style={[
+                    ss.reviewCard,
+                    { borderColor: '#03C75A' },
+                    reviewFilter === 'korean' && ss.reviewCardSelN,
+                    reviewFilter === 'foreign' && ss.reviewCardDim,
+                  ]}>
+                  <View style={ss.reviewCardHead}>
+                    <View style={[ss.platformBadge, { backgroundColor: '#03C75A' }]}>
+                      <Text style={ss.platformBadgeText}>N</Text>
+                    </View>
+                    <Text style={ss.reviewCardTitle}>{t('map.reviewKorean')}</Text>
+                    <Pressable
+                      onPress={() => openExternal('naver')}
+                      hitSlop={10}
+                      style={ss.reviewExtBtn}>
+                      <Icon name="open_in_new" size={15} color="#03C75A" />
+                    </Pressable>
                   </View>
-                  <Text style={ss.reviewCardTitle}>{t('map.reviewForeign')}</Text>
-                  <Pressable
-                    onPress={() => openExternal('google')}
-                    hitSlop={10}
-                    style={ss.reviewExtBtn}>
-                    <Icon name="open_in_new" size={15} color="#4285F4" />
-                  </Pressable>
-                </View>
-                {reviews?.foreign ? (
-                  <>
-                    <View style={ss.reviewStars}>
-                      {[1, 2, 3, 4, 5].map((i) => (
-                        <Icon
-                          key={i}
-                          name="star"
-                          size={11}
-                          color={
-                            i <= Math.round(reviews.foreign!.score)
-                              ? palette.amber[50]
-                              : palette.zinc[200]
-                          }
-                          filled
-                        />
-                      ))}
-                      <Text style={ss.reviewScore}>{reviews.foreign.score.toFixed(1)}</Text>
+                  {reviews?.korean ? (
+                    <>
+                      <View style={ss.reviewStars}>
+                        {[1, 2, 3, 4, 5].map((i) => (
+                          <Icon
+                            key={i}
+                            name="star"
+                            size={11}
+                            color={
+                              i <= Math.round(reviews.korean!.score)
+                                ? palette.amber[50]
+                                : palette.zinc[200]
+                            }
+                            filled
+                          />
+                        ))}
+                        <Text style={ss.reviewScore}>{reviews.korean.score.toFixed(1)}</Text>
+                      </View>
+                      <Text style={ss.reviewQuote} numberOfLines={2}>
+                        “{reviews.korean.text}”
+                      </Text>
+                    </>
+                  ) : (
+                    <Text style={ss.reviewNone}>{t('map.reviewNone')}</Text>
+                  )}
+                </Pressable>
+                <Pressable
+                  onPress={() => setReviewFilter((f) => (f === 'foreign' ? null : 'foreign'))}
+                  style={[
+                    ss.reviewCard,
+                    { borderColor: '#4285F4' },
+                    reviewFilter === 'foreign' && ss.reviewCardSelG,
+                    reviewFilter === 'korean' && ss.reviewCardDim,
+                  ]}>
+                  <View style={ss.reviewCardHead}>
+                    <View style={[ss.platformBadge, { backgroundColor: '#4285F4' }]}>
+                      <Text style={ss.platformBadgeText}>G</Text>
                     </View>
-                    <Text style={ss.reviewQuote} numberOfLines={2}>
-                      “{reviews.foreign.text}”
-                    </Text>
-                  </>
-                ) : (
-                  <Text style={ss.reviewNone}>{t('map.reviewNone')}</Text>
-                )}
-              </Pressable>
-            </View>
-            {/* 개별 리뷰 — 선택된 출처 카드의 리뷰만(필터). 미선택 시 전체 */}
-            {shownReviews.length === 0 && reviewFilter ? (
-              <Text style={ss.reviewNone}>{t('map.reviewNone')}</Text>
-            ) : null}
-            {shownReviews.map((r, i) => (
-              <ReviewRow key={i} review={r} appLang={lang} translatedHint={translatedFor(r)} />
-            ))}
-          </ScrollView>
+                    <Text style={ss.reviewCardTitle}>{t('map.reviewForeign')}</Text>
+                    <Pressable
+                      onPress={() => openExternal('google')}
+                      hitSlop={10}
+                      style={ss.reviewExtBtn}>
+                      <Icon name="open_in_new" size={15} color="#4285F4" />
+                    </Pressable>
+                  </View>
+                  {reviews?.foreign ? (
+                    <>
+                      <View style={ss.reviewStars}>
+                        {[1, 2, 3, 4, 5].map((i) => (
+                          <Icon
+                            key={i}
+                            name="star"
+                            size={11}
+                            color={
+                              i <= Math.round(reviews.foreign!.score)
+                                ? palette.amber[50]
+                                : palette.zinc[200]
+                            }
+                            filled
+                          />
+                        ))}
+                        <Text style={ss.reviewScore}>{reviews.foreign.score.toFixed(1)}</Text>
+                      </View>
+                      <Text style={ss.reviewQuote} numberOfLines={2}>
+                        “{reviews.foreign.text}”
+                      </Text>
+                    </>
+                  ) : (
+                    <Text style={ss.reviewNone}>{t('map.reviewNone')}</Text>
+                  )}
+                </Pressable>
+              </View>
+              {/* 개별 리뷰 — 선택된 출처 카드의 리뷰만(필터). 미선택 시 전체 */}
+              {shownReviews.length === 0 && reviewFilter ? (
+                <Text style={ss.reviewNone}>{t('map.reviewNone')}</Text>
+              ) : null}
+              {shownReviews.map((r, i) => (
+                <ReviewRow key={i} review={r} appLang={lang} translatedHint={translatedFor(r)} />
+              ))}
+            </ScrollView>
+          </>
         ) : (
           <View style={{ paddingVertical: 24, alignItems: 'center' }}>
             <ActivityIndicator color={palette.blue[50]} />
