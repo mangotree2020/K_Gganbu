@@ -318,6 +318,8 @@ const STRINGS: Record<AppLang, Dict> = {
     'voice.hint': 'The original and translation appear here once you start talking.',
     'voice.end': 'End',
     'voice.unavailableTitle': 'Voice interpret setup needed',
+    'voice.limitMsg':
+      'Voice session reached the 10-minute limit and was closed. You can start again anytime.',
     'voice.unavailableSub':
       'Available once the Gemini Live key is set up. Please use text translation for now.',
     'voice.toText': 'Use text translation',
@@ -700,6 +702,7 @@ const STRINGS: Record<AppLang, Dict> = {
     'voice.hint': '대화를 시작하면 원문과 번역이 여기에 표시됩니다.',
     'voice.end': '종료',
     'voice.unavailableTitle': '음성 통역 준비 필요',
+    'voice.limitMsg': '음성 통역이 10분 상한에 도달해 종료됐어요. 언제든 다시 시작할 수 있어요.',
     'voice.unavailableSub':
       'Gemini Live 키 설정 후 사용할 수 있어요. 지금은 텍스트 번역을 이용해 주세요.',
     'voice.toText': '텍스트 번역으로',
@@ -1078,6 +1081,7 @@ const STRINGS: Record<AppLang, Dict> = {
     'voice.hint': '会話を始めると原文と翻訳がここに表示されます。',
     'voice.end': '終了',
     'voice.unavailableTitle': '音声通訳の準備が必要',
+    'voice.limitMsg': '音声通訳が10分の上限に達し終了しました。いつでも再開できます。',
     'voice.unavailableSub':
       'Gemini Liveキーの設定後に利用できます。今はテキスト翻訳をご利用ください。',
     'voice.toText': 'テキスト翻訳へ',
@@ -1452,6 +1456,7 @@ const STRINGS: Record<AppLang, Dict> = {
     'voice.hint': '开始对话后，原文和翻译会显示在这里。',
     'voice.end': '结束',
     'voice.unavailableTitle': '需要设置语音翻译',
+    'voice.limitMsg': '语音翻译已达到10分钟上限并已结束，可随时重新开始。',
     'voice.unavailableSub': '设置 Gemini Live 密钥后即可使用。目前请使用文字翻译。',
     'voice.toText': '使用文字翻译',
     'voice.realtimeTitle': '实时翻译',
@@ -1824,6 +1829,7 @@ const STRINGS: Record<AppLang, Dict> = {
     'voice.hint': '開始對話後，原文和翻譯會顯示在這裡。',
     'voice.end': '結束',
     'voice.unavailableTitle': '需要設定語音翻譯',
+    'voice.limitMsg': '語音翻譯已達到10分鐘上限並已結束，可隨時重新開始。',
     'voice.unavailableSub': '設定 Gemini Live 金鑰後即可使用。目前請使用文字翻譯。',
     'voice.toText': '使用文字翻譯',
     'voice.realtimeTitle': '即時翻譯',

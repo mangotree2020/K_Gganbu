@@ -4,7 +4,11 @@
 // 오디오 캡처/재생(네이티브 PCM)은 호출측에서 sendAudio/onAudio 로 연결한다.
 import { supabase } from '@/lib/supabase'
 
-export type LiveStatus = 'connecting' | 'open' | 'closed' | 'error'
+export type LiveStatus = 'connecting' | 'open' | 'closed' | 'error' | 'limit'
+
+// 세션 시간 상한 (PRD REQ-TR-3, BM§3.3 변동비 통제) — Live 오디오 과금 폭주 방지.
+// 초과 시 'limit' 통지 후 자동 종료(화면은 재연결하지 않고 안내 + 폴백 유도).
+export const MAX_LIVE_SESSION_MS = 10 * 60 * 1000
 
 // 한 turn = 화자 원문 + 통역 결과 (대화형 말풍선용)
 // audio: 통역 음성 24kHz PCM 전체(turn 확정 시) — 말풍선 '다시 듣기'용
@@ -257,8 +261,25 @@ export async function startLiveTranslate(
     }
   }
 
-  ws.onerror = () => cb.onStatus?.('error')
-  ws.onclose = () => cb.onStatus?.('closed')
+  // 세션 시간 상한 — 초과 시 'limit' 통지 후 종료(이후 closed/error는 억제해 재연결 차단)
+  let limitHit = false
+  const limitTimer = setTimeout(() => {
+    limitHit = true
+    cb.onStatus?.('limit')
+    try {
+      ws.close()
+    } catch {
+      // 무시
+    }
+  }, MAX_LIVE_SESSION_MS)
+
+  ws.onerror = () => {
+    if (!limitHit) cb.onStatus?.('error')
+  }
+  ws.onclose = () => {
+    clearTimeout(limitTimer)
+    if (!limitHit) cb.onStatus?.('closed')
+  }
 
   return {
     sendAudio: (pcm16: Uint8Array) => {
@@ -271,6 +292,7 @@ export async function startLiveTranslate(
       }
     },
     close: () => {
+      clearTimeout(limitTimer)
       try {
         ws.close()
       } catch {

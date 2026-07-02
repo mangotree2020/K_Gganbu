@@ -6,6 +6,7 @@ import { router, useFocusEffect } from 'expo-router'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import {
   ActivityIndicator,
+  Alert,
   Animated,
   Modal,
   PermissionsAndroid,
@@ -488,6 +489,10 @@ export default function VoiceInterpretScreen() {
                   sessionRef.current?.sendAudio(pcm)
                 })
               }
+            } else if (s === 'limit') {
+              // 세션 시간 상한(REQ-TR-3) — 재연결하지 않고 종료 + 안내(텍스트 번역 폴백 화면)
+              failToFallback()
+              Alert.alert(t('voice.title'), t('voice.limitMsg'))
             } else if (s === 'error' || s === 'closed') {
               scheduleReconnect()
             }

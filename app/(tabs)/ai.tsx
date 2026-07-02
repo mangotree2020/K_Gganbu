@@ -271,7 +271,7 @@ export default function AiMateScreen() {
       { appLang, mode: 'transcribe' },
       {
         onStatus: (s) => {
-          if (s === 'error' || s === 'closed') stopListening()
+          if (s === 'error' || s === 'closed' || s === 'limit') stopListening()
         },
         onTurn: (turn) => {
           const text = turn.original.trim()
