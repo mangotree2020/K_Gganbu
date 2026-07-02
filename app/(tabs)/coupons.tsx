@@ -2,13 +2,14 @@
 import { useQuery } from '@tanstack/react-query'
 import { LinearGradient } from 'expo-linear-gradient'
 import { router, useLocalSearchParams } from 'expo-router'
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Linking, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 
 import { Icon, Pill } from '@/components/brand'
 import { FallbackBadge } from '@/components/FallbackBadge'
 import { PlaceThumb } from '@/components/PlaceThumb'
+import { track } from '@/features/analytics/service'
 import { useCoupons, type CouponCard } from '@/features/coupon/queries'
 import { getTickets, type Ticket } from '@/features/ticket/services'
 import { useRequireAccount } from '@/features/auth/loginPrompt'
@@ -129,7 +130,7 @@ export default function CouTixScreen() {
   const [couponFilter, setCouponFilter] = useState('all')
   const [ticketFilter, setTicketFilter] = useState('all')
 
-  const { data: dbCoupons } = useCoupons()
+  const { data: dbCoupons, isLoading: couponsLoading } = useCoupons()
   const { data: ticketData } = useQuery({ queryKey: ['tickets'], queryFn: getTickets })
 
   // ----- 쿠폰 데이터(실데이터 없으면 mock 폴백) -----
@@ -144,15 +145,36 @@ export default function CouTixScreen() {
     return ticketFilter === 'all' ? list : list.filter((x) => x.category === ticketFilter)
   }, [ticketData, ticketFilter])
 
+  // 퍼널 계측(REQ-CP-4): 목록 노출 — 로드 완료 후 세그먼트 단위 1회 (is_mock 정확도)
+  useEffect(() => {
+    if (seg === 'coupons' && couponsLoading) return
+    track('coupon_list_view', {
+      seg,
+      count: seg === 'coupons' ? couponSource.length : (ticketData ?? []).length,
+      is_mock: seg === 'coupons' ? couponIsMock : USE_MOCK,
+    })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [seg, couponsLoading])
+
   // 쿠폰 저장(QR 발급)은 계정 귀속 — Guest면 로그인 유도 후 이어서 발급 (BACKLOG #8)
-  const openCoupon = (c: Coupon) =>
+  const openCoupon = (c: Coupon) => {
+    track('coupon_tap', {
+      coupon_id: String(c.id),
+      name: c.name,
+      cat: c.filter,
+      is_mock: couponIsMock,
+    })
     requireAccount('auth.gateCoupon', () =>
       router.push({
         pathname: '/coupon-qr',
         params: { id: String(c.id), name: c.name, disc: c.disc },
       }),
     )
-  const bookTicket = (x: Ticket) => Linking.openURL(x.outlinkUrl).catch(() => {})
+  }
+  const bookTicket = (x: Ticket) => {
+    track('ticket_outlink', { ticket_id: String(x.id), category: x.category })
+    Linking.openURL(x.outlinkUrl).catch(() => {})
+  }
   const ticketPrice = (x: Ticket) => `₩${x.price.toLocaleString()}`
 
   const isMock = seg === 'coupons' ? couponIsMock : USE_MOCK

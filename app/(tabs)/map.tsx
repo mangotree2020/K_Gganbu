@@ -35,6 +35,7 @@ import {
   type NaverMarker,
 } from '@/features/map/NaverMap'
 import { usePlaceReviews, type PlaceReview } from '@/features/review/queries'
+import { useReviewInsights } from '@/features/review/insights'
 import { translateText } from '@/features/translate/services'
 import { useCurrentLocation } from '@/hooks/useCurrentLocation'
 import { appFlag, baseLang, flagFor } from '@/lib/flags'
@@ -141,10 +142,20 @@ const catColor = (cat: string) => CAT_COLOR[cat] ?? palette.blue[50]
 // 개별 리뷰 행 — 리뷰 언어가 앱 언어와 다르면 출발 국기(예: 🇰🇷)를 표시하고,
 // 국기를 탭하면 앱 언어로 번역 + 국기를 앱 언어 국기로 교체. 미번역 외국어 리뷰의 국기는
 // 화면에 보일 때 탭 유도를 위해 브르르 떨린다(주기적 wiggle).
-function ReviewRow({ review, appLang }: { review: PlaceReview; appLang: string }) {
+function ReviewRow({
+  review,
+  appLang,
+  translatedHint,
+}: {
+  review: PlaceReview
+  appLang: string
+  translatedHint?: string | null // 서버 캐시(review-insights) 번역 — 있으면 API 호출 없이 즉시 사용
+}) {
   const t = useT()
   const needsTranslate = !!review.text && baseLang(review.lang) !== baseLang(appLang)
-  const [translated, setTranslated] = useState<string | null>(null)
+  const [fetched, setFetched] = useState<string | null>(null)
+  const [showOriginal, setShowOriginal] = useState(false)
+  const translated = fetched ?? translatedHint ?? null
   const [busy, setBusy] = useState(false)
   const shake = useState(() => new Animated.Value(0))[0]
 
@@ -169,7 +180,12 @@ function ReviewRow({ review, appLang }: { review: PlaceReview; appLang: string }
   }, [needsTranslate, translated, shake])
 
   const onTapFlag = async () => {
-    if (!needsTranslate || translated || busy) return
+    // 번역이 이미 있으면(캐시 힌트 포함) 원문↔번역 토글만 — 추가 API 호출 없음
+    if (translated) {
+      setShowOriginal((o) => !o)
+      return
+    }
+    if (!needsTranslate || busy) return
     setBusy(true)
     try {
       const { translatedText } = await translateText({
@@ -177,20 +193,26 @@ function ReviewRow({ review, appLang }: { review: PlaceReview; appLang: string }
         target: appLang,
         text: review.text,
       })
-      setTranslated(translatedText)
+      setFetched(translatedText)
+      setShowOriginal(false)
     } finally {
       setBusy(false)
     }
   }
 
-  const flag = translated ? appFlag(appLang) : review.flag || flagFor(review.lang)
-  const text = translated ?? review.text
+  const showTranslated = !!translated && !showOriginal
+  const flag = showTranslated ? appFlag(appLang) : review.flag || flagFor(review.lang)
+  const text = showTranslated ? translated! : review.text
   const wobble = needsTranslate && !translated
   const rotate = shake.interpolate({ inputRange: [-1, 1], outputRange: ['-11deg', '11deg'] })
 
   return (
     <View style={ss.reviewItem}>
-      <Pressable onPress={onTapFlag} disabled={!wobble || busy} hitSlop={8} style={ss.reviewAvatar}>
+      <Pressable
+        onPress={onTapFlag}
+        disabled={(!wobble && !translated) || busy}
+        hitSlop={8}
+        style={ss.reviewAvatar}>
         <Animated.Text style={[ss.reviewAvatarFlag, wobble && { transform: [{ rotate }] }]}>
           {flag}
         </Animated.Text>
@@ -287,11 +309,16 @@ export default function MapScreen() {
   )
 
   // 선택 장소의 실 리뷰(Google Places, 한국인/외국인 분리). 실패 시 mock 폴백.
-  const { data: reviews } = usePlaceReviews(
-    place ? { id: place.id, name: place.name, lat: place.lat, lng: place.lng } : null,
-    lang,
-  )
+  const reviewTarget = place
+    ? { id: place.id, name: place.name, lat: place.lat, lng: place.lng }
+    : null
+  const { data: reviews } = usePlaceReviews(reviewTarget, lang)
   const reviewsMock = reviews?.provider === 'mock'
+  // AI 요약 + 번역 캐시(REQ-REV-1·2) — 서버가 장소×언어 단위로 저장·재사용
+  const { data: insights } = useReviewInsights(reviewTarget, lang)
+  // 캐시된 번역 힌트 — 작성자+원문으로 매칭(상대 시간 표기는 캐시 시점에 따라 달라질 수 있음)
+  const translatedFor = (r: PlaceReview) =>
+    insights?.reviews.find((x) => x.who === r.who && x.text === r.text)?.translated ?? null
   // 리뷰 출처 필터 — 네이버(한국인)/구글(외국인) 카드를 탭하면 해당 리뷰만 표시(토글)
   const [reviewFilter, setReviewFilter] = useState<'korean' | 'foreign' | null>(null)
   // 선택 장소가 바뀌면 필터 초기화
@@ -798,6 +825,17 @@ export default function MapScreen() {
               )}
               {reviewsMock && <FallbackBadge label="Sample" />}
             </View>
+            {/* AI 리뷰 요약(REQ-REV-1) — 장소×언어 서버 캐시로 사용자 간 재사용 */}
+            {insights?.summary ? (
+              <View style={ss.aiSummaryCard}>
+                <View style={ss.aiSummaryHead}>
+                  <Icon name="auto_awesome" size={14} color={palette.blue[50]} filled />
+                  <Text style={ss.aiSummaryTitle}>{t('map.aiSummary')}</Text>
+                  {insights.provider === 'mock' && <FallbackBadge label="Sample" />}
+                </View>
+                <Text style={ss.aiSummaryText}>{insights.summary}</Text>
+              </View>
+            ) : null}
             <View style={ss.reviewRow}>
               {/* 카드 = 출처 필터(탭하면 해당 리뷰만). 우측 상단 아이콘만 지도 앱 호출 */}
               <Pressable
@@ -898,7 +936,7 @@ export default function MapScreen() {
               <Text style={ss.reviewNone}>{t('map.reviewNone')}</Text>
             ) : null}
             {shownReviews.map((r, i) => (
-              <ReviewRow key={i} review={r} appLang={lang} />
+              <ReviewRow key={i} review={r} appLang={lang} translatedHint={translatedFor(r)} />
             ))}
           </ScrollView>
         ) : (
@@ -1129,6 +1167,17 @@ const ss = StyleSheet.create({
   routeText: { flex: 1, fontSize: 12.5, fontWeight: '700', color: palette.blue[30] },
 
   // 리뷰 — 한국인/외국인 좌우 카드
+  aiSummaryCard: {
+    backgroundColor: '#EFF6FF',
+    borderRadius: 14,
+    borderWidth: 0.5,
+    borderColor: '#BFDBFE',
+    padding: 12,
+    gap: 6,
+  },
+  aiSummaryHead: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  aiSummaryTitle: { fontSize: 12, fontWeight: '800', color: palette.blue[50], flex: 1 },
+  aiSummaryText: { fontSize: 12.5, lineHeight: 18, color: palette.zinc[700] },
   reviewRow: { flexDirection: 'row', gap: 10 },
   reviewCard: {
     flex: 1,

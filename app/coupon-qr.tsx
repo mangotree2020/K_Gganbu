@@ -6,6 +6,7 @@ import QRCode from 'react-native-qrcode-svg'
 
 import { Icon } from '@/components/brand'
 import { FallbackBadge } from '@/components/FallbackBadge'
+import { track } from '@/features/analytics/service'
 import { issueCoupon, type CouponIssue } from '@/features/coupon/services'
 import { palette, shadows } from '@/theme/tokens'
 
@@ -28,9 +29,19 @@ export default function CouponQrScreen() {
   const [issue, setIssue] = useState<CouponIssue | null>(null)
   const [loading, setLoading] = useState(true)
 
+  // 퍼널 계측(REQ-CP-4): 발급 성공 — 오프라인 폴백 여부 구분
+  const trackIssued = (r: CouponIssue, reissued: boolean) =>
+    track('coupon_qr_issued', {
+      coupon_id: couponId,
+      issue_id: r.id,
+      offline: r.id === 'offline',
+      reissue: reissued,
+    })
+
   const reissue = async () => {
     setLoading(true)
     const r = await issueCoupon(couponId)
+    trackIssued(r, true)
     setIssue(r)
     setLoading(false)
   }
@@ -40,6 +51,7 @@ export default function CouponQrScreen() {
     let alive = true
     issueCoupon(couponId).then((r) => {
       if (!alive) return
+      trackIssued(r, false)
       setIssue(r)
       setLoading(false)
     })

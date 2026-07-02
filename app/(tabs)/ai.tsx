@@ -18,6 +18,7 @@ import { useIsFocused } from 'expo-router'
 
 import { Icon } from '@/components/brand'
 import { FallbackBadge } from '@/components/FallbackBadge'
+import { track } from '@/features/analytics/service'
 import { askGganbuStream } from '@/features/gganbu/services'
 import {
   loadChatSessions,
@@ -128,7 +129,7 @@ export default function AiMateScreen() {
   // 음성 질문(STT) — Gemini Live 전사 세션 + 마이크 캡처
   const sessionRef = useRef<LiveSession | null>(null)
   const micRef = useRef<MicHandle | null>(null)
-  const sendRef = useRef<(text: string) => void>(() => {})
+  const sendRef = useRef<(text: string, mode?: 'text' | 'quick' | 'voice') => void>(() => {})
   // TTS 재생 중 플래그 — 마이크가 AI 음성을 다시 전사(에코 루프)하지 않도록 게이팅
   const speakingRef = useRef(false)
 
@@ -176,8 +177,10 @@ export default function AiMateScreen() {
     })
   }
 
-  const send = async (text: string) => {
+  const send = async (text: string, mode: 'text' | 'quick' | 'voice' = 'text') => {
     if (!text.trim()) return
+    // 전환 계측(REQ-AI-3): 질문 발생 — 북극성 지표(AI→쿠폰 전환) 퍼널의 시작점
+    track('ai_ask', { mode, length: text.trim().length })
     const history: { role: 'user' | 'assistant'; text: string }[] = msgs.map((m) => ({
       role: m.role === 'user' ? 'user' : 'assistant',
       text: m.text,
@@ -190,6 +193,7 @@ export default function AiMateScreen() {
     // 알려진 퀵 리플라이는 카드형 응답(일정/리스트) 유지
     const canned = REPLIES[text]
     if (canned) {
+      track('ai_reply', { provider: 'mock', has_card: !!(canned.schedule || canned.list) })
       setTimeout(() => {
         setTyping(false)
         setMsgs((m) => [...m, { role: 'bot', ...canned }])
@@ -231,6 +235,7 @@ export default function AiMateScreen() {
       },
     )
     setTyping(false)
+    track('ai_reply', { provider, has_card: false })
     // 스트림이 한 글자도 못 받았으면(에러/mock) 새 말풍선으로, 받았으면 최종 확정
     if (!started) {
       setMsgs((m) => [...m, { role: 'bot', text: reply, fallback: provider === 'mock' }])
@@ -277,7 +282,7 @@ export default function AiMateScreen() {
           }
           // 한 발화 종료 → 질문 전송 후 계속 듣기(마이크 끌 때까지)
           if (text) {
-            sendRef.current(text)
+            sendRef.current(text, 'voice')
             setInput('')
           }
         },
@@ -562,7 +567,7 @@ export default function AiMateScreen() {
               {m.quick && (
                 <View style={ss.quickWrap}>
                   {m.quick.map((q) => (
-                    <Pressable key={q} onPress={() => send(q)} style={ss.quickChip}>
+                    <Pressable key={q} onPress={() => send(q, 'quick')} style={ss.quickChip}>
                       <Text style={ss.quickText}>{q}</Text>
                     </Pressable>
                   ))}
