@@ -23,6 +23,7 @@ type Props = {
   onMarkerPress?: (id: string) => void
   onAuthError?: (msg: string) => void
   onReady?: () => void // 지도 init 완료 시(내 위치 마커 초기 표시용)
+  onViewChange?: (v: { lat: number; lng: number; zoom: number }) => void // 이동/줌 종료(idle) 시
   language?: string // 앱 설정 언어 (AppLang). 지도 라벨 언어로 사용
 }
 
@@ -65,6 +66,11 @@ function buildHtml(lat: number, lng: number, markers: GoogleMarker[], lang: stri
       });
       post({type:'ready'});
       setMarkers(${JSON.stringify(markers)});
+      // 이동/줌 종료 시 현재 뷰 통지 — RN이 다른 지도와 중심·축척을 동기화(Blend 정합)
+      map.addListener('idle', function(){
+        var c = map.getCenter();
+        post({type:'view', lat: c.lat(), lng: c.lng(), zoom: map.getZoom()});
+      });
     }
     window.initMap = initMap;
     // 지도 유형 전환 (일반/위성/하이브리드)
@@ -130,7 +136,7 @@ function buildHtml(lat: number, lng: number, markers: GoogleMarker[], lang: stri
 }
 
 export const GoogleMap = forwardRef<GoogleMapHandle, Props>(function GoogleMap(
-  { latitude, longitude, markers, onMarkerPress, onAuthError, onReady, language },
+  { latitude, longitude, markers, onMarkerPress, onAuthError, onReady, onViewChange, language },
   ref,
 ) {
   const webRef = useRef<WebView>(null)
@@ -167,6 +173,7 @@ export const GoogleMap = forwardRef<GoogleMapHandle, Props>(function GoogleMap(
       const msg = JSON.parse(e.nativeEvent.data)
       if (msg.type === 'marker' && msg.id) onMarkerPress?.(msg.id)
       else if (msg.type === 'ready') onReady?.()
+      else if (msg.type === 'view') onViewChange?.({ lat: msg.lat, lng: msg.lng, zoom: msg.zoom })
       else if (msg.type === 'auth_error') onAuthError?.(msg.message ?? 'Google auth error')
     } catch {
       // ignore

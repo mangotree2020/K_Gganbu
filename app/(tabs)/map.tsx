@@ -445,6 +445,31 @@ export default function MapScreen() {
   // 각 지도 onReady에서 재주입한다 (Naver/Google/Blend 어디서든 동일 표시)
   const routePathRef = useRef<LatLng[] | null>(null)
 
+  // 두 지도 뷰(중심·줌) 동기화 — Blend에서 현위치·축척이 정확히 겹치고,
+  // 단독 모드에서 이동한 위치가 다른 지도에도 그대로 이어지도록 한다.
+  const lastViewRef = useRef<{ lat: number; lng: number; zoom: number } | null>(null)
+  const syncUntilRef = useRef(0) // 프로그램적 이동으로 발생한 idle 이벤트 무시 창(루프 방지)
+  // ref는 WebView 이벤트 콜백에서만 접근(렌더 아님) — refs 룰 비활성화
+  /* eslint-disable react-hooks/refs */
+  const onViewChange =
+    (src: 'naver' | 'google') => (v: { lat: number; lng: number; zoom: number }) => {
+      lastViewRef.current = v
+      if (Date.now() < syncUntilRef.current) return
+      syncUntilRef.current = Date.now() + 900
+      if (src === 'naver') googleRef.current?.moveTo(v.lat, v.lng, v.zoom)
+      else naverRef.current?.moveTo(v.lat, v.lng, v.zoom)
+    }
+  /* eslint-enable react-hooks/refs */
+
+  // 초기 세팅: GPS 확정(또는 폴백) 시 1회 현위치를 양 지도 중앙에 배치
+  const centeredOnceRef = useRef(false)
+  useEffect(() => {
+    if (locLoading || centeredOnceRef.current) return
+    centeredOnceRef.current = true
+    naverRef.current?.setMyLocation(coords.latitude, coords.longitude, WALK_ZOOM)
+    googleRef.current?.setMyLocation(coords.latitude, coords.longitude, WALK_ZOOM)
+  }, [locLoading, coords.latitude, coords.longitude])
+
   const selectPlace = (p: Poi) => {
     setSelected(p.id)
     // 다른 장소 선택 시 기존 경로·리뷰 필터 초기화
@@ -555,9 +580,13 @@ export default function MapScreen() {
             }}
             onReady={() => {
               googleRef.current?.setMyLocation(coords.latitude, coords.longitude, WALK_ZOOM)
+              // 재마운트 시 마지막 뷰 복원(다른 지도와 위치·축척 일치)
+              const v = lastViewRef.current
+              if (v) googleRef.current?.moveTo(v.lat, v.lng, v.zoom)
               // 지도 전환으로 재마운트돼도 진행 중 경로 유지
               if (routePathRef.current) googleRef.current?.drawRoute(routePathRef.current)
             }}
+            onViewChange={onViewChange('google')}
             onAuthError={(m) => setMapError(m)}
           />
         )}
@@ -580,11 +609,15 @@ export default function MapScreen() {
               }}
               onReady={() => {
                 naverRef.current?.setMyLocation(coords.latitude, coords.longitude, WALK_ZOOM)
+                // 재마운트 시 마지막 뷰 복원(다른 지도와 위치·축척 일치)
+                const v = lastViewRef.current
+                if (v) naverRef.current?.moveTo(v.lat, v.lng, v.zoom)
                 // HTML 재생성(마커/언어 변경) 시 opacity가 초기화되므로 ready마다 재적용
                 naverRef.current?.setOpacity(naverOpacityRef.current)
                 // 지도 전환으로 재마운트돼도 진행 중 경로 유지
                 if (routePathRef.current) naverRef.current?.drawRoute(routePathRef.current)
               }}
+              onViewChange={onViewChange('naver')}
               onAuthError={(m) => setMapError(m)}
             />
           </View>
