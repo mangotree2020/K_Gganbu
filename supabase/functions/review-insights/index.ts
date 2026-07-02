@@ -1,7 +1,8 @@
-// review-insights — 리뷰 AI 요약 + 언어별 번역 캐시 (PRD REQ-REV-1·2, BM§5 S-4)
+// review-insights — 리뷰 AI 요약 + 언어별 번역 캐시 (PRD REQ-REV-1·2·4, BM§5 S-4)
 // 장소×언어 단위로 place_review_insights 에 저장해 사용자 간 재사용(변동비 통제).
-// 흐름: 캐시(7일 TTL) 조회 → miss 시 Google 리뷰 수집 → 일괄 번역(Google) +
-//       AI 요약(Claude Haiku — 모델 티어링) → upsert 저장 → 반환. 실패 시 mock 폴백.
+// 흐름: 캐시(7일 TTL) 조회 → miss 시 Google 리뷰 + 네이버 블로그 리뷰(공식 검색 API,
+//       한국인 관점) 수집 → 마케팅·협찬 사전 필터 → 일괄 번역 → AI 요약(Claude Haiku,
+//       양쪽 소스 종합·홍보성 제외 지시) → upsert 저장. 실패 시 mock 폴백.
 import 'jsr:@supabase/functions-js/edge-runtime.d.ts'
 import { createClient } from 'jsr:@supabase/supabase-js@2'
 
@@ -29,6 +30,7 @@ type Insights = {
   rating: number | null
   total: number
   provider: 'live' | 'cache' | 'mock'
+  sources?: { google: number; naver: number } // 요약에 반영된 소스별 건수
 }
 
 // 키 미설정/실패 폴백 — 언어별 샘플 요약
@@ -110,6 +112,41 @@ async function translateBatch(texts: string[], target: string): Promise<string[]
   }
 }
 
+// 마케팅·협찬성 글 사전 필터 — 명시 표기가 있는 글은 요약 입력에서 제외
+const SPONSORED =
+  /협찬|체험단|원고료|소정의|제공\s?받|광고\s?포스트|서포터즈|무상\s?(제공|지원)|업체로부터|파트너스\s?활동/
+
+function stripHtml(s: string): string {
+  return s
+    .replace(/<[^>]+>/g, '')
+    .replace(/&quot;/g, '"')
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .trim()
+}
+
+// 네이버 블로그 리뷰(한국인 관점) — 공식 검색 API 사용(REV-3 약관 준수 경로).
+// 키 미설정/실패 시 빈 배열(요약은 Google 리뷰만으로 진행).
+async function fetchNaverBlog(name: string): Promise<string[]> {
+  const id = Deno.env.get('NAVER_SEARCH_CLIENT_ID') ?? Deno.env.get('NAVER_CLIENT_ID')
+  const secret = Deno.env.get('NAVER_SEARCH_CLIENT_SECRET') ?? Deno.env.get('NAVER_CLIENT_SECRET')
+  if (!id || !secret) return []
+  try {
+    const res = await fetch(
+      `https://openapi.naver.com/v1/search/blog.json?query=${encodeURIComponent(`${name} 후기`)}&display=10&sort=sim`,
+      { headers: { 'X-Naver-Client-Id': id, 'X-Naver-Client-Secret': secret } },
+    )
+    const data = await res.json()
+    return ((data.items ?? []) as { title: string; description: string }[])
+      .map((it) => stripHtml(`${it.title} — ${it.description}`))
+      .filter((t) => t.length > 20 && !SPONSORED.test(t))
+      .slice(0, 6)
+  } catch {
+    return []
+  }
+}
+
 const LANG_NAME: Record<string, string> = {
   en: 'English',
   ko: 'Korean',
@@ -119,13 +156,24 @@ const LANG_NAME: Record<string, string> = {
 }
 
 // AI 요약 — 저비용 Haiku 사용 (BM§3.3 모델 티어링). 실패 시 빈 문자열.
-async function summarize(name: string, reviews: Review[], lang: string): Promise<string> {
+// Google(외국인 여행자)·네이버 블로그(한국인 현지) 양쪽 소스를 종합하고,
+// 홍보·광고·협찬성으로 보이는 내용은 요약에서 제외하도록 지시한다.
+async function summarize(
+  name: string,
+  reviews: Review[],
+  naverPosts: string[],
+  lang: string,
+): Promise<string> {
   const apiKey = Deno.env.get('ANTHROPIC_API_KEY')
-  if (!apiKey || !reviews.length) return ''
-  const corpus = reviews
+  if (!apiKey || (!reviews.length && !naverPosts.length)) return ''
+  const googleCorpus = reviews
     .slice(0, 10)
     .map((r) => `- (${r.score}/5) ${r.text}`)
     .join('\n')
+  const naverCorpus = naverPosts.map((t) => `- ${t}`).join('\n')
+  const corpus =
+    (googleCorpus ? `[Google reviews — mostly travelers, with ratings]\n${googleCorpus}\n\n` : '') +
+    (naverCorpus ? `[Naver blog posts — Korean locals' perspective]\n${naverCorpus}` : '')
   try {
     const res = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
@@ -141,7 +189,12 @@ async function summarize(name: string, reviews: Review[], lang: string): Promise
           {
             role: 'user',
             content:
-              `Summarize these customer reviews of "${name}" (a place in Korea) for a foreign traveler.\n` +
+              `Summarize customer feedback about "${name}" (a place in Korea) for a foreign traveler.\n` +
+              `Consider BOTH sources below — travelers' Google reviews AND Korean locals' Naver blog posts — ` +
+              `and blend the two perspectives when they differ.\n` +
+              `IMPORTANT: Ignore anything that reads like marketing, advertising, or a sponsored post ` +
+              `(exaggerated promotional tone, event/discount announcements, copy written by the business). ` +
+              `Base the summary only on authentic customer experiences.\n` +
               `Write in ${LANG_NAME[lang] ?? 'English'}. 2-3 short sentences covering overall vibe, ` +
               `what stands out, and one practical caution if any. Plain text only, no headings.\n\n${corpus}`,
           },
@@ -180,7 +233,7 @@ Deno.serve(async (req) => {
     const admin = createClient(SUPABASE_URL, SERVICE_ROLE)
     const { data: cached } = await admin
       .from('place_review_insights')
-      .select('summary, reviews, rating, total, updated_at')
+      .select('summary, reviews, rating, total, sources, updated_at')
       .eq('place_key', placeId)
       .eq('lang', lang)
       .maybeSingle()
@@ -191,13 +244,15 @@ Deno.serve(async (req) => {
         rating: cached.rating,
         total: cached.total,
         provider: 'cache',
+        sources: cached.sources ?? undefined,
       } satisfies Insights)
     }
 
-    // 3) 리뷰 수집 — ko + 앱 언어 병렬 후 병합(중복 제거)
-    const [koRes, fgRes] = await Promise.all([
+    // 3) 리뷰 수집 — Google(ko+앱 언어) + 네이버 블로그(한국인 관점, 협찬 필터) 병렬
+    const [koRes, fgRes, naverPosts] = await Promise.all([
       fetchDetails(placeId, key, 'ko'),
       fetchDetails(placeId, key, base(lang) === 'ko' ? 'en' : lang),
+      fetchNaverBlog(name),
     ])
     const seen = new Set<string>()
     const merged: GReview[] = []
@@ -207,7 +262,7 @@ Deno.serve(async (req) => {
       seen.add(k)
       merged.push(r)
     }
-    if (!merged.length) return json(mockInsights(lang))
+    if (!merged.length && !naverPosts.length) return json(mockInsights(lang))
 
     const reviews: Review[] = merged.map((r) => {
       const rl = r.original_language ?? r.language ?? ''
@@ -232,8 +287,8 @@ Deno.serve(async (req) => {
     )
     if (translations) needIdx.forEach((ri, j) => (reviews[ri].translated = translations[j]))
 
-    // 5) AI 요약 (번역 확보 후 — 요약 입력은 원문+평점)
-    const summary = await summarize(name, reviews, lang)
+    // 5) AI 요약 — Google+네이버 양쪽 소스 종합, 홍보성 제외
+    const summary = await summarize(name, reviews, naverPosts, lang)
 
     const out: Insights = {
       summary,
@@ -241,6 +296,7 @@ Deno.serve(async (req) => {
       rating: koRes.rating ?? fgRes.rating,
       total: koRes.total || fgRes.total || reviews.length,
       provider: 'live',
+      sources: { google: reviews.length, naver: naverPosts.length },
     }
 
     // 6) 저장(upsert) — 요약·번역 중 하나라도 생성됐을 때만 (빈 캐시 방지)
@@ -253,6 +309,7 @@ Deno.serve(async (req) => {
           reviews: out.reviews,
           rating: out.rating,
           total: out.total,
+          sources: out.sources,
           updated_at: new Date().toISOString(),
         },
         { onConflict: 'place_key,lang' },

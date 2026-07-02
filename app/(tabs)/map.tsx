@@ -834,6 +834,11 @@ export default function MapScreen() {
                   {insights.provider === 'mock' && <FallbackBadge label="Sample" />}
                 </View>
                 <Text style={ss.aiSummaryText}>{insights.summary}</Text>
+                {insights.sources && (
+                  <Text style={ss.aiSummarySrc}>
+                    Google {insights.sources.google} · Naver blog {insights.sources.naver}
+                  </Text>
+                )}
               </View>
             ) : null}
             <View style={ss.reviewRow}>
@@ -1178,6 +1183,7 @@ const ss = StyleSheet.create({
   aiSummaryHead: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   aiSummaryTitle: { fontSize: 12, fontWeight: '800', color: palette.blue[50], flex: 1 },
   aiSummaryText: { fontSize: 12.5, lineHeight: 18, color: palette.zinc[700] },
+  aiSummarySrc: { fontSize: 10.5, color: palette.zinc[400] },
   reviewRow: { flexDirection: 'row', gap: 10 },
   reviewCard: {
     flex: 1,
