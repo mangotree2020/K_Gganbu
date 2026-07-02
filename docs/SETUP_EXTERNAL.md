@@ -142,19 +142,23 @@ SMS 실비(~160원/건) 방어. **Auth → Rate Limits**로 총량 상한:
 
 ---
 
-## Admin 기본형 (파트너 쿠폰 등록) — 백엔드 primitive
+## 파트너 Admin 웹 경량판 (REQ-ADM-1·2·3 — 코드 완료 2026-07-03)
 
-> Admin UI는 **별도 앱/대시보드**(이 RN 소비자 앱 저장소 밖). 그 핵심 백엔드인 파트너 쿠폰
-> 등록 API는 이 저장소의 `partner-coupon` Edge Function으로 제공한다.
+> Admin UI가 **`admin-web` Edge Function으로 서빙되는 단일 페이지 웹**으로 구현됨(별도 호스팅 불필요).
+> URL: `https://ltdajglszqkgneegjryb.supabase.co/functions/v1/admin-web` (모바일 브라우저 OK — 매장 직원 QR 검증용)
+> 기능: 파트너 선택/등록 · 쿠폰 등록/목록 · QR 검증(카메라 스캔+수동) · 쿠폰별 발급/사용 통계.
 
-1. 공유 시크릿 설정 후 배포:
+1. **공유 시크릿 설정(유일한 잔여 설정)** — 페이지는 공개지만 모든 API가 이 키 없이는 거부(503/401):
    ```bash
-   supabase secrets set ADMIN_API_KEY=...
-   supabase functions deploy partner-coupon
+   supabase secrets set ADMIN_API_KEY="$(openssl rand -hex 24)"
+   # 생성된 키를 파트너 운영 담당자에게만 전달 (Admin 페이지 접속 키)
    ```
-2. Admin 앱은 `x-admin-key` 헤더로 호출 — `action: 'register'`(쿠폰 생성) / `'list'`(파트너 쿠폰 목록). 미설정 시 503으로 비활성.
+2. 백엔드: `partner-coupon`(actions: partners/partner_create/register/list/stats) + `coupon`(redeem).
+   **보안 변경(2026-07-03)**: `coupon`의 `redeem`(사용 처리)도 `x-admin-key` 필수 — 사용자가 매장
+   방문 없이 자기 쿠폰을 자가 소멸시키는 경로 차단(§22). 앱의 발급(issue) 경로는 영향 없음.
 
-**검증**: `register`로 활성 파트너 쿠폰 생성 → 앱 쿠폰 탭에 노출 확인. 비활성 파트너/키 불일치 시 거부.
+**검증**: Admin 페이지에서 키 입력 → 파트너 등록 → 쿠폰 등록 → 앱 CouTix에 노출 → 앱에서 QR 발급 →
+Admin QR 검증 탭에서 스캔 → "사용 처리 완료" + 통계 탭 사용 수 증가 + `analytics_events` 퍼널 완성 확인.
 
 ## LINE 로그인 (커스텀 — Supabase 네이티브 미지원)
 

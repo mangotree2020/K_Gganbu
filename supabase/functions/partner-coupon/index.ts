@@ -21,8 +21,10 @@ function json(body: unknown, status = 200) {
 }
 
 type RegisterBody = {
-  action: 'register' | 'list'
-  partner_id: string
+  action: 'register' | 'list' | 'partners' | 'partner_create' | 'stats'
+  partner_id?: string
+  name?: string
+  contact?: string
   title_i18n?: Record<string, string>
   discount_type?: 'percentage' | 'fixed' | 'freebie'
   discount_value?: number | null
@@ -44,9 +46,32 @@ Deno.serve(async (req) => {
 
     const body: RegisterBody = await req.json()
     const { action, partner_id } = body
-    if (!partner_id) return json({ error: 'partner_id는 필수입니다' }, 400)
 
     const admin = createClient(SUPABASE_URL, SERVICE_ROLE)
+
+    // ── 파트너 목록 (partner_id 불필요) ──
+    if (action === 'partners') {
+      const { data, error } = await admin
+        .from('partners')
+        .select('id, name, contact, status')
+        .order('name')
+      if (error) return json({ error: error.message }, 500)
+      return json({ partners: data ?? [] })
+    }
+
+    // ── 파트너 등록 (partner_id 불필요) ──
+    if (action === 'partner_create') {
+      if (!body.name) return json({ error: 'name은 필수입니다' }, 400)
+      const { data, error } = await admin
+        .from('partners')
+        .insert({ name: body.name, contact: body.contact ?? null, status: 'active' })
+        .select('id')
+        .single()
+      if (error) return json({ error: error.message }, 500)
+      return json({ id: data.id }, 201)
+    }
+
+    if (!partner_id) return json({ error: 'partner_id는 필수입니다' }, 400)
 
     // 파트너 존재·활성 확인
     const { data: partner } = await admin
@@ -66,6 +91,40 @@ Deno.serve(async (req) => {
         .order('created_at', { ascending: false })
       if (error) return json({ error: error.message }, 500)
       return json({ coupons: data ?? [] })
+    }
+
+    // ── 통계: 쿠폰별 발급/사용 수 + 최근 사용 로그 (REQ-ADM-3, 스탬프 송객 리포트 근거) ──
+    if (action === 'stats') {
+      const { data: coupons, error } = await admin
+        .from('coupons')
+        .select('id, title_i18n')
+        .eq('partner_id', partner_id)
+      if (error) return json({ error: error.message }, 500)
+      const ids = (coupons ?? []).map((c) => c.id)
+      if (!ids.length) return json({ stats: [], recent: [] })
+
+      const { data: issues } = await admin
+        .from('coupon_issues')
+        .select('coupon_id, status, used_at')
+        .in('coupon_id', ids)
+      const byId: Record<string, { issued: number; used: number }> = {}
+      for (const i of issues ?? []) {
+        const s = (byId[i.coupon_id] ??= { issued: 0, used: 0 })
+        s.issued++
+        if (i.status === 'used') s.used++
+      }
+      const stats = (coupons ?? []).map((c) => ({
+        coupon_id: c.id,
+        title: c.title_i18n?.ko ?? c.title_i18n?.en ?? c.id,
+        issued: byId[c.id]?.issued ?? 0,
+        used: byId[c.id]?.used ?? 0,
+      }))
+      const recent = (issues ?? [])
+        .filter((i) => i.status === 'used' && i.used_at)
+        .sort((a, b) => (a.used_at! < b.used_at! ? 1 : -1))
+        .slice(0, 20)
+        .map((i) => ({ coupon_id: i.coupon_id, used_at: i.used_at }))
+      return json({ stats, recent })
     }
 
     // ── 등록: 신규 쿠폰 생성 ──
