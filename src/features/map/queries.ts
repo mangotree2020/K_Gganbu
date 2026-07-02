@@ -93,18 +93,36 @@ const MOCK_POIS: Poi[] = [
 // POI 결과 — provider로 실데이터(tourapi)/폴백(mock) 구분 (배지 표시용)
 export type PoiResult = { pois: Poi[]; provider: 'tourapi' | 'mock' }
 
+// mock 폴백이 24h 캐시에 고착되는 것 방지 — mock이면 30초마다 재시도, 실데이터 오면 중단.
+// (일시적 네트워크 실패로 홈/지도가 하루 종일 샘플 데이터에 묶이는 버그의 근본 수정)
+const retryWhileMock = (q: { state: { data?: PoiResult } }) =>
+  q.state.data?.provider === 'mock' ? 30_000 : false
+
 export function usePlaces(lang = 'en', rows = 12) {
   return useQuery({
     queryKey: ['places', lang, rows],
     staleTime: 24 * 60 * 60 * 1000, // 24h 캐시 (PLANNING §17)
+    refetchInterval: retryWhileMock,
     queryFn: async (): Promise<PoiResult> => {
+      // 실패 시: 마지막 성공 결과(MMKV) → 없으면 mock
+      const offlineFallback = (): PoiResult => {
+        const raw = storage.getString(`home:pois:${lang}`)
+        if (raw) {
+          try {
+            return { pois: JSON.parse(raw) as Poi[], provider: 'tourapi' }
+          } catch {
+            // 캐시 손상 — mock으로
+          }
+        }
+        return { pois: MOCK_POIS, provider: 'mock' }
+      }
       try {
         const { data, error } = await supabase.functions.invoke('places', {
           body: { lang, areaCode: 6, rows },
         })
         if (error) throw error
         const places = (data?.places ?? []) as Record<string, string>[]
-        if (!places.length) return { pois: MOCK_POIS, provider: 'mock' }
+        if (!places.length) return offlineFallback()
         const pois = places
           .filter((p) => p.imageUrl) // 이미지 있는 항목 우선
           .map((p) => ({
@@ -117,9 +135,10 @@ export function usePlaces(lang = 'en', rows = 12) {
             tel: p.tel ?? null,
             cat: toCat(p.contentTypeId),
           }))
+        storage.set(`home:pois:${lang}`, JSON.stringify(pois))
         return { pois, provider: 'tourapi' }
       } catch {
-        return { pois: MOCK_POIS, provider: 'mock' }
+        return offlineFallback()
       }
     },
   })
@@ -134,6 +153,7 @@ export function useMapPois(lang = 'en', rows = 20, contentTypeId?: string) {
   return useQuery({
     queryKey: ['map-pois', lang, rows, contentTypeId ?? 'all'],
     staleTime: 24 * 60 * 60 * 1000,
+    refetchInterval: retryWhileMock, // mock 고착 방지 — 네트워크 복구 시 자동 실데이터 전환
     placeholderData: keepPreviousData, // 카테고리 전환 시 이전 결과 유지(깜빡임 방지)
     queryFn: async (): Promise<PoiResult> => {
       // 네트워크 실패 시: 마지막 성공 결과(실데이터) → 없으면 mock
