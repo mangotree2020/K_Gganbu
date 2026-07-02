@@ -142,23 +142,35 @@ SMS 실비(~160원/건) 방어. **Auth → Rate Limits**로 총량 상한:
 
 ---
 
-## 파트너 Admin 웹 경량판 (REQ-ADM-1·2·3 — 코드 완료 2026-07-03)
+## QR 랜딩·Admin 호스팅 (REQ-ADM-1·2·3, REQ-CR-4 — 정적 파일 준비 완료 2026-07-03)
 
-> Admin UI가 **`admin-web` Edge Function으로 서빙되는 단일 페이지 웹**으로 구현됨(별도 호스팅 불필요).
-> URL: `https://ltdajglszqkgneegjryb.supabase.co/functions/v1/admin-web` (모바일 브라우저 OK — 매장 직원 QR 검증용)
-> 기능: 파트너 선택/등록 · 쿠폰 등록/목록 · QR 검증(카메라 스캔+수동) · 쿠폰별 발급/사용 통계.
+> **플랫폼 제약(실측)**: Supabase는 Edge Function·Storage 공개 URL의 HTML 응답을
+> `text/plain + CSP sandbox`로 강제(피싱 방지) → supabase.co 도메인에서 브라우저 페이지 서빙 불가.
+> 따라서 브라우저용 페이지 2종은 repo `web/` 폴더의 정적 파일로 두고 **외부 정적 호스팅**에 배포한다.
 
-1. **공유 시크릿 설정(유일한 잔여 설정)** — 페이지는 공개지만 모든 API가 이 키 없이는 거부(503/401):
+- `web/admin.html` — 파트너 Admin(쿠폰 등록·QR 검증 카메라 스캔·통계). 페이지는 공개지만
+  모든 API가 `x-admin-key` 없이는 거부. 접속 시 Admin Key + Supabase anon key(공개 키) 1회 입력.
+- `web/landing.html` — 터미널·선내 QR 랜딩(브라우저 언어별 en/ko/ja/zh, 스토어 링크).
+
+**배포 절차**
+
+1. GitHub Pages/Netlify/Vercel 등에 `web/` 두 파일 업로드(무료 티어 충분, https 필수 — 카메라 권한).
+2. 시크릿 연결(선택) — 함수 URL을 그대로 쓰는 리다이렉트:
    ```bash
-   supabase secrets set ADMIN_API_KEY="$(openssl rand -hex 24)"
-   # 생성된 키를 파트너 운영 담당자에게만 전달 (Admin 페이지 접속 키)
+   supabase secrets set LANDING_URL="https://<호스트>/landing.html"    # landing 함수 302 목적지
+   supabase secrets set ADMIN_WEB_URL="https://<호스트>/admin.html"    # admin-web 함수 302 목적지
+   supabase secrets set ADMIN_API_KEY="$(openssl rand -hex 24)"        # Admin API 게이트(필수)
    ```
-2. 백엔드: `partner-coupon`(actions: partners/partner_create/register/list/stats) + `coupon`(redeem).
-   **보안 변경(2026-07-03)**: `coupon`의 `redeem`(사용 처리)도 `x-admin-key` 필수 — 사용자가 매장
-   방문 없이 자기 쿠폰을 자가 소멸시키는 경로 차단(§22). 앱의 발급(issue) 경로는 영향 없음.
+3. **QR에는 함수 URL을 인쇄**(채널 계측이 목적):
+   `https://ltdajglszqkgneegjryb.supabase.co/functions/v1/landing?ch=<채널명>`
+   → `landing_events`에 ch/언어/UA 기록 후 랜딩으로 302(±ch 유지). LANDING_URL 미설정 시 Play 스토어 폴백.
+   ✅ 검증 완료(2026-07-03): 302 + 실기기 방문 계측(ch=device-test, ko-KR) 적재 확인.
 
-**검증**: Admin 페이지에서 키 입력 → 파트너 등록 → 쿠폰 등록 → 앱 CouTix에 노출 → 앱에서 QR 발급 →
-Admin QR 검증 탭에서 스캔 → "사용 처리 완료" + 통계 탭 사용 수 증가 + `analytics_events` 퍼널 완성 확인.
+**백엔드(배포됨)**: `partner-coupon`(partners/partner_create/register/list/stats) + `coupon`(redeem —
+`x-admin-key` 필수, §22: 사용자 자가 소멸 차단. 앱 발급 경로 영향 없음).
+
+**E2E 검증 시나리오(호스팅+ADMIN_API_KEY 설정 후)**: Admin에서 파트너·쿠폰 등록 → 앱 CouTix 노출 →
+앱 QR 발급 → Admin QR 스캔 → "사용 처리 완료" + 통계 증가 + `analytics_events` 퍼널 완성.
 
 ## LINE 로그인 (커스텀 — Supabase 네이티브 미지원)
 

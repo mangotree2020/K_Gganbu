@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<!--
+  K-Gganbu QR 랜딩 (PRD REQ-CR-4) — 터미널·선내 안내지 QR 도착 페이지.
+  Supabase 도메인은 HTML 렌더를 차단(text/plain 강제)하므로 외부 정적 호스팅에 배포한다
+  (절차: docs/SETUP_EXTERNAL.md "QR 랜딩·Admin 호스팅"). QR은 landing Edge Function URL을
+  가리키고, 함수가 ?ch= 채널을 계측한 뒤 이 페이지로 302 리다이렉트한다(?ch= 유지).
+-->
+<html>
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>K-Gganbu</title>
+<style>
+  * { box-sizing:border-box; font-family:-apple-system,'Apple SD Gothic Neo','Noto Sans KR',sans-serif; margin:0; }
+  body { min-height:100vh; display:flex; align-items:center; justify-content:center;
+    background:linear-gradient(160deg,#0EA5E9,#0284C7 55%,#1D4ED8); color:#fff; padding:24px; }
+  .card { max-width:420px; text-align:center; }
+  .logo { font-size:64px; }
+  h1 { font-size:26px; margin:14px 0 10px; letter-spacing:-0.5px; }
+  p { font-size:15px; line-height:1.6; opacity:.92; }
+  .hint { font-size:12px; opacity:.75; margin-top:10px; }
+  a.btn { display:block; margin-top:14px; padding:15px; border-radius:999px; text-decoration:none;
+    font-weight:800; font-size:16px; }
+  .primary { background:#fff; color:#0369A1; }
+  .ghost { background:rgba(255,255,255,.16); color:#fff; border:1px solid rgba(255,255,255,.35); }
+</style>
+</head>
+<body>
+  <div class="card">
+    <div class="logo">🚢</div>
+    <h1 id="title">K-Gganbu</h1>
+    <p id="sub"></p>
+    <a class="btn primary" id="open" href="travel-app://"></a>
+    <a class="btn ghost" id="store" href="#"></a>
+    <div class="hint" id="hint"></div>
+  </div>
+<script>
+  var PLAY = 'https://play.google.com/store/apps/details?id=com.mangonw.gganbu';
+  var APPSTORE = 'https://apps.apple.com/app/k-gganbu/id0000000000';
+  var COPY = {
+    en: { title: 'Your Korean best friend on trip',
+      sub: 'Live interpreter · Naver+Google map · AI guide · Coupons — all in one app for Busan.',
+      open: 'Open the app', store: 'Get the app', hint: 'Free · Works without sign-up · 5 languages' },
+    ko: { title: '여행 중 곁에 있는 한국인 친구',
+      sub: '실시간 통역 · 네이버+구글 지도 · AI 가이드 · 쿠폰 — 부산 여행 올인원 앱.',
+      open: '앱 열기', store: '앱 받기', hint: '무료 · 가입 없이 사용 · 5개 언어' },
+    ja: { title: '旅の間そばにいる韓国人の友だち',
+      sub: 'リアルタイム通訳・Naver+Googleマップ・AIガイド・クーポン — 釜山旅行オールインワン。',
+      open: 'アプリを開く', store: 'アプリを入手', hint: '無料・登録不要・5言語対応' },
+    zh: { title: '旅途中陪伴你的韩国朋友',
+      sub: '实时翻译 · Naver+Google地图 · AI向导 · 优惠券 — 釜山旅行一站式应用。',
+      open: '打开应用', store: '获取应用', hint: '免费 · 无需注册 · 支持5种语言' }
+  };
+  var l = (navigator.language || 'en').toLowerCase();
+  var c = l.indexOf('ko') === 0 ? COPY.ko : l.indexOf('ja') === 0 ? COPY.ja : l.indexOf('zh') === 0 ? COPY.zh : COPY.en;
+  var ch = new URLSearchParams(location.search).get('ch') || '';
+  document.getElementById('title').textContent = 'K-Gganbu — ' + c.title;
+  document.getElementById('sub').textContent = c.sub;
+  document.getElementById('open').textContent = c.open;
+  var store = document.getElementById('store');
+  store.textContent = c.store;
+  store.href = /iPhone|iPad/i.test(navigator.userAgent) ? APPSTORE : PLAY;
+  document.getElementById('hint').textContent = c.hint + (ch ? ' · via ' + ch : '');
+</script>
+</body>
+</html>
