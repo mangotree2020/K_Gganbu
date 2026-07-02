@@ -13,7 +13,12 @@ const cors = {
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!
 const SERVICE_ROLE = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
-const TTL_MS = 7 * 24 * 60 * 60 * 1000 // 7일
+// 캐시 최신성 정책(2단 TTL + stale-while-revalidate):
+//  - 7일 미만: 신선 — 캐시 그대로 반환
+//  - 7~30일: 캐시를 즉시 반환하되 백그라운드에서 재생성(사용자 대기 0, 텀 단위 자동 갱신)
+//  - 30일 이상/미존재: 동기 재생성(방문이 뜸했던 장소)
+const FRESH_MS = 7 * 24 * 60 * 60 * 1000
+const STALE_MS = 30 * 24 * 60 * 60 * 1000
 
 type Review = {
   who: string
@@ -209,6 +214,85 @@ async function summarize(
   }
 }
 
+// 수집→번역→요약→저장 전체 파이프라인 — 동기 응답과 백그라운드 갱신이 공용
+async function generateAndStore(
+  admin: ReturnType<typeof createClient>,
+  placeId: string,
+  name: string,
+  lang: string,
+  key: string,
+): Promise<Insights | null> {
+  // 리뷰 수집 — Google(ko+앱 언어) + 네이버 블로그(한국인 관점, 협찬 필터) 병렬
+  const [koRes, fgRes, naverPosts] = await Promise.all([
+    fetchDetails(placeId, key, 'ko'),
+    fetchDetails(placeId, key, base(lang) === 'ko' ? 'en' : lang),
+    fetchNaverBlog(name),
+  ])
+  const seen = new Set<string>()
+  const merged: GReview[] = []
+  for (const r of [...koRes.reviews, ...fgRes.reviews]) {
+    const k = `${r.author_name}|${r.time}`
+    if (seen.has(k) || !r.text?.trim()) continue
+    seen.add(k)
+    merged.push(r)
+  }
+  if (!merged.length && !naverPosts.length) return null
+
+  const reviews: Review[] = merged.map((r) => {
+    const rl = r.original_language ?? r.language ?? ''
+    return {
+      who: r.author_name,
+      flag: flagOf(rl),
+      score: r.rating,
+      text: r.text.trim(),
+      translated: null,
+      time: r.relative_time_description,
+      lang: rl,
+    }
+  })
+
+  // 비대상 언어 리뷰 일괄 번역 (1회 API 호출)
+  const needIdx = reviews
+    .map((r, i) => (base(r.lang) !== base(lang) ? i : -1))
+    .filter((i) => i >= 0)
+  const translations = await translateBatch(
+    needIdx.map((i) => reviews[i].text),
+    lang,
+  )
+  if (translations) needIdx.forEach((ri, j) => (reviews[ri].translated = translations[j]))
+
+  // AI 요약 — Google+네이버 양쪽 소스 종합, 홍보성 제외
+  const summary = await summarize(name, reviews, naverPosts, lang)
+
+  const out: Insights = {
+    summary,
+    reviews,
+    rating: koRes.rating ?? fgRes.rating,
+    total: koRes.total || fgRes.total || reviews.length,
+    provider: 'live',
+    sources: { google: reviews.length, naver: naverPosts.length },
+    placeKey: placeId,
+  }
+
+  // 저장(upsert) — 요약·번역 중 하나라도 생성됐을 때만 (빈 캐시 방지)
+  if (summary || translations) {
+    await admin.from('place_review_insights').upsert(
+      {
+        place_key: placeId,
+        lang,
+        summary: out.summary,
+        reviews: out.reviews,
+        rating: out.rating,
+        total: out.total,
+        sources: out.sources,
+        updated_at: new Date().toISOString(),
+      },
+      { onConflict: 'place_key,lang' },
+    )
+  }
+  return out
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: cors })
   try {
@@ -230,7 +314,7 @@ Deno.serve(async (req) => {
       ?.place_id
     if (!placeId) return json(mockInsights(lang))
 
-    // 2) 캐시 조회 (장소×언어, TTL 7일)
+    // 2) 캐시 조회 — 2단 TTL(신선 7일 / stale 30일) + stale-while-revalidate
     const admin = createClient(SUPABASE_URL, SERVICE_ROLE)
     const { data: cached } = await admin
       .from('place_review_insights')
@@ -238,87 +322,32 @@ Deno.serve(async (req) => {
       .eq('place_key', placeId)
       .eq('lang', lang)
       .maybeSingle()
-    if (cached && Date.now() - new Date(cached.updated_at).getTime() < TTL_MS) {
-      return json({
-        summary: cached.summary,
-        reviews: cached.reviews,
-        rating: cached.rating,
-        total: cached.total,
-        provider: 'cache',
-        sources: cached.sources ?? undefined,
-        placeKey: placeId,
-      } satisfies Insights)
-    }
-
-    // 3) 리뷰 수집 — Google(ko+앱 언어) + 네이버 블로그(한국인 관점, 협찬 필터) 병렬
-    const [koRes, fgRes, naverPosts] = await Promise.all([
-      fetchDetails(placeId, key, 'ko'),
-      fetchDetails(placeId, key, base(lang) === 'ko' ? 'en' : lang),
-      fetchNaverBlog(name),
-    ])
-    const seen = new Set<string>()
-    const merged: GReview[] = []
-    for (const r of [...koRes.reviews, ...fgRes.reviews]) {
-      const k = `${r.author_name}|${r.time}`
-      if (seen.has(k) || !r.text?.trim()) continue
-      seen.add(k)
-      merged.push(r)
-    }
-    if (!merged.length && !naverPosts.length) return json(mockInsights(lang))
-
-    const reviews: Review[] = merged.map((r) => {
-      const rl = r.original_language ?? r.language ?? ''
-      return {
-        who: r.author_name,
-        flag: flagOf(rl),
-        score: r.rating,
-        text: r.text.trim(),
-        translated: null,
-        time: r.relative_time_description,
-        lang: rl,
+    if (cached) {
+      const age = Date.now() - new Date(cached.updated_at).getTime()
+      if (age < STALE_MS) {
+        // 7~30일 구간이면 백그라운드 재생성 예약(응답은 기다리지 않음) — 최신성 자동 확보
+        if (age >= FRESH_MS) {
+          // deno-lint-ignore no-explicit-any
+          const rt = (globalThis as any).EdgeRuntime
+          const refresh = generateAndStore(admin, placeId, name, lang, key).catch(() => null)
+          if (rt?.waitUntil) rt.waitUntil(refresh)
+        }
+        return json({
+          summary: cached.summary,
+          reviews: cached.reviews,
+          rating: cached.rating,
+          total: cached.total,
+          provider: 'cache',
+          sources: cached.sources ?? undefined,
+          placeKey: placeId,
+        } satisfies Insights)
       }
-    })
-
-    // 4) 비대상 언어 리뷰 일괄 번역 (1회 API 호출)
-    const needIdx = reviews
-      .map((r, i) => (base(r.lang) !== base(lang) ? i : -1))
-      .filter((i) => i >= 0)
-    const translations = await translateBatch(
-      needIdx.map((i) => reviews[i].text),
-      lang,
-    )
-    if (translations) needIdx.forEach((ri, j) => (reviews[ri].translated = translations[j]))
-
-    // 5) AI 요약 — Google+네이버 양쪽 소스 종합, 홍보성 제외
-    const summary = await summarize(name, reviews, naverPosts, lang)
-
-    const out: Insights = {
-      summary,
-      reviews,
-      rating: koRes.rating ?? fgRes.rating,
-      total: koRes.total || fgRes.total || reviews.length,
-      provider: 'live',
-      sources: { google: reviews.length, naver: naverPosts.length },
-      placeKey: placeId,
+      // 30일 초과 — 아래에서 동기 재생성
     }
 
-    // 6) 저장(upsert) — 요약·번역 중 하나라도 생성됐을 때만 (빈 캐시 방지)
-    if (summary || translations) {
-      await admin.from('place_review_insights').upsert(
-        {
-          place_key: placeId,
-          lang,
-          summary: out.summary,
-          reviews: out.reviews,
-          rating: out.rating,
-          total: out.total,
-          sources: out.sources,
-          updated_at: new Date().toISOString(),
-        },
-        { onConflict: 'place_key,lang' },
-      )
-    }
-    return json(out)
+    // 3) 캐시 없음/만료 — 동기 생성
+    const out = await generateAndStore(admin, placeId, name, lang, key)
+    return json(out ?? mockInsights(lang))
   } catch (e) {
     return json({ ...mockInsights('en'), error: String(e) })
   }
