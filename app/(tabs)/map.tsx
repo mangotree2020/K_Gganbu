@@ -250,7 +250,10 @@ export default function MapScreen() {
   const t = useT()
   const lang = useLocaleStore((s) => s.lang) // 지도 라벨·POI 언어
   const [provider, setProvider] = useState<ProviderId>('blend')
-  const [blendOpacity, setBlendOpacity] = useState(0.5)
+  // Blend 위치: 0 = Naver 완전 표시(좌) ~ 1 = Google 완전 표시(우) — 상단 토글 순서와 동일
+  const [blendPos, setBlendPos] = useState(0.5)
+  // Blend에서 두 지도 마커 동시 표시(테두리색으로 소스 구분: Naver 초록/Google 파랑)
+  const [dualMarkers, setDualMarkers] = useState(false)
   const [selected, setSelected] = useState<string | null>(null)
   const [mapError, setMapError] = useState<string | null>(null)
   const [routeInfo, setRouteInfo] = useState<{
@@ -472,6 +475,33 @@ export default function MapScreen() {
 
   const showGoogle = provider === 'google' || provider === 'blend'
   const showNaver = provider === 'naver' || provider === 'blend'
+  const isBlend = provider === 'blend'
+
+  // Blend 레이어 투명도 — Android WebView는 RN View opacity를 무시하므로
+  // NaverMap 내부 CSS opacity(setOpacity 핸들)로 제어한다
+  const naverOpacity = isBlend ? 1 - blendPos : 1
+  const naverOpacityRef = useRef(naverOpacity)
+  useEffect(() => {
+    naverOpacityRef.current = naverOpacity
+    naverRef.current?.setOpacity(naverOpacity)
+  }, [naverOpacity])
+
+  // Blend 마커: 기본은 상단(Naver)에만 표시(중복 방지).
+  // 동시 표시 ON이면 양쪽 모두 표시하되 테두리색으로 소스를 구분한다.
+  const naverMarkers = useMemo(
+    () =>
+      isBlend && dualMarkers ? mapMarkers.map((m) => ({ ...m, outline: '#03C75A' })) : mapMarkers,
+    [mapMarkers, isBlend, dualMarkers],
+  )
+  const googleMarkers = useMemo(
+    () =>
+      !isBlend
+        ? mapMarkers
+        : dualMarkers
+          ? mapMarkers.map((m) => ({ ...m, outline: '#4285F4' }))
+          : [],
+    [mapMarkers, isBlend, dualMarkers],
+  )
 
   // 외부 지도 앱 딥링크 (현지인=Naver / 외국인=Google)
   // Naver: 공식 앱 스킴 nmap://place(좌표+이름 → 정확한 장소 핀) → 미설치 시 웹 지도 검색 폴백
@@ -502,7 +532,7 @@ export default function MapScreen() {
             ref={googleRef}
             latitude={coords.latitude}
             longitude={coords.longitude}
-            markers={mapMarkers}
+            markers={googleMarkers}
             language={lang}
             selectedId={selectedId ?? undefined}
             onMarkerPress={(id) => {
@@ -516,25 +546,27 @@ export default function MapScreen() {
           />
         )}
 
-        {/* Naver (상단 레이어 — Blend 시 투명도 적용) */}
+        {/* Naver (상단 레이어 — Blend 시 WebView 내부 CSS 투명도로 겹쳐 비교) */}
         {showNaver && (
           <View
-            style={[StyleSheet.absoluteFill, provider === 'blend' && { opacity: blendOpacity }]}
-            pointerEvents={provider === 'blend' && blendOpacity < 0.5 ? 'none' : 'auto'}>
+            style={StyleSheet.absoluteFill}
+            pointerEvents={isBlend && blendPos > 0.5 ? 'none' : 'auto'}>
             <NaverMap
               ref={naverRef}
               latitude={coords.latitude}
               longitude={coords.longitude}
-              markers={mapMarkers}
+              markers={naverMarkers}
               language={lang}
               selectedId={selectedId ?? undefined}
               onMarkerPress={(id) => {
                 const p = places.find((x) => x.id === id)
                 if (p) selectPlace(p)
               }}
-              onReady={() =>
+              onReady={() => {
                 naverRef.current?.setMyLocation(coords.latitude, coords.longitude, WALK_ZOOM)
-              }
+                // HTML 재생성(마커/언어 변경) 시 opacity가 초기화되므로 ready마다 재적용
+                naverRef.current?.setOpacity(naverOpacityRef.current)
+              }}
               onAuthError={(m) => setMapError(m)}
             />
           </View>
@@ -675,26 +707,46 @@ export default function MapScreen() {
           {poisMock && <FallbackBadge label="Sample places" />}
         </SafeAreaView>
 
-        {/* Blend 투명도 슬라이더 */}
-        {provider === 'blend' && (
+        {/* Blend 투명도 슬라이더 — Naver(좌) ↔ Google(우), 상단 토글 순서와 동일 */}
+        {isBlend && (
           <View style={ss.blendSlider} pointerEvents="box-none">
             <View style={ss.blendSliderInner}>
-              <View style={[ss.blendChip, { backgroundColor: '#4285F4' }]}>
-                <Text style={ss.blendChipText}>Google</Text>
+              <View style={[ss.blendChip, { backgroundColor: '#03C75A' }]}>
+                <Text style={ss.blendChipText}>Naver</Text>
               </View>
               <Slider
                 style={{ flex: 1, height: 36 }}
                 minimumValue={0}
                 maximumValue={1}
-                value={blendOpacity}
-                onValueChange={setBlendOpacity}
+                value={blendPos}
+                onValueChange={setBlendPos}
                 minimumTrackTintColor="#03C75A"
                 maximumTrackTintColor="#4285F4"
                 thumbTintColor={palette.zinc[900]}
               />
-              <View style={[ss.blendChip, { backgroundColor: '#03C75A' }]}>
-                <Text style={ss.blendChipText}>Naver</Text>
+              <View style={[ss.blendChip, { backgroundColor: '#4285F4' }]}>
+                <Text style={ss.blendChipText}>Google</Text>
               </View>
+            </View>
+            {/* 마커 동시 표시 토글 — ON이면 두 지도 마커를 함께, 테두리색으로 소스 구분 */}
+            <View style={ss.blendMarkerRow}>
+              <Pressable
+                onPress={() => setDualMarkers((v) => !v)}
+                style={[ss.blendMarkerBtn, dualMarkers && ss.blendMarkerBtnOn]}
+                hitSlop={6}>
+                <Icon name="layers" size={13} color={dualMarkers ? '#fff' : palette.zinc[600]} />
+                <Text style={[ss.blendMarkerText, dualMarkers && { color: '#fff' }]}>
+                  {t('map.blendMarkers')}
+                </Text>
+              </Pressable>
+              {dualMarkers && (
+                <View style={ss.blendLegend}>
+                  <View style={[ss.blendLegendDot, { borderColor: '#03C75A' }]} />
+                  <Text style={ss.blendLegendText}>N</Text>
+                  <View style={[ss.blendLegendDot, { borderColor: '#4285F4' }]} />
+                  <Text style={ss.blendLegendText}>G</Text>
+                </View>
+              )}
             </View>
           </View>
         )}
@@ -1079,6 +1131,37 @@ const ss = StyleSheet.create({
   },
   blendChip: { borderRadius: 999, paddingHorizontal: 8, paddingVertical: 3 },
   blendChipText: { color: '#fff', fontSize: 10, fontWeight: '800' },
+  blendMarkerRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 6 },
+  blendMarkerBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    backgroundColor: 'rgba(255,255,255,.96)',
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    ...shadows.card,
+  },
+  blendMarkerBtnOn: { backgroundColor: palette.zinc[900] },
+  blendMarkerText: { fontSize: 11, fontWeight: '700', color: palette.zinc[600] },
+  blendLegend: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: 'rgba(255,255,255,.96)',
+    borderRadius: 999,
+    paddingHorizontal: 8,
+    paddingVertical: 5,
+    ...shadows.card,
+  },
+  blendLegendDot: {
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+    borderWidth: 3,
+    backgroundColor: palette.coral[50],
+  },
+  blendLegendText: { fontSize: 10, fontWeight: '800', color: palette.zinc[600], marginRight: 2 },
 
   sheet: {
     backgroundColor: '#fff',

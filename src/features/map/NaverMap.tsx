@@ -11,6 +11,7 @@ export type NaverMarker = {
   lng: number
   color: string
   label?: string
+  outline?: string // 마커 테두리색 — Blend 동시 표시 시 소스 구분용(기본 흰색)
 }
 
 type Props = {
@@ -32,6 +33,9 @@ export type NaverMapHandle = {
   clearRoute: () => void
   setMapType: (type: MapType) => void
   setMyLocation: (lat: number, lng: number, zoom?: number) => void
+  // Blend 레이어 투명도 — RN View opacity는 Android WebView에서 무시되므로
+  // WebView 내부 CSS(#map opacity)로 제어한다
+  setOpacity: (v: number) => void
 }
 
 const CLIENT_ID = process.env.EXPO_PUBLIC_NAVER_MAPS_CLIENT_ID ?? ''
@@ -56,7 +60,7 @@ function buildHtml(lat: number, lng: number, markers: NaverMarker[], lang: Naver
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-  <style>html,body,#map{margin:0;padding:0;width:100%;height:100%;}</style>
+  <style>html,body{margin:0;padding:0;width:100%;height:100%;background:transparent;}#map{margin:0;padding:0;width:100%;height:100%;}</style>
 </head>
 <body>
   <div id="map"></div>
@@ -104,7 +108,7 @@ function buildHtml(lat: number, lng: number, markers: NaverMarker[], lang: Naver
           position: new naver.maps.LatLng(p.lat, p.lng),
           map: map,
           icon: {
-            content: '<div style="width:22px;height:22px;border-radius:50%;background:'+p.color+';border:3px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.4)"></div>',
+            content: '<div style="width:22px;height:22px;border-radius:50%;background:'+p.color+';border:3px solid '+(p.outline||'#fff')+';box-shadow:0 1px 4px rgba(0,0,0,.4)"></div>',
             anchor: new naver.maps.Point(11, 11),
           },
         });
@@ -112,6 +116,8 @@ function buildHtml(lat: number, lng: number, markers: NaverMarker[], lang: Naver
         markers.push(mk);
       });
     }
+    // Blend 레이어 투명도 — 지도 전체(#map)에 CSS opacity 적용
+    function setLayerOpacity(v){ var el=document.getElementById('map'); if(el) el.style.opacity=v; }
     function moveTo(lat, lng, zoom){
       if(!map) return;
       map.morph(new naver.maps.LatLng(lat, lng), zoom || map.getZoom());
@@ -168,6 +174,9 @@ export const NaverMap = forwardRef<NaverMapHandle, Props>(function NaverMap(
         `setMyLocation(${lat}, ${lng}, ${zoom ?? 'undefined'}); true;`,
       )
     },
+    setOpacity: (v) => {
+      webRef.current?.injectJavaScript(`setLayerOpacity(${v}); true;`)
+    },
   }))
 
   const onMessage = (e: WebViewMessageEvent) => {
@@ -190,7 +199,7 @@ export const NaverMap = forwardRef<NaverMapHandle, Props>(function NaverMap(
         onMessage={onMessage}
         javaScriptEnabled
         domStorageEnabled
-        style={{ flex: 1, backgroundColor: '#E5ECF2' }}
+        style={{ flex: 1, backgroundColor: 'transparent' }}
         scrollEnabled={false}
       />
     </View>

@@ -12,6 +12,7 @@ export type GoogleMarker = {
   lng: number
   color: string
   label?: string
+  outline?: string // 마커 테두리색 — Blend 동시 표시 시 소스 구분용(기본 흰색)
 }
 
 type Props = {
@@ -95,7 +96,7 @@ function buildHtml(lat: number, lng: number, markers: GoogleMarker[], lang: stri
             path: google.maps.SymbolPath.CIRCLE,
             fillColor: p.color,
             fillOpacity: 1,
-            strokeColor: '#ffffff',
+            strokeColor: p.outline || '#ffffff',
             strokeWeight: 3,
             scale: 8,
           },
