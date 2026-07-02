@@ -252,8 +252,9 @@ export default function MapScreen() {
   const [provider, setProvider] = useState<ProviderId>('blend')
   // Blend 위치: 0 = Naver 완전 표시(좌) ~ 1 = Google 완전 표시(우) — 상단 토글 순서와 동일
   const [blendPos, setBlendPos] = useState(0.5)
-  // Blend에서 두 지도 마커 동시 표시(테두리색으로 소스 구분: Naver 초록/Google 파랑)
-  const [dualMarkers, setDualMarkers] = useState(false)
+  // Blend 마커 레이어 토글 — 슬라이더 바의 Naver/Google 버튼으로 각 지도 마커 표시 제어
+  const [naverMarkersOn, setNaverMarkersOn] = useState(true)
+  const [googleMarkersOn, setGoogleMarkersOn] = useState(true)
   const [selected, setSelected] = useState<string | null>(null)
   const [mapError, setMapError] = useState<string | null>(null)
   const [routeInfo, setRouteInfo] = useState<{
@@ -486,21 +487,25 @@ export default function MapScreen() {
     naverRef.current?.setOpacity(naverOpacity)
   }, [naverOpacity])
 
-  // Blend 마커: 기본은 상단(Naver)에만 표시(중복 방지).
-  // 동시 표시 ON이면 양쪽 모두 표시하되 테두리색으로 소스를 구분한다.
+  // Blend 마커: 두 지도 모두 기본 표시(음식점 등 POI 마커를 구글에도 동일하게).
+  // 테두리색으로 소스 구분(Naver 초록/Google 파랑), 바의 Naver/Google 버튼으로 켜고 끔.
   const naverMarkers = useMemo(
     () =>
-      isBlend && dualMarkers ? mapMarkers.map((m) => ({ ...m, outline: '#03C75A' })) : mapMarkers,
-    [mapMarkers, isBlend, dualMarkers],
+      !isBlend
+        ? mapMarkers
+        : naverMarkersOn
+          ? mapMarkers.map((m) => ({ ...m, outline: '#03C75A' }))
+          : [],
+    [mapMarkers, isBlend, naverMarkersOn],
   )
   const googleMarkers = useMemo(
     () =>
       !isBlend
         ? mapMarkers
-        : dualMarkers
+        : googleMarkersOn
           ? mapMarkers.map((m) => ({ ...m, outline: '#4285F4' }))
           : [],
-    [mapMarkers, isBlend, dualMarkers],
+    [mapMarkers, isBlend, googleMarkersOn],
   )
 
   // 외부 지도 앱 딥링크 (현지인=Naver / 외국인=Google)
@@ -707,13 +712,21 @@ export default function MapScreen() {
           {poisMock && <FallbackBadge label="Sample places" />}
         </SafeAreaView>
 
-        {/* Blend 투명도 슬라이더 — Naver(좌) ↔ Google(우), 상단 토글 순서와 동일 */}
+        {/* Blend 투명도 슬라이더 — Naver(좌) ↔ Google(우), 상단 토글 순서와 동일.
+            양끝 Naver/Google 버튼 = 해당 지도 마커 표시 토글(끄면 흐려짐) */}
         {isBlend && (
           <View style={ss.blendSlider} pointerEvents="box-none">
             <View style={ss.blendSliderInner}>
-              <View style={[ss.blendChip, { backgroundColor: '#03C75A' }]}>
+              <Pressable
+                onPress={() => setNaverMarkersOn((v) => !v)}
+                hitSlop={6}
+                style={[
+                  ss.blendChip,
+                  { backgroundColor: '#03C75A' },
+                  !naverMarkersOn && ss.blendChipOff,
+                ]}>
                 <Text style={ss.blendChipText}>Naver</Text>
-              </View>
+              </Pressable>
               <Slider
                 style={{ flex: 1, height: 36 }}
                 minimumValue={0}
@@ -724,29 +737,16 @@ export default function MapScreen() {
                 maximumTrackTintColor="#4285F4"
                 thumbTintColor={palette.zinc[900]}
               />
-              <View style={[ss.blendChip, { backgroundColor: '#4285F4' }]}>
-                <Text style={ss.blendChipText}>Google</Text>
-              </View>
-            </View>
-            {/* 마커 동시 표시 토글 — ON이면 두 지도 마커를 함께, 테두리색으로 소스 구분 */}
-            <View style={ss.blendMarkerRow}>
               <Pressable
-                onPress={() => setDualMarkers((v) => !v)}
-                style={[ss.blendMarkerBtn, dualMarkers && ss.blendMarkerBtnOn]}
-                hitSlop={6}>
-                <Icon name="layers" size={13} color={dualMarkers ? '#fff' : palette.zinc[600]} />
-                <Text style={[ss.blendMarkerText, dualMarkers && { color: '#fff' }]}>
-                  {t('map.blendMarkers')}
-                </Text>
+                onPress={() => setGoogleMarkersOn((v) => !v)}
+                hitSlop={6}
+                style={[
+                  ss.blendChip,
+                  { backgroundColor: '#4285F4' },
+                  !googleMarkersOn && ss.blendChipOff,
+                ]}>
+                <Text style={ss.blendChipText}>Google</Text>
               </Pressable>
-              {dualMarkers && (
-                <View style={ss.blendLegend}>
-                  <View style={[ss.blendLegendDot, { borderColor: '#03C75A' }]} />
-                  <Text style={ss.blendLegendText}>N</Text>
-                  <View style={[ss.blendLegendDot, { borderColor: '#4285F4' }]} />
-                  <Text style={ss.blendLegendText}>G</Text>
-                </View>
-              )}
             </View>
           </View>
         )}
@@ -1130,38 +1130,8 @@ const ss = StyleSheet.create({
     ...shadows.card,
   },
   blendChip: { borderRadius: 999, paddingHorizontal: 8, paddingVertical: 3 },
+  blendChipOff: { opacity: 0.35 },
   blendChipText: { color: '#fff', fontSize: 10, fontWeight: '800' },
-  blendMarkerRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 6 },
-  blendMarkerBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 5,
-    backgroundColor: 'rgba(255,255,255,.96)',
-    borderRadius: 999,
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    ...shadows.card,
-  },
-  blendMarkerBtnOn: { backgroundColor: palette.zinc[900] },
-  blendMarkerText: { fontSize: 11, fontWeight: '700', color: palette.zinc[600] },
-  blendLegend: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    backgroundColor: 'rgba(255,255,255,.96)',
-    borderRadius: 999,
-    paddingHorizontal: 8,
-    paddingVertical: 5,
-    ...shadows.card,
-  },
-  blendLegendDot: {
-    width: 12,
-    height: 12,
-    borderRadius: 6,
-    borderWidth: 3,
-    backgroundColor: palette.coral[50],
-  },
-  blendLegendText: { fontSize: 10, fontWeight: '800', color: palette.zinc[600], marginRight: 2 },
 
   sheet: {
     backgroundColor: '#fff',
