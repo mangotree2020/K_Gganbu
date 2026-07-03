@@ -21,6 +21,7 @@ type Props = {
   markers: GoogleMarker[]
   selectedId?: string
   onMarkerPress?: (id: string) => void
+  onPoiPress?: (q: { placeId: string; lat: number; lng: number }) => void // 베이스맵 POI 아이콘 탭
   onAuthError?: (msg: string) => void
   onReady?: () => void // 지도 init 완료 시(내 위치 마커 초기 표시용)
   onViewChange?: (v: { lat: number; lng: number; zoom: number }) => void // 이동/줌 종료(idle) 시
@@ -60,12 +61,19 @@ function buildHtml(lat: number, lng: number, markers: GoogleMarker[], lang: stri
         center: { lat: ${lat}, lng: ${lng} },
         zoom: 16, // 도보 이동 기준 측척
         disableDefaultUI: true,
-        clickableIcons: false,
+        clickableIcons: true, // 베이스맵 POI 아이콘 탭 → 장소 정보 시트(RN에서 처리)
         gestureHandling: 'greedy',
         scaleControl: true, // 측척 바 표시
       });
       post({type:'ready'});
       setMarkers(${JSON.stringify(markers)});
+      // 베이스맵 POI 아이콘 탭 — 기본 InfoWindow는 막고 placeId만 RN으로 전달
+      map.addListener('click', function(e){
+        if (e.placeId) {
+          e.stop();
+          post({type:'poi', placeId: e.placeId, lat: e.latLng.lat(), lng: e.latLng.lng()});
+        }
+      });
       // 이동/줌 종료 시 현재 뷰 통지 — RN이 다른 지도와 중심·축척을 동기화(Blend 정합)
       map.addListener('idle', function(){
         var c = map.getCenter();
@@ -136,7 +144,17 @@ function buildHtml(lat: number, lng: number, markers: GoogleMarker[], lang: stri
 }
 
 export const GoogleMap = forwardRef<GoogleMapHandle, Props>(function GoogleMap(
-  { latitude, longitude, markers, onMarkerPress, onAuthError, onReady, onViewChange, language },
+  {
+    latitude,
+    longitude,
+    markers,
+    onMarkerPress,
+    onPoiPress,
+    onAuthError,
+    onReady,
+    onViewChange,
+    language,
+  },
   ref,
 ) {
   const webRef = useRef<WebView>(null)
@@ -172,6 +190,8 @@ export const GoogleMap = forwardRef<GoogleMapHandle, Props>(function GoogleMap(
     try {
       const msg = JSON.parse(e.nativeEvent.data)
       if (msg.type === 'marker' && msg.id) onMarkerPress?.(msg.id)
+      else if (msg.type === 'poi' && msg.placeId)
+        onPoiPress?.({ placeId: msg.placeId, lat: msg.lat, lng: msg.lng })
       else if (msg.type === 'ready') onReady?.()
       else if (msg.type === 'view') onViewChange?.({ lat: msg.lat, lng: msg.lng, zoom: msg.zoom })
       else if (msg.type === 'auth_error') onAuthError?.(msg.message ?? 'Google auth error')

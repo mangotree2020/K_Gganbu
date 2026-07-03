@@ -23,6 +23,7 @@ import { GoogleMap, type GoogleMapHandle } from '@/features/map/GoogleMap'
 import {
   fetchRoute,
   useMapPois,
+  lookupPlace,
   useNaverSearch,
   type LatLng,
   type NaverPoi,
@@ -256,6 +257,8 @@ export default function MapScreen() {
   const [naverMarkersOn, setNaverMarkersOn] = useState(true)
   const [googleMarkersOn, setGoogleMarkersOn] = useState(true)
   const [selected, setSelected] = useState<string | null>(null)
+  // 베이스맵 POI 탭으로 선택된 임시 장소(우리 마커 목록 밖) — place-lookup 결과
+  const [tapped, setTapped] = useState<Poi | null>(null)
   const [mapError, setMapError] = useState<string | null>(null)
   const [routeInfo, setRouteInfo] = useState<{
     distance: number
@@ -307,10 +310,11 @@ export default function MapScreen() {
   // 선택 기본값 = 가장 가까운 장소 (effect 없이 파생)
   const selectedId = selected ?? sortedPlaces[0]?.id ?? null
 
-  const place = useMemo(
-    () => sortedPlaces.find((p) => p.id === selectedId) ?? sortedPlaces[0],
-    [sortedPlaces, selectedId],
-  )
+  const place = useMemo(() => {
+    // 베이스맵 POI 탭 장소가 현재 선택이면 그 정보를 시트에 표시
+    if (tapped && tapped.id === selectedId) return { ...tapped, dist: Infinity }
+    return sortedPlaces.find((p) => p.id === selectedId) ?? sortedPlaces[0]
+  }, [sortedPlaces, selectedId, tapped])
 
   // 선택 장소의 실 리뷰(Google Places, 한국인/외국인 분리). 실패 시 mock 폴백.
   const reviewTarget = place
@@ -486,6 +490,24 @@ export default function MapScreen() {
     }
   }
 
+  // 베이스맵 POI/지도 탭 → 장소 정보 시트 (Google: placeId, Naver: 좌표 최근접)
+  // 연속 탭 시 마지막 요청만 반영(seq 가드). 빈 지도 탭(60m 내 시설 없음)은 조용히 무시.
+  const lookupSeqRef = useRef(0)
+  const onMapPoiTap = async (q: { placeId?: string; lat?: number; lng?: number }) => {
+    const seq = ++lookupSeqRef.current
+    const res = await lookupPlace(q, lang)
+    if (!res || seq !== lookupSeqRef.current) return
+    if (!q.placeId && q.lat != null && q.lng != null && res.lat != null && res.lng != null) {
+      // Naver 좌표 탭 게이트 — 최근접 시설이 탭 지점에서 60m 초과면 빈 지도 탭으로 간주
+      if (distanceM({ latitude: q.lat, longitude: q.lng }, { lat: res.lat, lng: res.lng }) > 60)
+        return
+    }
+    setTapped(res)
+    setSelected(res.id)
+    setRouteInfo(null)
+    setReviewFilter(null)
+  }
+
   // 길찾기 — 현재 위치 → 선택 장소 (Naver Directions, 양 지도에 Polyline)
   const startNavigation = async () => {
     if (!place?.lat || !place?.lng) return
@@ -578,6 +600,7 @@ export default function MapScreen() {
               const p = places.find((x) => x.id === id)
               if (p) selectPlace(p)
             }}
+            onPoiPress={onMapPoiTap}
             onReady={() => {
               googleRef.current?.setMyLocation(coords.latitude, coords.longitude, WALK_ZOOM)
               // 재마운트 시 마지막 뷰 복원(다른 지도와 위치·축척 일치)
@@ -607,6 +630,7 @@ export default function MapScreen() {
                 const p = places.find((x) => x.id === id)
                 if (p) selectPlace(p)
               }}
+              onMapPress={onMapPoiTap}
               onReady={() => {
                 naverRef.current?.setMyLocation(coords.latitude, coords.longitude, WALK_ZOOM)
                 // 재마운트 시 마지막 뷰 복원(다른 지도와 위치·축척 일치)

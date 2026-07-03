@@ -20,6 +20,9 @@ type Props = {
   markers: NaverMarker[]
   selectedId?: string
   onMarkerPress?: (id: string) => void
+  // 지도 탭(마커 외) — Naver JS API는 베이스맵 POI 클릭 이벤트가 없어 좌표만 전달,
+  // RN이 place-lookup(최근접 시설)으로 장소 정보를 해석한다
+  onMapPress?: (q: { lat: number; lng: number }) => void
   onAuthError?: (msg: string) => void
   onReady?: () => void // 지도 init 완료 시(내 위치 마커 초기 표시용)
   onViewChange?: (v: { lat: number; lng: number; zoom: number }) => void // 이동/줌 종료(idle) 시
@@ -88,6 +91,10 @@ function buildHtml(lat: number, lng: number, markers: NaverMarker[], lang: Naver
         var c = map.getCenter();
         post({type:'view', lat: c.lat(), lng: c.lng(), zoom: map.getZoom()});
       });
+      // 지도 탭 좌표 통지 — RN이 최근접 장소를 해석해 정보 시트 표시(POI 아이콘 탭 대용)
+      naver.maps.Event.addListener(map, 'click', function(e){
+        post({type:'mapclick', lat: e.coord.lat(), lng: e.coord.lng()});
+      });
     }
     // 지도 유형 전환 (일반/위성/하이브리드)
     function setMapType(type){
@@ -150,7 +157,17 @@ function buildHtml(lat: number, lng: number, markers: NaverMarker[], lang: Naver
 }
 
 export const NaverMap = forwardRef<NaverMapHandle, Props>(function NaverMap(
-  { latitude, longitude, markers, onMarkerPress, onAuthError, onReady, onViewChange, language },
+  {
+    latitude,
+    longitude,
+    markers,
+    onMarkerPress,
+    onMapPress,
+    onAuthError,
+    onReady,
+    onViewChange,
+    language,
+  },
   ref,
 ) {
   const webRef = useRef<WebView>(null)
@@ -189,6 +206,7 @@ export const NaverMap = forwardRef<NaverMapHandle, Props>(function NaverMap(
     try {
       const msg = JSON.parse(e.nativeEvent.data)
       if (msg.type === 'marker' && msg.id) onMarkerPress?.(msg.id)
+      else if (msg.type === 'mapclick') onMapPress?.({ lat: msg.lat, lng: msg.lng })
       else if (msg.type === 'ready') onReady?.()
       else if (msg.type === 'view') onViewChange?.({ lat: msg.lat, lng: msg.lng, zoom: msg.zoom })
       else if (msg.type === 'auth_error') onAuthError?.(msg.message ?? 'Naver auth error')

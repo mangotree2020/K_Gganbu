@@ -93,6 +93,23 @@ const MOCK_POIS: Poi[] = [
 // POI 결과 — provider로 실데이터(tourapi)/폴백(mock) 구분 (배지 표시용)
 export type PoiResult = { pois: Poi[]; provider: 'tourapi' | 'mock' }
 
+// 지도 탭 → 장소 정보 해석 (place-lookup Edge Function)
+// Google POI 탭은 placeId로, Naver 지도 탭은 좌표(최근접 시설)로 조회. 실패 시 null(조용히 무시).
+export async function lookupPlace(
+  q: { placeId?: string; lat?: number; lng?: number },
+  lang: string,
+): Promise<(Poi & { rating: number | null; placeId: string }) | null> {
+  try {
+    const { data, error } = await supabase.functions.invoke('place-lookup', {
+      body: { ...q, lang },
+    })
+    if (error || !data?.name || data?.lat == null) return null
+    return data as Poi & { rating: number | null; placeId: string }
+  } catch {
+    return null
+  }
+}
+
 // mock 폴백이 24h 캐시에 고착되는 것 방지 — mock이면 30초마다 재시도, 실데이터 오면 중단.
 // (일시적 네트워크 실패로 홈/지도가 하루 종일 샘플 데이터에 묶이는 버그의 근본 수정)
 const retryWhileMock = (q: { state: { data?: PoiResult } }) =>
