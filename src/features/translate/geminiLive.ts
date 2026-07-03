@@ -155,9 +155,13 @@ export async function startLiveTranslate(
   if (!grant) return null
 
   cb.onStatus?.('connecting')
+  // 직접 키(개발): v1beta BidiGenerateContent + ?key=
+  // ephemeral 토큰(프로덕션): v1alpha "BidiGenerateContentConstrained" + ?access_token=
+  // — 일반 메서드에 access_token을 주면 1008(unregistered callers)로 즉시 닫힘(실기기 확인)
   const apiVer = grant.isKey ? 'v1beta' : 'v1alpha'
+  const method = grant.isKey ? 'BidiGenerateContent' : 'BidiGenerateContentConstrained'
   const authParam = grant.isKey ? `key=${grant.auth}` : `access_token=${grant.auth}`
-  const url = `wss://${grant.wsHost}/ws/google.ai.generativelanguage.${apiVer}.GenerativeService.BidiGenerateContent?${authParam}`
+  const url = `wss://${grant.wsHost}/ws/google.ai.generativelanguage.${apiVer}.GenerativeService.${method}?${authParam}`
   const ws = new WebSocket(url)
   ws.binaryType = 'arraybuffer'
 

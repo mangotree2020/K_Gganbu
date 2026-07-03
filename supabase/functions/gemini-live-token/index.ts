@@ -22,10 +22,12 @@ function json(body: unknown, status = 200) {
   })
 }
 
-// 일일 음성 세션 상한 — 게스트 5회 / 로그인 30회 (env로 조정 가능).
+// 일일 음성 세션 상한 — 게스트 15회 / 로그인 60회 (env로 조정 가능).
+// AI 깐부 탭 진입 시 STT 자동 시작도 세션 1회로 집계되므로 여유 있게 잡는다
+// (비용의 실체는 세션 수가 아니라 오디오 분량 — 세션당 10분 상한이 주 방어선).
 // 사용자 식별 불가(세션 토큰 없음) 시 발급 거부 — 키 남용 방지.
-const GUEST_VOICE_DAILY_CAP = Number(Deno.env.get('GUEST_VOICE_DAILY_CAP') ?? 5)
-const AUTH_VOICE_DAILY_CAP = Number(Deno.env.get('AUTH_VOICE_DAILY_CAP') ?? 30)
+const GUEST_VOICE_DAILY_CAP = Number(Deno.env.get('GUEST_VOICE_DAILY_CAP') ?? 15)
+const AUTH_VOICE_DAILY_CAP = Number(Deno.env.get('AUTH_VOICE_DAILY_CAP') ?? 60)
 
 async function checkDailyCap(req: Request): Promise<Response | null> {
   const url = Deno.env.get('SUPABASE_URL')
