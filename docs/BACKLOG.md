@@ -73,6 +73,17 @@
 > 🔶 항목 외부 설정 절차는 **`docs/SETUP_EXTERNAL.md`** 참조 (시크릿 이름·발급처·검증 포함).
 > ja 네이티브 검수 ⚠️ 5건 **전부 종결**(2026-06-30, `docs/I18N_JA_REVIEW.md` 3차). 잔여는 tips 장문 스팟체크(비차단).
 >
+> **📌 07-02~03 진행(BM 검증 후 R1 사이클 — 상세: `docs/PRODUCT_REQUIREMENTS.md`)**:
+> ✅ 사업 문서 신설(`BUSINESS_STRATEGY.md` BM 스토리/넘버 테스트 + PRD) · 포인트 경제 전략(만보기·스탬프·등급·기프티콘) 릴리스 계획 R1~R4.
+> ✅ 전환 퍼널 계측(`analytics_events` — 쿠폰 노출→탭→발급 + AI 이벤트, 실기기 적재 검증).
+> ✅ 리뷰 AI 요약·번역(`review-insights` — Google+네이버 블로그 종합, 협찬 필터, 장소×언어 캐시 2단 TTL+SWR, 실기기·실호출 검증).
+> ✅ 지도 대개편 — Blend 실겹침(WebView opacity 버그 수정)·두 지도 뷰 동기화(중심/축척)·길찾기 경로 유지·딥링크(nmap/Place ID)·시트 UX·POI mock 고착 수정.
+> ✅ 크루즈 — 승선 복귀 알림(expo-notifications, OS 알람 검증)·POI 오프라인 캐시(비행기 모드 검증)·QR 랜딩 계측 리다이렉터.
+> ✅ 보안·비용 — 여권 원본 미저장 전환(기존분 폐기), coupon redeem 파트너 게이트(§22), AI 모델 티어링(Haiku/Sonnet), 통역 세션 10분 상한.
+> ✅ 파트너 Admin(`web/admin.html`)·QR 랜딩(`web/landing.html`) — **Supabase가 HTML 렌더 차단(플랫폼 제약 발견)** → 정적 파일+외부 호스팅 체제로 전환.
+> 🟡 만보기 홈 위젯(REQ-PD-3 선행) — 걸음수+예상 포인트 표시, 적립은 R2 원장에서.
+> 🔶 잔여 외부 설정: 정적 호스팅+`LANDING_URL`/`ADMIN_WEB_URL` · `ADMIN_API_KEY` · `FCM_SERVICE_ACCOUNT` (SETUP_EXTERNAL).
+>
 > **🔜 프로덕션 준비 TODO(비차단, 나중에 처리)**:
 > ① Apple provider 설정(D-U-N-S 발급 후) ② Twilio 실 SMS 운영(업그레이드 완료, 발신 정책 점검) ③ **Auth 커스텀 SMTP** — 회사 Google Workspace(유료 구글메일) 보유 → SMTP relay로 이메일 가입/재설정 메일 전달률·상한 확보(내장 2/h는 dev용). 상세: `docs/SETUP_EXTERNAL.md` #9 "Auth 이메일 발송". ④ OTP 봇 남용 관측 시 CAPTCHA(OTP 전용 게이트웨이). ⑤ 노출 시크릿 로테이션(Twilio Auth Token·LINE Channel Secret).
 

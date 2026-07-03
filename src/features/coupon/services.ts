@@ -23,7 +23,7 @@ export async function issueCoupon(couponId: string): Promise<CouponIssue> {
       return data.issue as CouponIssue
     }
     throw new Error(data?.message ?? '발급 실패')
-  } catch (e) {
+  } catch {
     // 오프라인/미인증: 마지막 발급분을 캐시에서 표시(오프라인 QR), 없으면 mock 토큰
     const cached = storage.getString(KEY(couponId))
     if (cached) return JSON.parse(cached) as CouponIssue
@@ -32,7 +32,6 @@ export async function issueCoupon(couponId: string): Promise<CouponIssue> {
       qr_token: `MOCK-${couponId}-${Date.now()}`,
       expires_at: new Date(Date.now() + 5 * 60 * 1000).toISOString(),
       status: 'issued',
-      ...(e ? {} : {}),
     }
   }
 }

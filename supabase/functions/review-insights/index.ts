@@ -208,7 +208,11 @@ async function summarize(
       }),
     })
     const data = await res.json()
-    return (data?.content?.[0]?.text ?? '').trim()
+    // 프롬프트가 plain text를 지시해도 간혹 마크다운(헤딩/볼드)이 섞임 — 표시용으로 제거
+    return (data?.content?.[0]?.text ?? '')
+      .replace(/^#{1,6}\s+.*$/gm, '')
+      .replace(/\*\*/g, '')
+      .trim()
   } catch {
     return ''
   }
