@@ -4,7 +4,7 @@ import { LinearGradient } from 'expo-linear-gradient'
 import { router } from 'expo-router'
 import { useEffect, useMemo, useState } from 'react'
 import { Dimensions, Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
-import { SafeAreaView } from 'react-native-safe-area-context'
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import Svg, { Circle, G, Path, Rect } from 'react-native-svg'
 
 import { Icon, Pill } from '@/components/brand'
@@ -445,6 +445,7 @@ const REVIEWS = [
 
 export default function HomeScreen() {
   const t = useT()
+  const insets = useSafeAreaInsets() // 상태바 영역 틴트 높이 계산용
   const lang = useLocaleStore((s) => s.lang)
   const notifUnread = unreadCount(useInboxStore((s) => s.items))
   const { data: placesData } = usePlaces(lang, 12)
@@ -513,6 +514,20 @@ export default function HomeScreen() {
               style={StyleSheet.absoluteFill}
             />
           )}
+          {/* 상태바 영역 틴트 — 배경 사진과 무관하게 시간·배터리 가독성 확보.
+              My(프로필) 헤더와 동일한 스카이블루 계열, 아래로 자연스럽게 투명 */}
+          <LinearGradient
+            colors={['#38BDF8', 'rgba(56,189,248,0.6)', 'rgba(56,189,248,0)']}
+            locations={[0, 0.7, 1]}
+            style={{
+              position: 'absolute',
+              top: 0,
+              left: 0,
+              right: 0,
+              height: insets.top + 20,
+            }}
+            pointerEvents="none"
+          />
           <SafeAreaView edges={['top']}>
             {/* 상단 행 */}
             <View style={ss.heroTop}>
