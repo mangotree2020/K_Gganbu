@@ -1,6 +1,8 @@
 // gganbu — AI 깐부 챗봇 Edge Function (Claude API + TourAPI RAG)
 // PLANNING §18 페르소나·가드레일. 키 미설정 시 502(클라이언트 mock 폴백).
+// 일일 사용량 상한(REQ-TR-3, BM§3.3): 게스트/로그인 사용자별 KST 일 단위 카운팅.
 import 'jsr:@supabase/functions-js/edge-runtime.d.ts'
+import { createClient } from 'jsr:@supabase/supabase-js@2'
 
 const cors = {
   'Access-Control-Allow-Origin': '*',
@@ -98,9 +100,48 @@ function systemPrompt(
   ].join('\n')
 }
 
+// 일일 사용량 상한 — 게스트(anonymous) 20회 / 로그인 200회 (env로 조정 가능).
+// bump_usage RPC가 원자적 증가 후 카운트를 반환하므로 경쟁 요청으로 우회 불가.
+// 카운터 인프라 오류 시에는 차단하지 않는다(가용성 우선 — 상한은 비용 가드레일).
+const GUEST_AI_DAILY_CAP = Number(Deno.env.get('GUEST_AI_DAILY_CAP') ?? 20)
+const AUTH_AI_DAILY_CAP = Number(Deno.env.get('AUTH_AI_DAILY_CAP') ?? 200)
+
+async function checkDailyCap(req: Request): Promise<Response | null> {
+  const url = Deno.env.get('SUPABASE_URL')
+  const key = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')
+  if (!url || !key) return null
+  const jwt = (req.headers.get('Authorization') ?? '').replace(/^Bearer\s+/i, '')
+  const admin = createClient(url, key)
+  const { data } = await admin.auth.getUser(jwt)
+  const user = data?.user
+  if (!user) {
+    // 세션 토큰 없이 호출(구버전 앱·직접 호출) — 사용자 식별 불가 시 차단(무제한 우회 방지)
+    return new Response(JSON.stringify({ error: 'auth_required' }), {
+      status: 401,
+      headers: { ...cors, 'Content-Type': 'application/json' },
+    })
+  }
+  const cap = user.is_anonymous ? GUEST_AI_DAILY_CAP : AUTH_AI_DAILY_CAP
+  const { data: count, error } = await admin.rpc('bump_usage', {
+    p_user: user.id,
+    p_kind: 'ai_chat',
+  })
+  if (error || typeof count !== 'number') return null
+  if (count > cap) {
+    return new Response(
+      JSON.stringify({ error: 'daily_cap', cap, is_guest: user.is_anonymous === true }),
+      { status: 429, headers: { ...cors, 'Content-Type': 'application/json' } },
+    )
+  }
+  return null
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: cors })
   try {
+    const blocked = await checkDailyCap(req)
+    if (blocked) return blocked
+
     const apiKey = Deno.env.get('ANTHROPIC_API_KEY')
     if (!apiKey) {
       return new Response(

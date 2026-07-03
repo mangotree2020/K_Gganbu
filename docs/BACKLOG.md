@@ -82,6 +82,7 @@
 > ✅ 보안·비용 — 여권 원본 미저장 전환(기존분 폐기), coupon redeem 파트너 게이트(§22), AI 모델 티어링(Haiku/Sonnet), 통역 세션 10분 상한.
 > ✅ 파트너 Admin(`web/admin.html`)·QR 랜딩(`web/landing.html`) — **Supabase가 HTML 렌더 차단(플랫폼 제약 발견)** → 정적 파일+외부 호스팅 체제로 전환.
 > 🟡 만보기 홈 위젯(REQ-PD-3 선행) — 걸음수+예상 포인트 표시, 적립은 R2 원장에서.
+> ✅ R1 잔여 마감(07-03 저녁, release 빌드 실기기 검증) — ① AI 이벤트 적재 확인 + analytics flush 경합 유실 버그 수정(REQ-AI-3 ✅) ② **일일 사용량 상한 서버 강제**(REQ-TR-3 ✅): `usage_counters`+`bump_usage` RPC(원자적·KST), gganbu(게스트 20/로그인 200회)·gemini-live-token(5/30세션), 429→앱 언어 안내, 미식별 호출 401. 스트리밍 XHR이 anon key 대신 세션 토큰 전송하도록 수정.
 > 🔶 잔여 외부 설정: 정적 호스팅+`LANDING_URL`/`ADMIN_WEB_URL` · `ADMIN_API_KEY` · `FCM_SERVICE_ACCOUNT` (SETUP_EXTERNAL).
 >
 > **🔜 프로덕션 준비 TODO(비차단, 나중에 처리)**:

@@ -26,7 +26,18 @@ function mockReply(messages: ChatMsg[]): string {
   )
 }
 
-export type GganbuReply = { reply: string; provider: 'claude' | 'mock' }
+export type GganbuReply = { reply: string; provider: 'claude' | 'mock' | 'cap' }
+
+// 일일 사용량 상한(REQ-TR-3) 도달 안내 — 게스트는 로그인 시 한도 상향을 함께 안내
+const CAP_MESSAGES: Record<string, string> = {
+  en: "You've used all of today's free AI chats. Come back tomorrow — or log in for a higher daily limit.",
+  ko: '오늘의 무료 AI 대화를 모두 사용했어요. 내일 다시 만나요 — 로그인하면 하루 한도가 늘어나요.',
+  ja: '本日の無料AIチャットを使い切りました。また明日どうぞ。ログインすると1日の上限が増えます。',
+  'zh-CN': '今天的免费AI对话已用完。明天再来吧——登录后每日上限更高。',
+  'zh-TW': '今天的免費AI對話已用完。明天再來吧——登入後每日上限更高。',
+}
+
+const capMessage = (lang?: string) => CAP_MESSAGES[lang ?? 'en'] ?? CAP_MESSAGES.en
 
 export async function askGganbu(
   messages: ChatMsg[],
@@ -51,16 +62,19 @@ export async function askGganbu(
 
 // 스트리밍 응답 — 토큰이 도착하는 즉시 onDelta(누적 텍스트)로 흘려준다(체감 즉시 응답).
 // XHR onprogress로 누적 responseText를 읽음(RN fetch는 스트림 미지원). 실패 시 mock 폴백.
-export function askGganbuStream(
+// 서버 일일 상한 판정용으로 사용자 세션 토큰을 보낸다(게스트도 anonymous 세션 보유).
+export async function askGganbuStream(
   messages: ChatMsg[],
   opts: { language?: string; location?: string; dialect?: string; context?: string },
   onDelta: (fullText: string) => void,
 ): Promise<GganbuReply> {
+  const { data: sess } = await supabase.auth.getSession().catch(() => ({ data: { session: null } }))
+  const token = sess?.session?.access_token ?? ANON_KEY
   return new Promise((resolve) => {
     try {
       const xhr = new XMLHttpRequest()
       xhr.open('POST', `${SUPABASE_URL}/functions/v1/gganbu`)
-      xhr.setRequestHeader('Authorization', `Bearer ${ANON_KEY}`)
+      xhr.setRequestHeader('Authorization', `Bearer ${token}`)
       xhr.setRequestHeader('apikey', ANON_KEY)
       xhr.setRequestHeader('Content-Type', 'application/json')
       xhr.timeout = 25000
@@ -77,6 +91,9 @@ export function askGganbuStream(
         const t = xhr.responseText ?? ''
         if (xhr.status === 200 && t.trim() && !t.startsWith('{')) {
           resolve({ reply: t, provider: 'claude' })
+        } else if (xhr.status === 429) {
+          // 일일 상한 도달 — 사용자 언어로 안내(오프라인 배지 없음)
+          resolve({ reply: capMessage(opts.language), provider: 'cap' })
         } else {
           resolve({ reply: mockReply(messages), provider: 'mock' })
         }

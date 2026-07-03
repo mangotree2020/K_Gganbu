@@ -1,7 +1,9 @@
 // gemini-live-token — Gemini Live API 직결용 ephemeral 토큰 발급 (PLANNING §25 B안)
 // 기기가 Gemini Live(BidiGenerateContent WS)에 직접 연결하되, 장기 API 키는 서버에만 둔다.
 // v1alpha AuthTokenService로 1회용 단기 토큰을 발급해 클라이언트에 전달(키 미노출).
+// 일일 세션 상한(REQ-TR-3, BM§3.3): 게스트 5회 / 로그인 30회 — 세션당 10분 상한과 함께 변동비 통제.
 import 'jsr:@supabase/functions-js/edge-runtime.d.ts'
+import { createClient } from 'jsr:@supabase/supabase-js@2'
 
 const cors = {
   'Access-Control-Allow-Origin': '*',
@@ -20,9 +22,38 @@ function json(body: unknown, status = 200) {
   })
 }
 
+// 일일 음성 세션 상한 — 게스트 5회 / 로그인 30회 (env로 조정 가능).
+// 사용자 식별 불가(세션 토큰 없음) 시 발급 거부 — 키 남용 방지.
+const GUEST_VOICE_DAILY_CAP = Number(Deno.env.get('GUEST_VOICE_DAILY_CAP') ?? 5)
+const AUTH_VOICE_DAILY_CAP = Number(Deno.env.get('AUTH_VOICE_DAILY_CAP') ?? 30)
+
+async function checkDailyCap(req: Request): Promise<Response | null> {
+  const url = Deno.env.get('SUPABASE_URL')
+  const key = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')
+  if (!url || !key) return null
+  const jwt = (req.headers.get('Authorization') ?? '').replace(/^Bearer\s+/i, '')
+  const admin = createClient(url, key)
+  const { data } = await admin.auth.getUser(jwt)
+  const user = data?.user
+  if (!user) return json({ error: 'auth_required' }, 401)
+  const cap = user.is_anonymous ? GUEST_VOICE_DAILY_CAP : AUTH_VOICE_DAILY_CAP
+  const { data: count, error } = await admin.rpc('bump_usage', {
+    p_user: user.id,
+    p_kind: 'voice_session',
+  })
+  // 카운터 인프라 오류는 차단 사유 아님(가용성 우선)
+  if (error || typeof count !== 'number') return null
+  if (count > cap)
+    return json({ error: 'daily_cap', cap, is_guest: user.is_anonymous === true }, 429)
+  return null
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: cors })
   try {
+    const blocked = await checkDailyCap(req)
+    if (blocked) return blocked
+
     const apiKey = Deno.env.get('GEMINI_API_KEY')
     if (!apiKey) {
       return json({ error: 'no_key', message: 'GEMINI_API_KEY 미설정' }, 502)
