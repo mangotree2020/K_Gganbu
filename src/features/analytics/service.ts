@@ -41,17 +41,20 @@ function saveQueue(queue: QueuedEvent[]) {
 let flushing = false
 
 // 큐를 배치 단위로 서버에 전송. 실패한 배치부터는 큐에 남긴다(다음 기회에 재시도).
+// 주의: 전송(await) 중 track()이 큐 뒤에 새 이벤트를 붙일 수 있으므로,
+// 전송 성공 후 반드시 큐를 다시 읽어 보낸 만큼만 앞에서 제거한다
+// (스냅샷으로 덮어쓰면 전송 중 쌓인 이벤트가 유실됨 — ai_ask/ai_reply 동시 발생 사례).
 export async function flush(): Promise<void> {
   if (flushing) return
   flushing = true
   try {
-    let queue = loadQueue()
-    while (queue.length) {
+    while (true) {
+      const queue = loadQueue()
+      if (!queue.length) break
       const batch = queue.slice(0, BATCH_SIZE)
       const { error } = await supabase.from('analytics_events').insert(batch)
       if (error) break
-      queue = queue.slice(batch.length)
-      saveQueue(queue)
+      saveQueue(loadQueue().slice(batch.length))
     }
   } finally {
     flushing = false
