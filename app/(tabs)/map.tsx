@@ -1,3 +1,4 @@
+import { useLocalSearchParams } from 'expo-router'
 import Slider from '@react-native-community/slider'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import {
@@ -509,11 +510,13 @@ export default function MapScreen() {
   }
 
   // 길찾기 — 현재 위치 → 선택 장소 (Naver Directions, 양 지도에 Polyline)
-  const startNavigation = async () => {
-    if (!place?.lat || !place?.lng) return
+  // target 지정 시 그 좌표로(장소 상세 Directions 딥링크), 미지정 시 현재 선택 장소로.
+  const startNavigation = async (target?: { lat: number; lng: number }) => {
+    const dst = target ?? (place?.lat && place?.lng ? { lat: place.lat, lng: place.lng } : null)
+    if (!dst) return
     setRouting(true)
     const start: LatLng = { latitude: coords.latitude, longitude: coords.longitude }
-    const goal: LatLng = { latitude: place.lat, longitude: place.lng }
+    const goal: LatLng = { latitude: dst.lat, longitude: dst.lng }
     const res = await fetchRoute(start, goal)
     setRouteInfo({ distance: res.distance, duration: res.duration, mock: res.provider === 'mock' })
     // 양 지도에 경로 오버레이 (각 핸들이 전체 경로가 보이도록 영역 맞춤)
@@ -529,6 +532,46 @@ export default function MapScreen() {
     naverRef.current?.clearRoute()
     googleRef.current?.clearRoute()
   }
+
+  // 장소 상세 Directions 딥링크 — /(tabs)/map?fName=..&fLat=..&fLng=..&nav=1
+  // 해당 장소를 시트에 선택시키고(nav=1이면) 현재 위치→장소 경로까지 그린다.
+  const focus = useLocalSearchParams<{
+    fId?: string
+    fName?: string
+    fLat?: string
+    fLng?: string
+    fCat?: string
+    nav?: string
+  }>()
+  const focusHandledRef = useRef<string | null>(null)
+  useEffect(() => {
+    const fLat = Number(focus.fLat)
+    const fLng = Number(focus.fLng)
+    if (!focus.fName || !Number.isFinite(fLat) || !Number.isFinite(fLng)) return
+    const key = `${focus.fId}:${focus.fName}:${focus.fLat}:${focus.fLng}:${focus.nav}`
+    if (focusHandledRef.current === key) return
+    focusHandledRef.current = key
+    const poi: Poi = {
+      id: focus.fId || `focus:${focus.fName}`,
+      name: focus.fName,
+      address: null,
+      lat: fLat,
+      lng: fLng,
+      imageUrl: null,
+      tel: null,
+      cat: focus.fCat || 'sights',
+    }
+    setTapped(poi)
+    setSelected(poi.id)
+    setReviewFilter(null)
+    // WebView 지도 로딩 시간 확보 후 이동·경로 — 미로딩 시 경로는 onReady 재주입이 커버
+    setTimeout(() => {
+      naverRef.current?.moveTo(fLat, fLng, WALK_ZOOM)
+      googleRef.current?.moveTo(fLat, fLng, WALK_ZOOM)
+      if (focus.nav === '1') void startNavigation({ lat: fLat, lng: fLng })
+    }, 700)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [focus.fId, focus.fName, focus.fLat, focus.fLng, focus.nav])
 
   const showGoogle = provider === 'google' || provider === 'blend'
   const showNaver = provider === 'naver' || provider === 'blend'
@@ -870,7 +913,7 @@ export default function MapScreen() {
                   filled={isFav}
                 />
               </Pressable>
-              <Pressable style={ss.dirBtn} onPress={startNavigation} disabled={routing}>
+              <Pressable style={ss.dirBtn} onPress={() => startNavigation()} disabled={routing}>
                 {routing ? (
                   <ActivityIndicator color="#fff" size="small" />
                 ) : (
