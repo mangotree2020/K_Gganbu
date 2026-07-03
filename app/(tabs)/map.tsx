@@ -40,6 +40,7 @@ import { usePlaceReviews, type PlaceReview } from '@/features/review/queries'
 import { useReviewInsights } from '@/features/review/insights'
 import { translateText } from '@/features/translate/services'
 import { useCurrentLocation } from '@/hooks/useCurrentLocation'
+import { useTabBarAutoHide } from '@/hooks/useTabBarAutoHide'
 import { appFlag, baseLang, flagFor } from '@/lib/flags'
 import { useLocaleStore, useT } from '@/lib/i18n'
 import { palette, shadows } from '@/theme/tokens'
@@ -250,6 +251,8 @@ function ReviewRow({
 
 export default function MapScreen() {
   const t = useT()
+  // 시트 리뷰 영역 플릭 시에도 X식 하단 탭바 자동 숨김/표시
+  const tabBarAutoHide = useTabBarAutoHide()
   const lang = useLocaleStore((s) => s.lang) // 지도 라벨·POI 언어
   const [provider, setProvider] = useState<ProviderId>('blend')
   // Blend 위치: 0 = Naver 완전 표시(좌) ~ 1 = Google 완전 표시(우) — 상단 토글 순서와 동일
@@ -924,7 +927,8 @@ export default function MapScreen() {
             <ScrollView
               showsVerticalScrollIndicator
               contentContainerStyle={{ paddingBottom: 28 }}
-              keyboardShouldPersistTaps="handled">
+              keyboardShouldPersistTaps="handled"
+              {...tabBarAutoHide}>
               {/* 경로 요약 (Naver Directions) */}
               {routeInfo && (
                 <View style={ss.routeBar}>
