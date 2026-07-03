@@ -1,10 +1,12 @@
 import { Redirect, Tabs } from 'expo-router'
 import { Bot, Home, Map, Tag, User, type LucideIcon } from 'lucide-react-native'
-import { Pressable, StyleSheet, Text, View } from 'react-native'
+import { useEffect, useState } from 'react'
+import { Animated, Pressable, StyleSheet, Text, View } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 
 import { Icon } from '@/components/brand'
 import { useAuth } from '@/hooks/useAuth'
+import { useTabBarStore } from '@/hooks/useTabBarAutoHide'
 import { useT } from '@/lib/i18n'
 
 const ACTIVE = '#0EA5E9'
@@ -49,66 +51,88 @@ function MainTab({
   )
 }
 
-// 커스텀 하단 탭바 — 통역 탭(탭 화면으로 전환, 탭바 유지) + 통역 아이콘 한A 글리프
+// 커스텀 하단 탭바 — 통역 탭(탭 화면으로 전환, 탭바 유지) + 통역 아이콘 한A 글리프.
+// X(트위터)식 자동 숨김: 스크롤 화면이 useTabBarAutoHide로 방향을 알려주면
+// 높이를 0으로 접어 콘텐츠가 화면을 꽉 채우게 한다(아래로 플릭 시 복귀).
 function TabBar({ state, navigation }: TabBarProps) {
   const insets = useSafeAreaInsets()
   const t = useT()
   const activeName = state.routes[state.index]?.name
   const translateFocused = activeName === 'translate'
+  const barH = 56 + insets.bottom
+
+  const hidden = useTabBarStore((s) => s.hidden)
+  const setHidden = useTabBarStore((s) => s.setHidden)
+  const heightAnim = useState(() => new Animated.Value(barH))[0]
+  useEffect(() => {
+    // 높이 애니메이션은 레이아웃 속성이라 JS 드라이버 사용(200ms — 체감 즉시)
+    Animated.timing(heightAnim, {
+      toValue: hidden ? 0 : barH,
+      duration: 200,
+      useNativeDriver: false,
+    }).start()
+  }, [hidden, barH, heightAnim])
+  // 탭 이동 시 항상 다시 표시(새 화면에서 네비 접근 보장)
+  const go = (name: string) => {
+    setHidden(false)
+    navigation.navigate(name)
+  }
 
   return (
-    <View style={[ss.bar, { height: 56 + insets.bottom, paddingBottom: insets.bottom + 8 }]}>
-      <MainTab
-        name="index"
-        label={t('tab.home')}
-        focused={activeName === 'index'}
-        onPress={() => navigation.navigate('index')}
-      />
-      <MainTab
-        name="map"
-        label={t('tab.map')}
-        focused={activeName === 'map'}
-        onPress={() => navigation.navigate('map')}
-      />
-      {/* 통역 — 탭 화면으로 이동(탭바 유지) + 한A 아이콘, 활성 시 강조 */}
-      <Pressable
-        style={ss.item}
-        onPress={() => navigation.navigate('translate')}
-        accessibilityRole="button"
-        accessibilityState={{ selected: translateFocused }}>
-        <View style={ss.iconSlot}>
-          <Icon name="translate" size={22} color={translateFocused ? ACTIVE : INACTIVE} />
-        </View>
-        <Text
-          style={[
-            ss.label,
-            {
-              color: translateFocused ? ACTIVE : INACTIVE,
-              fontWeight: translateFocused ? '800' : '600',
-            },
-          ]}>
-          {t('tab.translate')}
-        </Text>
-      </Pressable>
-      <MainTab
-        name="ai"
-        label={t('tab.ai')}
-        focused={activeName === 'ai'}
-        onPress={() => navigation.navigate('ai')}
-      />
-      <MainTab
-        name="coupons"
-        label={t('tab.coupons')}
-        focused={activeName === 'coupons'}
-        onPress={() => navigation.navigate('coupons')}
-      />
-      <MainTab
-        name="profile"
-        label={t('tab.my')}
-        focused={activeName === 'profile'}
-        onPress={() => navigation.navigate('profile')}
-      />
-    </View>
+    <Animated.View style={{ height: heightAnim, overflow: 'hidden' }}>
+      <View style={[ss.bar, { height: barH, paddingBottom: insets.bottom + 8 }]}>
+        <MainTab
+          name="index"
+          label={t('tab.home')}
+          focused={activeName === 'index'}
+          onPress={() => go('index')}
+        />
+        <MainTab
+          name="map"
+          label={t('tab.map')}
+          focused={activeName === 'map'}
+          onPress={() => go('map')}
+        />
+        {/* 통역 — 탭 화면으로 이동(탭바 유지) + 한A 아이콘, 활성 시 강조 */}
+        <Pressable
+          style={ss.item}
+          onPress={() => go('translate')}
+          accessibilityRole="button"
+          accessibilityState={{ selected: translateFocused }}>
+          <View style={ss.iconSlot}>
+            <Icon name="translate" size={22} color={translateFocused ? ACTIVE : INACTIVE} />
+          </View>
+          <Text
+            style={[
+              ss.label,
+              {
+                color: translateFocused ? ACTIVE : INACTIVE,
+                fontWeight: translateFocused ? '800' : '600',
+              },
+            ]}>
+            {t('tab.translate')}
+          </Text>
+        </Pressable>
+        <MainTab
+          name="ai"
+          label={t('tab.ai')}
+          focused={activeName === 'ai'}
+          onPress={() => go('ai')}
+        />
+        <MainTab
+          name="coupons"
+          label={t('tab.coupons')}
+          focused={activeName === 'coupons'}
+          onPress={() => go('coupons')}
+        />
+        <MainTab
+          name="profile"
+          label={t('tab.my')}
+          focused={activeName === 'profile'}
+          onPress={() => go('profile')}
+        />
+      </View>
+    </Animated.View>
   )
 }
 

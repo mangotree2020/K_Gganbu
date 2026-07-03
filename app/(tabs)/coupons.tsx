@@ -13,6 +13,7 @@ import { track } from '@/features/analytics/service'
 import { useCoupons, type CouponCard } from '@/features/coupon/queries'
 import { getTickets, type Ticket } from '@/features/ticket/services'
 import { useRequireAccount } from '@/features/auth/loginPrompt'
+import { useTabBarAutoHide } from '@/hooks/useTabBarAutoHide'
 import { useT } from '@/lib/i18n'
 import { USE_MOCK } from '@/lib/config'
 import { palette, shadows } from '@/theme/tokens'
@@ -123,6 +124,8 @@ const TICKET_CAT_KEY: Record<string, string> = {
 }
 
 export default function CouTixScreen() {
+  // 스크롤 방향 따라 하단 탭바 자동 숨김/표시
+  const tabBarAutoHide = useTabBarAutoHide()
   const t = useT()
   const requireAccount = useRequireAccount()
   const params = useLocalSearchParams<{ seg?: string }>()
@@ -261,7 +264,8 @@ export default function CouTixScreen() {
       {/* 리스트 */}
       <ScrollView
         showsVerticalScrollIndicator={false}
-        contentContainerStyle={{ padding: 16, paddingBottom: 24, gap: 10 }}>
+        contentContainerStyle={{ padding: 16, paddingBottom: 24, gap: 10 }}
+        {...tabBarAutoHide}>
         {seg === 'coupons'
           ? couponShown.map((c) => (
               <Pressable

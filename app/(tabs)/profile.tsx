@@ -26,6 +26,7 @@ import { useUserCoupons } from '@/features/coupon/queries'
 import { useFavorites } from '@/features/favorites/queries'
 import { usePassport } from '@/features/passport/queries'
 import { useAuthStore } from '@/features/auth/store'
+import { useTabBarAutoHide } from '@/hooks/useTabBarAutoHide'
 import { APP_LANGS, useLocaleStore, useT, type AppLang } from '@/lib/i18n'
 import { palette, shadows } from '@/theme/tokens'
 
@@ -68,6 +69,9 @@ const ROW_KEY: Record<string, string> = {
 }
 
 export default function ProfileScreen() {
+  // 스크롤 방향 따라 하단 탭바 자동 숨김/표시
+
+  const tabBarAutoHide = useTabBarAutoHide()
   const user = useAuthStore((state) => state.user)
   const { mutate: signOut, isPending } = useSignOut()
   const t = useT()
@@ -165,7 +169,8 @@ export default function ProfileScreen() {
 
       <ScrollView
         showsVerticalScrollIndicator={false}
-        contentContainerStyle={{ paddingBottom: 28 }}>
+        contentContainerStyle={{ paddingBottom: 28 }}
+        {...tabBarAutoHide}>
         {/* 통계 */}
         <View style={ss.statsRow}>
           {STATS.map((s) => (

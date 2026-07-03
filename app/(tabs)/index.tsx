@@ -5,6 +5,8 @@ import { router } from 'expo-router'
 import { useEffect, useMemo, useState } from 'react'
 import { Dimensions, Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
+
+import { useTabBarAutoHide } from '@/hooks/useTabBarAutoHide'
 import Svg, { Circle, G, Path, Rect } from 'react-native-svg'
 
 import { Icon, Pill } from '@/components/brand'
@@ -446,6 +448,7 @@ const REVIEWS = [
 export default function HomeScreen() {
   const t = useT()
   const insets = useSafeAreaInsets() // 상태바 영역 틴트 높이 계산용
+  const tabBarAutoHide = useTabBarAutoHide() // 스크롤 방향 따라 하단 탭바 자동 숨김/표시
   const lang = useLocaleStore((s) => s.lang)
   const notifUnread = unreadCount(useInboxStore((s) => s.items))
   const { data: placesData } = usePlaces(lang, 12)
@@ -491,7 +494,7 @@ export default function HomeScreen() {
 
   return (
     <View style={ss.container}>
-      <ScrollView showsVerticalScrollIndicator={false}>
+      <ScrollView showsVerticalScrollIndicator={false} {...tabBarAutoHide}>
         {/* ── HERO ── */}
         <View style={ss.hero}>
           {/* 현재 위치 관광지 사진 배경(동적 순환) + 브랜드 틴트 + 폴백 실루엣 + 가독성 스크림 */}
