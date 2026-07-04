@@ -15,11 +15,30 @@ type Args = {
   city: string
   condition: WeatherCondition | undefined
   hour: number
+  // 가장 가까운 추천 장소 — 질문 메시지 낭독 뒤 AI 깐부가 이어서 답변(추천)할 때 사용
+  nearby?: { name: string; km: number } | null
+}
+
+// 질문 뒤에 이어 말하는 깐부의 답변 — 실제 주변 장소 추천(앱 언어)
+function answerLine(lang: string, nearby: { name: string; km: number }): string {
+  const km = nearby.km < 10 ? nearby.km.toFixed(1) : Math.round(nearby.km).toString()
+  switch (lang) {
+    case 'ko':
+      return `가까운 ${nearby.name} 어때요? ${km}킬로미터면 금방이에요.`
+    case 'ja':
+      return `近くの${nearby.name}はどうですか？ ${km}キロです。`
+    case 'zh-CN':
+      return `附近的${nearby.name}怎么样？只有${km}公里。`
+    case 'zh-TW':
+      return `附近的${nearby.name}怎麼樣？只有${km}公里。`
+    default:
+      return `How about ${nearby.name} nearby? It's only ${km} kilometers away.`
+  }
 }
 
 export type GreetingItem = { text: string; isGreeting: boolean }
 
-export function useGganbuGreeting({ lang, city, condition, hour }: Args): GreetingItem {
+export function useGganbuGreeting({ lang, city, condition, hour, nearby }: Args): GreetingItem {
   // [0]=시간대 인사(greeting 스타일), [1..]=컨텍스트 메시지
   const items = useMemo<GreetingItem[]>(() => {
     const greeting: GreetingItem = { text: gganbuGreeting(lang, hour), isGreeting: true }
@@ -43,11 +62,20 @@ export function useGganbuGreeting({ lang, city, condition, hour }: Args): Greeti
 
   const cur = items[idx % items.length] ?? items[0]
 
-  // 메시지 변경(및 홈 진입) 시 앱 언어로 발화 — 같은 idx 재발화 방지
+  // 메시지 변경(및 홈 진입) 시 앱 언어로 발화 — 같은 idx 재발화 방지.
+  // 컨텍스트 질문 메시지는 낭독이 끝나면 AI 깐부가 주변 추천으로 이어서 답변한다.
+  const nearbyRef = useRef(nearby)
+  useEffect(() => {
+    nearbyRef.current = nearby
+  }, [nearby])
   useEffect(() => {
     if (!focused || spokenRef.current === idx) return
     spokenRef.current = idx
-    speakMessage(cur.text, lang)
+    const answer = !cur.isGreeting && nearbyRef.current ? answerLine(lang, nearbyRef.current) : null
+    speakMessage(cur.text, lang, () => {
+      // 질문 낭독 종료 → 답변 낭독(홈에 머무는 동안만)
+      if (answer && spokenRef.current === idx) speakMessage(answer, lang)
+    })
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [idx, focused])
 

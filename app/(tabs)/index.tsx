@@ -732,11 +732,21 @@ export default function HomeScreen() {
   const hour = new Date().getHours()
   // AI 깐부 인사 — 앱 시작 시 greeting, 이후 장소·시간·날씨 맞춤 메시지 30초 순환(변경 시 TTS)
   const shortCity = city?.split(',').pop()?.trim() || 'Busan'
+  // 답변(추천)용 최근접 장소 — 질문 낭독 뒤 깐부가 이어 말한다
+  const nearestForAnswer = useMemo(() => {
+    const list = (pois ?? []).filter((p) => p.lat != null && p.lng != null)
+    if (!list.length) return null
+    const best = list
+      .map((p) => ({ p, d: distKm(coords.latitude, coords.longitude, p.lat!, p.lng!) }))
+      .sort((a, b) => a.d - b.d)[0]
+    return { name: best.p.name, km: best.d }
+  }, [pois, coords.latitude, coords.longitude])
   const gganbuMsg = useGganbuGreeting({
     lang,
     city: shortCity,
     condition: weather?.condition,
     hour,
+    nearby: nearestForAnswer,
   })
   // Today's Pick — AI가 오늘 날씨·위치·시간 고려해 동적 추천.
   // 하루 단위 누적 덱(MMKV): 기본 3개로 시작해 매시간 새 추천이 앞에 추가(내역 누적),
