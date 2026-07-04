@@ -62,7 +62,7 @@ export function CatSprite({ variant, onEnd }: { variant: CatVariant; onEnd?: () 
   useEffect(() => {
     onEndRef.current = onEnd
   }, [onEnd])
-  const frames = 'frames' in meta ? meta.frames : 4
+  const frames = (meta as { frames?: number }).frames ?? 4
   useEffect(() => {
     av.setValue(0)
     const timing = Animated.timing(av, {

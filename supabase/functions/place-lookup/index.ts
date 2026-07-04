@@ -91,6 +91,21 @@ Deno.serve(async (req) => {
     const key = Deno.env.get('GOOGLE_PLACES_API_KEY') ?? Deno.env.get('GOOGLE_MAPS_API_KEY')
     if (!key) return json({ error: 'no_key' }, 502)
 
+    // ⓪ 이름 → 장소 대표 사진 URL (Find Place → Photo 302 추적으로 키 없는 lh3 URL 확보)
+    const photoName: string | undefined = body.photoName
+    if (photoName) {
+      const findUrl =
+        `https://maps.googleapis.com/maps/api/place/findplacefromtext/json` +
+        `?input=${encodeURIComponent(photoName)}&inputtype=textquery&fields=photos&key=${key}`
+      const fd = await fetch(findUrl).then((r) => r.json())
+      const ref: string | undefined = fd.candidates?.[0]?.photos?.[0]?.photo_reference
+      if (!ref) return json({ url: null })
+      const photoUrl = `https://maps.googleapis.com/maps/api/place/photo?maxwidth=320&photoreference=${ref}&key=${key}`
+      const pr = await fetch(photoUrl, { redirect: 'manual' })
+      const loc = pr.headers.get('location')
+      return json({ url: loc ?? null })
+    }
+
     // ① placeId 직접 조회 (Google POI 탭)
     if (placeId) {
       const url =

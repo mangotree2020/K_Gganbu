@@ -16,7 +16,7 @@ import {
 } from 'react-native'
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 
-import { useTabBarAutoHide } from '@/hooks/useTabBarAutoHide'
+import { useTabBarAutoHide, useTabBarStore } from '@/hooks/useTabBarAutoHide'
 import Svg, { Circle, G, Path, Rect } from 'react-native-svg'
 
 import { Icon, Pill } from '@/components/brand'
@@ -38,6 +38,7 @@ import { useCityLabel } from '@/features/weather/useCityLabel'
 import { useCurrentLocation } from '@/hooks/useCurrentLocation'
 import { useLocaleStore, useT } from '@/lib/i18n'
 import { storage } from '@/lib/mmkv'
+import { supabase } from '@/lib/supabase'
 import { gradients, palette, shadows } from '@/theme/tokens'
 
 // 디자인 PLACES (실 TourAPI POI 없을 때 폴백)
@@ -597,6 +598,7 @@ const REVIEWS = [
 export default function HomeScreen() {
   const t = useT()
   const insets = useSafeAreaInsets() // 상태바 영역 틴트 높이 계산용
+  const tabBarHidden = useTabBarStore((s) => s.hidden) // 탭바 숨김 시 플로팅 버튼 위치 보정
   const tabBarAutoHide = useTabBarAutoHide() // 스크롤 방향 따라 하단 탭바 자동 숨김/표시
   const lang = useLocaleStore((s) => s.lang)
   const notifUnread = unreadCount(useInboxStore((s) => s.items))
@@ -674,6 +676,37 @@ export default function HomeScreen() {
     return out
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dealCoupons, dealTickets])
+  // 딜 실사진 썸네일 — place-lookup(photoName)으로 장소 대표 사진 URL 확보(MMKV 7일 캐시)
+  const [dealPhotos, setDealPhotos] = useState<Record<string, string | null>>({})
+  useEffect(() => {
+    let alive = true
+    ;(async () => {
+      for (const d of deals) {
+        if (dealPhotos[d.title] !== undefined) continue
+        const ck = `dealphoto:${d.title}`
+        const cached = storage.getString(ck)
+        if (cached !== undefined && cached !== null) {
+          const val = cached === '' ? null : cached
+          if (alive) setDealPhotos((m) => ({ ...m, [d.title]: val }))
+          continue
+        }
+        try {
+          const { data } = await supabase.functions.invoke('place-lookup', {
+            body: { photoName: `${d.title} Busan` },
+          })
+          const url: string | null = data?.url ?? null
+          storage.set(ck, url ?? '')
+          if (alive) setDealPhotos((m) => ({ ...m, [d.title]: url }))
+        } catch {
+          if (alive) setDealPhotos((m) => ({ ...m, [d.title]: null }))
+        }
+      }
+    })()
+    return () => {
+      alive = false
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [deals])
   // 걷는 중 도보 아이콘 바운스 애니메이션 (걸음 감지 시에만 동작)
   const walkBounce = useState(() => new Animated.Value(0))[0]
   useEffect(() => {
@@ -1029,13 +1062,6 @@ export default function HomeScreen() {
                     : null
                 }
               />
-              <Pressable
-                onPress={() => router.push('/(tabs)/map' as never)}
-                style={ss.sectionAction}
-                hitSlop={6}>
-                <Text style={ss.sectionActionText}>{t('home.seeAll')}</Text>
-                <Icon name="chevron_right" size={14} color={palette.blue[50]} />
-              </Pressable>
             </View>
           </View>
           {poisMock && (
@@ -1105,13 +1131,21 @@ export default function HomeScreen() {
                 key={`${d.kind}-${d.id}`}
                 onPress={d.onPress}
                 style={[ss.dealCard, { width: SCREEN_W - 82 }]}>
-                <View style={{ width: 64, borderRadius: 14, overflow: 'hidden' }}>
-                  <PlaceThumb category={d.thumb} height={64} />
+                <View style={{ width: 64, height: 64, borderRadius: 14, overflow: 'hidden' }}>
+                  {dealPhotos[d.title] ? (
+                    <Image
+                      source={{ uri: dealPhotos[d.title] as string }}
+                      style={{ width: 64, height: 64 }}
+                      resizeMode="cover"
+                    />
+                  ) : (
+                    <PlaceThumb category={d.thumb} height={64} />
+                  )}
                 </View>
                 <View style={{ flex: 1 }}>
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
                     <Pill tone={d.kind === 'coupon' ? 'coral' : 'blue'} size="sm">
-                      {d.kind === 'coupon' ? t('tab.coupons') : t('ticket.title')}
+                      {d.kind === 'coupon' ? t('home.dealCoupon') : t('home.dealTicket')}
                     </Pill>
                   </View>
                   <Text style={ss.dealName} numberOfLines={1}>
@@ -1169,7 +1203,9 @@ export default function HomeScreen() {
 
       {/* 플로팅 AI 깐부 버튼 (PLANNING §9, 디자인 docs/AI Gganbu.png) — 알약형 + 로봇 아이콘 + 라벨.
           전체폭 래퍼 + flex-end로 우측 정렬(absolute+right만으로는 전폭 늘어나는 문제 회피). */}
-      <View style={ss.gganbuFabWrap} pointerEvents="box-none">
+      <View
+        style={[ss.gganbuFabWrap, tabBarHidden && { bottom: 18 + 56 + insets.bottom }]}
+        pointerEvents="box-none">
         {/* AI Translate — 음성 통역 실행화면 바로가기(teal=번역 전용) */}
         <Pressable
           onPress={() => router.push('/voice-interpret' as never)}
