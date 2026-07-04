@@ -24,7 +24,7 @@ import { useFavorites, useToggleFavorite } from '@/features/favorites/queries'
 import { GoogleMap, type GoogleMapHandle } from '@/features/map/GoogleMap'
 import {
   fetchRoute,
-  useMapPois,
+  useMapPoisMulti,
   lookupPlace,
   useNaverSearch,
   type LatLng,
@@ -304,7 +304,7 @@ export default function MapScreen() {
   )
   // 카테고리 필터 (null = 전체, 단일 선택 → 해당 카테고리만 재조회)
   const [showFilter, setShowFilter] = useState(false)
-  const [catFilter, setCatFilter] = useState<string | null>(null)
+  const [catFilter, setCatFilter] = useState<string[]>([]) // 다중 선택(빈 배열 = 전체)
   // 지도 유형 (일반/위성/하이브리드)
   const [mapType, setMapTypeState] = useState<MapType>('normal')
   // 하단 시트 높이 — 초기 HALF(카드 절반 보임). sheetBaseRef는 현재 스냅 추적.
@@ -313,10 +313,10 @@ export default function MapScreen() {
 
   const { coords, loading: locLoading } = useCurrentLocation()
   // 카테고리 선택 시 해당 contentTypeId로 재조회(필터가 마커·리스트에 실제 반영)
-  const { data: poisData, isFetching: poisFetching } = useMapPois(
+  const { data: poisData, isFetching: poisFetching } = useMapPoisMulti(
     lang,
     40,
-    contentTypeFor(catFilter, lang),
+    catFilter.map((c) => contentTypeFor(c, lang)).filter((x): x is string => !!x),
   )
   const places = useMemo(() => poisData?.pois ?? [], [poisData])
   const poisMock = poisData?.provider === 'mock'
@@ -379,10 +379,9 @@ export default function MapScreen() {
     if (q) setSubmittedQuery(q)
   }
 
-  // 카테고리 필터 토글
-  // 단일 선택 — 같은 칩 다시 누르면 전체로 해제. 선택 변경 시 기존 선택 초기화(다른 카테고리 재조회).
+  // 카테고리 필터 토글 — 다중 선택. 켜진 칩을 다시 누르면 해제, 모두 해제 = 전체.
   const toggleCat = (key: string) => {
-    setCatFilter((prev) => (prev === key ? null : key))
+    setCatFilter((prev) => (prev.includes(key) ? prev.filter((k) => k !== key) : [...prev, key]))
     setSelected(null)
   }
 
@@ -770,7 +769,7 @@ export default function MapScreen() {
               <Icon
                 name="tune"
                 size={18}
-                color={showFilter || catFilter ? palette.blue[50] : palette.zinc[500]}
+                color={showFilter || catFilter.length ? palette.blue[50] : palette.zinc[500]}
               />
             </Pressable>
           </View>
@@ -808,7 +807,7 @@ export default function MapScreen() {
           {showFilter && (
             <View style={ss.filterRow}>
               {CATS.map((c) => {
-                const on = catFilter === c.key
+                const on = catFilter.includes(c.key)
                 return (
                   <Pressable
                     key={c.key}
@@ -975,7 +974,9 @@ export default function MapScreen() {
               {/* 주변 추천 — 현재 위치로부터 거리순 (가로 카드, 좌우 스와이프) */}
               <View style={ss.sectionTitleRow}>
                 <Text style={ss.sectionTitle}>
-                  {catFilter ? catLabel(t, catFilter) : t('map.nearbyByDistance')}
+                  {catFilter.length
+                    ? catFilter.map((c) => catLabel(t, c)).join(' · ')
+                    : t('map.nearbyByDistance')}
                 </Text>
                 {poisFetching && <ActivityIndicator size="small" color={palette.blue[50]} />}
               </View>

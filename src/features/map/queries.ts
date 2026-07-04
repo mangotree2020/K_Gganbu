@@ -1,5 +1,5 @@
 // 장소(POI) — TourAPI Edge Function 호출 + mock 폴백 (mock-first)
-import { keepPreviousData, useQuery } from '@tanstack/react-query'
+import { keepPreviousData, useQueries, useQuery } from '@tanstack/react-query'
 import { storage } from '@/lib/mmkv'
 import { supabase } from '@/lib/supabase'
 
@@ -166,50 +166,90 @@ export function usePlaces(lang = 'en', rows = 12) {
 // 마지막 성공 POI를 MMKV에 보관 — 오프라인/선내 저속망 폴백 (REQ-CR-2)
 const POI_CACHE_KEY = (lang: string, ct?: string) => `map:pois:${lang}:${ct ?? 'all'}`
 
+async function fetchMapPois(
+  lang: string,
+  rows: number,
+  contentTypeId?: string,
+): Promise<PoiResult> {
+  {
+    // 네트워크 실패 시: 마지막 성공 결과(실데이터) → 없으면 mock
+    const offlineFallback = (): PoiResult => {
+      const raw = storage.getString(POI_CACHE_KEY(lang, contentTypeId))
+      if (raw) {
+        try {
+          return { pois: JSON.parse(raw) as Poi[], provider: 'tourapi' }
+        } catch {
+          // 캐시 손상 — mock으로
+        }
+      }
+      return { pois: MOCK_POIS, provider: 'mock' }
+    }
+    try {
+      const { data, error } = await supabase.functions.invoke('places', {
+        body: { lang, areaCode: 6, rows, contentTypeId },
+      })
+      if (error) throw error
+      const places = (data?.places ?? []) as Record<string, string>[]
+      const mapped = places
+        .map((p) => ({
+          id: p.id,
+          name: p.name,
+          address: p.address ?? null,
+          lat: p.lat ? Number(p.lat) : null,
+          lng: p.lng ? Number(p.lng) : null,
+          imageUrl: p.imageUrl ?? null,
+          tel: p.tel ?? null,
+          cat: toCat(p.contentTypeId),
+        }))
+        .filter((p) => p.lat && p.lng) // 좌표 필수
+      if (mapped.length) {
+        storage.set(POI_CACHE_KEY(lang, contentTypeId), JSON.stringify(mapped))
+        return { pois: mapped, provider: 'tourapi' }
+      }
+      return offlineFallback()
+    } catch {
+      return offlineFallback()
+    }
+  }
+}
+
 export function useMapPois(lang = 'en', rows = 20, contentTypeId?: string) {
   return useQuery({
     queryKey: ['map-pois', lang, rows, contentTypeId ?? 'all'],
     staleTime: 24 * 60 * 60 * 1000,
     refetchInterval: retryWhileMock, // mock 고착 방지 — 네트워크 복구 시 자동 실데이터 전환
     placeholderData: keepPreviousData, // 카테고리 전환 시 이전 결과 유지(깜빡임 방지)
-    queryFn: async (): Promise<PoiResult> => {
-      // 네트워크 실패 시: 마지막 성공 결과(실데이터) → 없으면 mock
-      const offlineFallback = (): PoiResult => {
-        const raw = storage.getString(POI_CACHE_KEY(lang, contentTypeId))
-        if (raw) {
-          try {
-            return { pois: JSON.parse(raw) as Poi[], provider: 'tourapi' }
-          } catch {
-            // 캐시 손상 — mock으로
-          }
+    queryFn: () => fetchMapPois(lang, rows, contentTypeId),
+  })
+}
+
+// 카테고리 다중 선택 조회 — 선택된 각 카테고리를 병렬 조회 후 병합(중복 id 제거).
+// 선택이 없으면 전체(contentType 미지정) 1건 조회와 동일.
+export function useMapPoisMulti(lang = 'en', rows = 20, contentTypeIds: string[] = []) {
+  const cts: (string | undefined)[] = contentTypeIds.length ? contentTypeIds : [undefined]
+  return useQueries({
+    queries: cts.map((ct) => ({
+      queryKey: ['map-pois', lang, rows, ct ?? 'all'],
+      staleTime: 24 * 60 * 60 * 1000,
+      refetchInterval: retryWhileMock,
+      placeholderData: keepPreviousData,
+      queryFn: () => fetchMapPois(lang, rows, ct),
+    })),
+    combine: (results) => {
+      const seen = new Set<string>()
+      const pois: Poi[] = []
+      let anyReal = false
+      for (const r of results) {
+        for (const p of r.data?.pois ?? []) {
+          if (seen.has(p.id)) continue
+          seen.add(p.id)
+          pois.push(p)
         }
-        return { pois: MOCK_POIS, provider: 'mock' }
+        if (r.data?.provider === 'tourapi') anyReal = true
       }
-      try {
-        const { data, error } = await supabase.functions.invoke('places', {
-          body: { lang, areaCode: 6, rows, contentTypeId },
-        })
-        if (error) throw error
-        const places = (data?.places ?? []) as Record<string, string>[]
-        const mapped = places
-          .map((p) => ({
-            id: p.id,
-            name: p.name,
-            address: p.address ?? null,
-            lat: p.lat ? Number(p.lat) : null,
-            lng: p.lng ? Number(p.lng) : null,
-            imageUrl: p.imageUrl ?? null,
-            tel: p.tel ?? null,
-            cat: toCat(p.contentTypeId),
-          }))
-          .filter((p) => p.lat && p.lng) // 좌표 필수
-        if (mapped.length) {
-          storage.set(POI_CACHE_KEY(lang, contentTypeId), JSON.stringify(mapped))
-          return { pois: mapped, provider: 'tourapi' }
-        }
-        return offlineFallback()
-      } catch {
-        return offlineFallback()
+      return {
+        data: { pois, provider: (anyReal ? 'tourapi' : 'mock') as PoiResult['provider'] },
+        isFetching: results.some((r) => r.isFetching),
       }
     },
   })
