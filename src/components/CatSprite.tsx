@@ -8,39 +8,38 @@ import { Animated, Easing, View } from 'react-native'
 
 export type CatVariant = 'walk' | 'run' | 'turn' | 'jump'
 
-// 동일 원본 캔버스(2172px) 시트는 공통 축척(걷기 34px 기준)으로 표시 — 실제 크기 일치.
-const S = 34 / 291
+// 각 시트는 셀 여백(가로 16·세로 8px)을 포함 — 표시 높이는 고양이 실크기 기준으로 보정됨.
 const SHEETS = {
   walk: {
     src: require('../../assets/cats/cat_walk.png') as number,
-    frameW: 462,
-    frameH: 291,
-    height: 27, // 34에서 20% 축소(사용자 피드백)
+    frameW: 490,
+    frameH: 307, // 여백 포함(꼬리 클리핑 방지)
+    height: 27, // 5% 축소(사용자 피드백)
     interval: 200,
     loop: true,
   },
   run: {
     // 구형 캔버스(1672px) — 사용자 확정 크기 26px 유지
     src: require('../../assets/cats/cat_run.png') as number,
-    frameW: 373,
-    frameH: 199,
-    height: 26,
+    frameW: 401,
+    frameH: 215, // 여백 포함
+    height: 28,
     interval: 110,
     loop: true,
   },
   turn: {
     src: require('../../assets/cats/cat_turn.png') as number,
-    frameW: 463,
-    frameH: 345,
-    height: Math.round(345 * S * 0.8), // ≈32 — 20% 축소(사용자 피드백)
+    frameW: 491,
+    frameH: 361, // 여백 포함
+    height: 31, // 7% 축소(사용자 피드백)
     interval: 170, // 전환이 눈에 보이도록 감속
     loop: false,
   },
   jump: {
     src: require('../../assets/cats/cat_jump.png') as number,
-    frameW: 517,
-    frameH: 373,
-    height: Math.round(373 * S * 0.8), // ≈35 — 20% 축소(사용자 피드백)
+    frameW: 545,
+    frameH: 389, // 여백 포함
+    height: 34, // 5% 축소(사용자 피드백)
     interval: 230, // 점프가 눈에 보이도록 감속(총 ~0.9s)
     loop: false,
   },
@@ -80,14 +79,14 @@ export function CatSprite({ variant, onEnd }: { variant: CatVariant; onEnd?: () 
     })
     return () => timing.stop()
   }, [variant, meta.interval, meta.loop, av])
-  // 정수 폭 + 좌우 1px 인셋 — 서브픽셀 보간으로 옆 프레임이 끄트머리에 비치는 것 차단
-  const w = Math.round(catWidth(variant))
+  // 시트가 프레임별 성분 분리 + 넉넉한 여백으로 생성되어 인셋 없이 전체 프레임 표시(꼬리 보존)
+  const w = catWidth(variant)
   const tx = av.interpolate({
     inputRange: [0, 0.9999, 1, 1.9999, 2, 2.9999, 3, 4],
-    outputRange: [-1, -1, -w - 1, -w - 1, -2 * w - 1, -2 * w - 1, -3 * w - 1, -3 * w - 1],
+    outputRange: [0, 0, -w, -w, -2 * w, -2 * w, -3 * w, -3 * w],
   })
   return (
-    <View style={{ width: w - 2, height: meta.height, overflow: 'hidden' }}>
+    <View style={{ width: w, height: meta.height, overflow: 'hidden' }}>
       <Animated.Image
         source={meta.src}
         style={{ width: w * 4, height: meta.height, transform: [{ translateX: tx }] }}
