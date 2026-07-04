@@ -105,7 +105,9 @@ function buildHtml(lat: number, lng: number, markers: GoogleMarker[], lang: stri
       });
       myLocPin = new google.maps.Marker({
         position: pos, map: map, zIndex: 1000, clickable: false,
-        icon: { path: 'M 0 0 C -2 -8 -11 -11 -11 -20 A 11 11 0 1 1 11 -20 C 11 -11 2 -8 0 0 Z', fillColor: '#2563EB', fillOpacity: 1, strokeColor: '#ffffff', strokeWeight: 2.5, anchor: new google.maps.Point(0, 0) },
+        // labelOrigin = 핀 머리 중심 — 깐부 로봇 아이콘을 머리 안에 표시
+        label: { text: '\\uD83E\\uDD16', fontSize: '12px' },
+        icon: { path: 'M 0 0 C -2 -8 -11 -11 -11 -20 A 11 11 0 1 1 11 -20 C 11 -11 2 -8 0 0 Z', fillColor: '#2563EB', fillOpacity: 1, strokeColor: '#ffffff', strokeWeight: 2.5, anchor: new google.maps.Point(0, 0), labelOrigin: new google.maps.Point(0, -20) },
       });
       map.panTo(pos);
       map.setZoom(zoom || 16);

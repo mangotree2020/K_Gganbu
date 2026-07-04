@@ -106,27 +106,32 @@ function buildHtml(lat: number, lng: number, markers: NaverMarker[], lang: Naver
       var m = { normal: naver.maps.MapTypeId.NORMAL, satellite: naver.maps.MapTypeId.SATELLITE, hybrid: naver.maps.MapTypeId.HYBRID };
       map.setMapTypeId(m[type] || naver.maps.MapTypeId.NORMAL);
     }
-    // 내 위치 표시 — 아래가 뾰족한 파란 핀(다른 마커와 구분) + 방향 빔(나침반 회전).
-    // 빔은 핀 끝(실제 위치점)을 축으로 heading 각도만큼 회전한다.
+    // 내 위치 표시 — GoogleMap과 완전히 동일한 SVG 지오메트리(같은 핀·빔 경로, 핀 끝 축 회전)로
+    // 방향 표기가 두 지도에서 정확히 일치하도록 한다. 핀 머리에는 깐부 로봇 아이콘.
     var myLoc = null, myHeading = 0;
     function myLocContent(){
-      var beam = '<div style="position:absolute;left:50%;bottom:0;width:0;height:0;transform:translateX(-50%) rotate('+myHeading+'deg);transform-origin:50% 100%;border-left:11px solid transparent;border-right:11px solid transparent;border-bottom:30px solid rgba(37,99,235,.35)"></div>';
-      var tail = '<div style="position:absolute;left:50%;bottom:0;transform:translateX(-50%);width:0;height:0;border-left:7px solid transparent;border-right:7px solid transparent;border-top:14px solid #2563EB"></div>';
-      var head = '<div style="position:absolute;left:50%;bottom:12px;transform:translateX(-50%);width:22px;height:22px;border-radius:50%;background:#2563EB;border:3px solid #fff;box-shadow:0 2px 5px rgba(0,0,0,.4)"></div>';
-      return '<div style="position:relative;width:44px;height:58px">'+beam+tail+head+'</div>';
+      return '<svg width="88" height="120" viewBox="-44 -87 88 120" style="overflow:visible;display:block">'
+        + '<path d="M 0 0 L -11 -30 L 11 -30 Z" fill="#2563EB" fill-opacity="0.35" transform="rotate('+myHeading+')"/>'
+        + '<path d="M 0 0 C -2 -8 -11 -11 -11 -20 A 11 11 0 1 1 11 -20 C 11 -11 2 -8 0 0 Z" fill="#2563EB" stroke="#ffffff" stroke-width="2.5"/>'
+        + '<text x="0" y="-15.5" text-anchor="middle" font-size="12">\\uD83E\\uDD16</text>'
+        + '</svg>';
+    }
+    function myLocIcon(){
+      // viewBox 좌표 (0,0)=핀 끝. 앵커 = SVG 내 (44, 87) 픽셀 지점
+      return { content: myLocContent(), anchor: new naver.maps.Point(44, 87) };
     }
     function setMyLocation(lat, lng, zoom){
       if(!map) return;
       if(myLoc) myLoc.setMap(null);
       myLoc = new naver.maps.Marker({
         position: new naver.maps.LatLng(lat, lng), map: map, zIndex: 1000,
-        icon: { content: myLocContent(), anchor: new naver.maps.Point(22, 58) },
+        icon: myLocIcon(),
       });
       map.morph(new naver.maps.LatLng(lat, lng), zoom || 16);
     }
     function setHeading(deg){
       myHeading = deg;
-      if(myLoc) myLoc.setIcon({ content: myLocContent(), anchor: new naver.maps.Point(22, 58) });
+      if(myLoc) myLoc.setIcon(myLocIcon());
     }
     function clearMarkers(){ markers.forEach(function(m){ m.setMap(null); }); markers = []; }
     // 마커 클러스터링 — 줌이 낮으면 지역별로 묶어 숫자 배지로 표시(가독성),
