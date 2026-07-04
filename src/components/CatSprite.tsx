@@ -13,7 +13,8 @@ const SHEETS = {
     src: require('../../assets/cats/cat_walk.png') as number,
     frameW: 82,
     frameH: 64,
-    height: Math.round(290 * SCALE), // ≈38px — 서 있는 자세라 더 큼(실제 크기 동일)
+    // 동일 축척(≈38px)에서 꼬리·직립 자세 탓에 커 보여 10% 축소 보정(사용자 피드백)
+    height: Math.round(290 * SCALE * 0.9), // ≈34px
     interval: 200, // 느긋한 걸음
   },
   run: {
