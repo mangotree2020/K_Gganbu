@@ -880,6 +880,17 @@ export default function HomeScreen() {
               style={StyleSheet.absoluteFill}
             />
           )}
+          {heroPhotos.length > 0 && (
+            // 좌측(텍스트 정렬 영역) 가독성 — 왼쪽을 살짝 어둡게, 오른쪽으로 투명
+            <LinearGradient
+              colors={['rgba(0,0,0,0.38)', 'rgba(0,0,0,0.14)', 'transparent']}
+              locations={[0, 0.5, 1]}
+              start={{ x: 0, y: 0.5 }}
+              end={{ x: 1, y: 0.5 }}
+              style={StyleSheet.absoluteFill}
+              pointerEvents="none"
+            />
+          )}
           {/* 상태바 영역 틴트 — 배경 사진과 무관하게 시간·배터리 가독성 확보.
               My(프로필) 헤더와 동일한 스카이블루 계열, 아래로 자연스럽게 투명 */}
           <LinearGradient
@@ -962,6 +973,10 @@ export default function HomeScreen() {
 
             {/* 검색 Input Box 삭제 — 텍스트 입력 최소화 방향(요청). 음성/탭 기반 탐색으로 대체 */}
           </SafeAreaView>
+          {/* 히어로 우측 하단 마이크 — 현재 질문·답변을 음성으로 다시 듣기 */}
+          <Pressable onPress={gganbuMsg.replay} hitSlop={8} style={ss.heroMic}>
+            <Icon name="mic" size={18} color="#fff" filled />
+          </Pressable>
         </View>
 
         {/* AI 카드는 플로팅 AI 깐부 버튼과 중복되어 제거(요청). */}
@@ -1292,6 +1307,20 @@ const ss = StyleSheet.create({
   gganbuFabText: { color: '#fff', fontSize: 15, fontWeight: '800', letterSpacing: -0.2 },
 
   hero: { paddingHorizontal: 18, paddingBottom: 10, overflow: 'hidden' },
+  // 히어로 우측 하단 마이크 — 질문·답변 음성 다시 듣기(히어로 필들과 동일 톤)
+  heroMic: {
+    position: 'absolute',
+    right: 16,
+    bottom: 12,
+    width: 38,
+    height: 38,
+    borderRadius: 999,
+    backgroundColor: 'rgba(255,255,255,.24)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,.35)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   heroTop: {
     flexDirection: 'row',
     justifyContent: 'space-between',

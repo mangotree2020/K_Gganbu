@@ -37,8 +37,10 @@ function answerLine(lang: string, nearby: { name: string; km: number }): string 
 }
 
 export type GreetingItem = { text: string; isGreeting: boolean }
+// replay: 현재 메시지(+이어지는 답변)를 다시 낭독 — 히어로 우측 하단 마이크 버튼용
+export type GreetingHandle = GreetingItem & { replay: () => void }
 
-export function useGganbuGreeting({ lang, city, condition, hour, nearby }: Args): GreetingItem {
+export function useGganbuGreeting({ lang, city, condition, hour, nearby }: Args): GreetingHandle {
   // [0]=시간대 인사(greeting 스타일), [1..]=컨텍스트 메시지
   const items = useMemo<GreetingItem[]>(() => {
     const greeting: GreetingItem = { text: gganbuGreeting(lang, hour), isGreeting: true }
@@ -84,5 +86,14 @@ export function useGganbuGreeting({ lang, city, condition, hour, nearby }: Args)
     if (!focused) stopSpeak()
   }, [focused])
 
-  return cur
+  // 수동 재생 — 현재 메시지를 다시 낭독하고, 질문이면 답변까지 이어서 낭독
+  const replay = () => {
+    stopSpeak()
+    const answer = !cur.isGreeting && nearbyRef.current ? answerLine(lang, nearbyRef.current) : null
+    speakMessage(cur.text, lang, () => {
+      if (answer) speakMessage(answer, lang)
+    })
+  }
+
+  return { ...cur, replay }
 }
