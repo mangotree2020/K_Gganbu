@@ -318,18 +318,25 @@ function NearbyTrail({ km, idx, count }: { km: number | null; idx: number; count
   const far = (km ?? 0) > 2.5
   const [trackW, setTrackW] = useState(0)
   const pos = useState(() => new Animated.Value(0))[0]
-  // 상태 머신: walk/run 루프 + turn(방향 전환)/jump(걷기→달리기 전환) 원샷
+  // 상태 머신: walk/run 루프 + turn(방향 전환)/jump(걷기→달리기 전환) 원샷.
+  // 꼬임 방지: "희망 방향(desiredFacing)"과 "현재 방향(facing)"을 분리하고,
+  // 원샷이 끝날 때마다 대사(reconcile) — 원샷 중 방향이 또 바뀌어도 스스로 수렴한다.
   const [anim, setAnim] = useState<CatVariant>('walk')
   const [facing, setFacing] = useState<1 | -1>(1)
-  const pendingFacingRef = useRef<1 | -1>(1)
+  const [desiredFacing, setDesiredFacing] = useState<1 | -1>(1)
+  const desiredFacingRef = useRef<1 | -1>(1)
+  useEffect(() => {
+    desiredFacingRef.current = desiredFacing
+  }, [desiredFacing])
   // 플릭 진행도(0~1)에 비례해 고양이가 트랙 위를 이동 — 플릭 방향으로 한 걸음씩
   const progress = count > 1 ? Math.min(1, Math.max(0, idx / (count - 1))) : 0
   useEffect(() => {
     Animated.timing(pos, { toValue: progress, duration: 500, useNativeDriver: true }).start()
   }, [progress, pos])
-  // 새 추천 카드가 중앙에 오면 야옹 + 방향/속도 전환 애니메이션 트리거
+  // 새 추천 카드가 중앙에 오면(플릭) 야옹 + 희망 방향 갱신
   const firstRef = useRef(true)
   const prevIdxRef = useRef(idx)
+  /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => {
     const prev = prevIdxRef.current
     prevIdxRef.current = idx
@@ -337,30 +344,23 @@ function NearbyTrail({ km, idx, count }: { km: number | null; idx: number; count
       firstRef.current = false
       return
     }
-    playMeow()
     if (idx !== prev) {
-      const dir: 1 | -1 = idx > prev ? 1 : -1
-      if (dir !== facing) {
-        // 방향 전환 — turn 시트는 우→좌 회전이므로, 좌→우는 좌우 반전 재생
-        pendingFacingRef.current = dir
-        setAnim('turn')
-        return
-      }
+      playMeow()
+      setDesiredFacing(idx > prev ? 1 : -1)
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [idx])
-  // 속도 전환 — 걷기→달리기는 점프로 연결, 달리기→걷기는 즉시
-  // 걷기↔달리기 상태 머신 구동 — far 변화에 반응해 전환 원샷을 트리거(의도된 setState)
-  /* eslint-disable react-hooks/set-state-in-effect */
+  // 상태 대사(reconcile) — 원샷이 아닐 때만 판단. 방향 불일치 → turn,
+  // 그다음 속도 불일치 → jump(걷→달) 또는 즉시 걷기 복귀(달→걷).
   useEffect(() => {
-    if (anim === 'turn' || anim === 'jump') return // 원샷 재생 중에는 대기
-    if (far && anim === 'walk') setAnim('jump')
+    if (anim === 'turn' || anim === 'jump') return
+    if (desiredFacing !== facing) setAnim('turn')
+    else if (far && anim === 'walk') setAnim('jump')
     else if (!far && anim === 'run') setAnim('walk')
-  }, [far, anim])
+  }, [far, anim, desiredFacing, facing])
   /* eslint-enable react-hooks/set-state-in-effect */
   const onOneShotEnd = () => {
-    if (anim === 'turn') setFacing(pendingFacingRef.current)
-    // 점프 후 달리기 / 그 외엔 걷기로 복귀(원거리면 far-이펙트가 점프→달리기로 이어감)
+    if (anim === 'turn') setFacing(desiredFacingRef.current)
+    // 점프 후 달리기 / 그 외엔 걷기로 복귀 — 남은 불일치는 reconcile이 이어서 처리
     setAnim(anim === 'jump' && far ? 'run' : 'walk')
   }
   // turn 시트는 우→좌 회전 원본 — 이전 방향(facing) 기준으로 반전해 좌→우 회전도 표현

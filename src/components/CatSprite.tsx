@@ -15,7 +15,7 @@ const SHEETS = {
     src: require('../../assets/cats/cat_walk.png') as number,
     frameW: 462,
     frameH: 291,
-    height: 34,
+    height: 27, // 34에서 20% 축소(사용자 피드백)
     interval: 200,
     loop: true,
   },
