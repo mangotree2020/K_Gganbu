@@ -2,7 +2,7 @@
 // 디자인 기능(섹션 See all·카드·타일·코어액션)을 실제 라우트로 배선해 작동하도록 함.
 import { LinearGradient } from 'expo-linear-gradient'
 import { router } from 'expo-router'
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   Animated,
   Dimensions,
@@ -21,6 +21,7 @@ import Svg, { Circle, G, Path, Rect } from 'react-native-svg'
 
 import { Icon, Pill } from '@/components/brand'
 import { FallbackBadge } from '@/components/FallbackBadge'
+import { CatSprite, catWidth } from '@/components/CatSprite'
 import { HeroBackdrop } from '@/components/HeroBackdrop'
 import { usePlaces, type Poi } from '@/features/map/queries'
 import { useGganbuGreeting } from '@/features/gganbu/useGganbuGreeting'
@@ -292,50 +293,90 @@ function PlaceThumb({ category, height = 92 }: { category: string; height?: numb
   )
 }
 
-// 주변 추천 헤더 장식 — 구불구불 움직이는 선(지렁이) 위를 고양이가 달려가는 느낌.
-// 선은 사인파 SVG를 위상 이동으로 흔들고, 고양이는 잰걸음 바운스. 오른쪽 끝에
-// 현재 플릭 중앙 카드까지의 거리를 표시한다.
-function NearbyTrail({ distText }: { distText: string | null }) {
-  const [w, setW] = useState(0)
-  const [phase, setPhase] = useState(0)
-  useEffect(() => {
-    const id = setInterval(() => setPhase((p) => (p + 0.8) % (Math.PI * 2)), 110)
-    return () => clearInterval(id)
-  }, [])
-  const catBounce = useState(() => new Animated.Value(0))[0]
-  useEffect(() => {
-    const loop = Animated.loop(
-      Animated.sequence([
-        Animated.timing(catBounce, { toValue: -2.5, duration: 160, useNativeDriver: true }),
-        Animated.timing(catBounce, { toValue: 0, duration: 160, useNativeDriver: true }),
-      ]),
-    )
-    loop.start()
-    return () => loop.stop()
-  }, [catBounce])
-  // 사인파 경로 — 6px 간격 세그먼트, 진폭 3px
-  let d = ''
-  for (let x = 0; x <= w; x += 6) {
-    const y = 8 + 3 * Math.sin(x / 9 + phase)
-    d += (x === 0 ? 'M' : 'L') + x.toFixed(1) + ' ' + y.toFixed(1)
+// 주변 추천 헤더 장식 — 스프라이트 고양이가 플릭 진행도를 따라 조금씩 걸어간다.
+// 현재 카드가 근거리(≤2.5km)면 걷기, 원거리면 달리기 모션(두 모션의 실제 크기는 동일 축척).
+// 새 추천 카드가 중앙에 올 때마다 야옹 소리를 낸다.
+let meowPlayer: { seekTo: (s: number) => void; play: () => void } | null = null
+function playMeow() {
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { createAudioPlayer } = require('expo-audio') as typeof import('expo-audio')
+    if (!meowPlayer) meowPlayer = createAudioPlayer(require('../../assets/cats/meow.wav'))
+    meowPlayer.seekTo(0)
+    meowPlayer.play()
+  } catch {
+    // 오디오 미지원/구 빌드 — 무음
   }
+}
+
+function NearbyTrail({ km, idx, count }: { km: number | null; idx: number; count: number }) {
+  const far = (km ?? 0) > 2.5
+  const [trackW, setTrackW] = useState(0)
+  const pos = useState(() => new Animated.Value(0))[0]
+  // 플릭 진행도(0~1)에 비례해 고양이가 트랙 위를 이동 — 플릭 방향으로 한 걸음씩
+  const progress = count > 1 ? Math.min(1, Math.max(0, idx / (count - 1))) : 0
+  useEffect(() => {
+    Animated.timing(pos, { toValue: progress, duration: 500, useNativeDriver: true }).start()
+  }, [progress, pos])
+  // 새 추천 카드가 중앙에 오면 야옹 (첫 마운트는 제외) + 이동 방향 기록(역방향이면 좌우 반전)
+  const firstRef = useRef(true)
+  const prevIdxRef = useRef(idx)
+  const [facing, setFacing] = useState<1 | -1>(1)
+  useEffect(() => {
+    const prev = prevIdxRef.current
+    prevIdxRef.current = idx
+    if (firstRef.current) {
+      firstRef.current = false
+      return
+    }
+    if (idx !== prev) setFacing(idx > prev ? 1 : -1) // 뒤로 플릭 → 왼쪽 보며 이동
+    playMeow()
+  }, [idx])
+  const catW = catWidth(far ? 'run' : 'walk')
   return (
     <View
-      style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: 4, marginLeft: 8 }}
-      onLayout={(e) => setW(Math.max(0, e.nativeEvent.layout.width - 64))}>
-      <View style={{ flex: 1, height: 16, overflow: 'hidden' }}>
-        {w > 12 && (
-          <Svg width={w} height={16}>
-            <Path d={d} stroke={palette.blue[50]} strokeWidth={1.8} fill="none" />
-          </Svg>
+      style={{
+        flex: 1,
+        flexDirection: 'row',
+        alignItems: 'flex-end',
+        gap: 4,
+        marginLeft: 8,
+        height: 40,
+      }}>
+      <View
+        style={{ flex: 1, height: 40, justifyContent: 'flex-end' }}
+        onLayout={(e) => setTrackW(e.nativeEvent.layout.width)}>
+        {trackW > 60 && (
+          <Animated.View
+            style={{
+              position: 'absolute',
+              left: 0,
+              bottom: 2,
+              transform: [
+                {
+                  translateX: pos.interpolate({
+                    inputRange: [0, 1],
+                    outputRange: [0, Math.max(0, trackW - catW - 2)],
+                  }),
+                },
+              ],
+            }}>
+            <View style={{ transform: [{ scaleX: facing }] }}>
+              <CatSprite variant={far ? 'run' : 'walk'} />
+            </View>
+          </Animated.View>
         )}
       </View>
-      <Animated.Text style={{ fontSize: 13, transform: [{ translateY: catBounce }] }}>
-        {'\uD83D\uDC08'}
-      </Animated.Text>
-      {distText && (
-        <Text style={{ color: palette.blue[50], fontSize: 12, fontWeight: '800', marginRight: 8 }}>
-          {distText}
+      {km != null && (
+        <Text
+          style={{
+            color: palette.blue[50],
+            fontSize: 12,
+            fontWeight: '800',
+            marginRight: 8,
+            marginBottom: 4,
+          }}>
+          {km.toFixed(1)}km
         </Text>
       )}
     </View>
@@ -942,9 +983,16 @@ export default function HomeScreen() {
               <Text style={ss.sectionTitle}>{t('home.nearby')}</Text>
               {/* 지렁이 선 + 고양이 + 현재 카드 거리 */}
               <NearbyTrail
-                distText={
+                idx={nearbyIdx}
+                count={nearbyPois.length}
+                km={
                   nearbyPois[nearbyIdx]?.lat != null && nearbyPois[nearbyIdx]?.lng != null
-                    ? `${distKm(coords.latitude, coords.longitude, nearbyPois[nearbyIdx].lat!, nearbyPois[nearbyIdx].lng!).toFixed(1)}km`
+                    ? distKm(
+                        coords.latitude,
+                        coords.longitude,
+                        nearbyPois[nearbyIdx].lat!,
+                        nearbyPois[nearbyIdx].lng!,
+                      )
                     : null
                 }
               />
