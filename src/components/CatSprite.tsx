@@ -32,8 +32,8 @@ const SHEETS = {
     src: require('../../assets/cats/cat_turn.png') as number,
     frameW: 491,
     frameH: 361, // 여백 포함
-    height: 29, // 추가 2% 축소(사용자 피드백)
-    interval: 230, // 턴을 더 느긋하게(사용자 피드백)
+    height: 30, // 1% 확대(사용자 피드백, 반올림)
+    interval: 290, // 턴을 더 느리게(사용자 피드백)
     loop: false,
   },
   jump: {
