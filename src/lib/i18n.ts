@@ -82,7 +82,7 @@ const STRINGS: Record<AppLang, Dict> = {
     'home.aiPickNow': 'AI Pick · now',
     'home.aiPickHint': 'Swipe to see more · updates hourly',
     'home.deals': "Today's deals",
-    'home.courses': 'Recommended courses',
+    'home.courses': 'Day Plans',
     'home.travelers': 'From travelers',
     'home.tileTranslateSub': 'Camera · Voice · 5 languages',
     'home.tileCouponsSub': '24 near Haeundae',
