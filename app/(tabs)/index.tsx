@@ -406,16 +406,23 @@ function NearbyTrail({ km, idx, count }: { km: number | null; idx: number; count
         )}
       </View>
       {km != null && (
-        <Text
+        // 거리 → 발 아이콘 → 예상 걸음수(1km≈1,350보) — Today's Pick과 동일 형식
+        <View
           style={{
-            color: palette.blue[50],
-            fontSize: 12,
-            fontWeight: '800',
+            flexDirection: 'row',
+            alignItems: 'center',
+            gap: 3,
             marginRight: 8,
             marginBottom: 4,
           }}>
-          {km.toFixed(1)}km
-        </Text>
+          <Text style={{ color: palette.blue[50], fontSize: 12, fontWeight: '800' }}>
+            {km.toFixed(1)}km
+          </Text>
+          <Icon name="directions_walk" size={13} color={palette.blue[50]} filled />
+          <Text style={{ color: palette.blue[50], fontSize: 12, fontWeight: '800' }}>
+            {Math.round(km * 1350).toLocaleString()}
+          </Text>
+        </View>
       )}
     </View>
   )
