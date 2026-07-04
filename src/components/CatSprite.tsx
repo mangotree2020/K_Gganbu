@@ -32,7 +32,7 @@ const SHEETS = {
     src: require('../../assets/cats/cat_turn.png') as number,
     frameW: 463,
     frameH: 345,
-    height: Math.round(345 * S), // ≈40
+    height: Math.round(345 * S * 0.8), // ≈32 — 20% 축소(사용자 피드백)
     interval: 170, // 전환이 눈에 보이도록 감속
     loop: false,
   },
@@ -40,7 +40,7 @@ const SHEETS = {
     src: require('../../assets/cats/cat_jump.png') as number,
     frameW: 517,
     frameH: 373,
-    height: Math.round(373 * S), // ≈44
+    height: Math.round(373 * S * 0.8), // ≈35 — 20% 축소(사용자 피드백)
     interval: 230, // 점프가 눈에 보이도록 감속(총 ~0.9s)
     loop: false,
   },
