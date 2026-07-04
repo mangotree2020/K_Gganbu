@@ -1,60 +1,93 @@
-// 고양이 스프라이트 애니메이션 — docs/image의 4프레임 시트를 가공한
-// assets/cats/{cat_walk,cat_run}.png 사용(프레임별 하단 정렬·배경 투명).
-// 프레임 전환은 네이티브 드라이버 Animated로 UI 스레드에서 구동(JS 상태와 무관하게 부드러움).
-// 두 동작의 화면 크기는 원본 픽셀 스케일 기준으로 동일하게 맞춘다
-// (달리기 자세는 낮고 길어서 같은 스케일이면 걷기보다 화면 높이가 낮다).
-import { useEffect, useState } from 'react'
+// 고양이 스프라이트 애니메이션 — docs/image의 4프레임 시트를 원본 해상도 그대로
+// (배경 투명화 + 전 프레임 공통 세로 밴드 크롭) 가공한 assets/cats/*.png 사용.
+// 점프의 포물선·기준선이 원본 그대로 보존되며, 화면 축소는 스타일로만 처리(화질 유지).
+// 프레임 전환은 네이티브 드라이버 Animated 계단 보간(UI 스레드) — walk/run은 루프,
+// turn(방향 전환)/jump(걷기→달리기 전환)는 1회 재생 후 onEnd 콜백.
+import { useEffect, useRef, useState } from 'react'
 import { Animated, Easing, View } from 'react-native'
 
-// 원본 바디 bbox 높이: walk 290px / run 199px → 같은 축척(px/orig)으로 표시
-const SCALE = 26 / 199 // run 표시 높이 26px 기준 공통 축척
+export type CatVariant = 'walk' | 'run' | 'turn' | 'jump'
+
+// 동일 원본 캔버스(2172px) 시트는 공통 축척(걷기 34px 기준)으로 표시 — 실제 크기 일치.
+const S = 34 / 291
 const SHEETS = {
   walk: {
     src: require('../../assets/cats/cat_walk.png') as number,
-    frameW: 82,
-    frameH: 64,
-    // 동일 축척(≈38px)에서 꼬리·직립 자세 탓에 커 보여 10% 축소 보정(사용자 피드백)
-    height: Math.round(290 * SCALE * 0.9), // ≈34px
-    interval: 200, // 느긋한 걸음
+    frameW: 462,
+    frameH: 291,
+    height: 34,
+    interval: 200,
+    loop: true,
   },
   run: {
+    // 구형 캔버스(1672px) — 사용자 확정 크기 26px 유지
     src: require('../../assets/cats/cat_run.png') as number,
-    frameW: 118,
-    frameH: 64,
+    frameW: 373,
+    frameH: 199,
     height: 26,
-    interval: 110, // 잰 달리기
+    interval: 110,
+    loop: true,
+  },
+  turn: {
+    src: require('../../assets/cats/cat_turn.png') as number,
+    frameW: 463,
+    frameH: 345,
+    height: Math.round(345 * S), // ≈40
+    interval: 170, // 전환이 눈에 보이도록 감속
+    loop: false,
+  },
+  jump: {
+    src: require('../../assets/cats/cat_jump.png') as number,
+    frameW: 517,
+    frameH: 373,
+    height: Math.round(373 * S), // ≈44
+    interval: 230, // 점프가 눈에 보이도록 감속(총 ~0.9s)
+    loop: false,
   },
 } as const
 
-export function catWidth(variant: 'walk' | 'run'): number {
+export function catWidth(variant: CatVariant): number {
   const m = SHEETS[variant]
   return (m.height * m.frameW) / m.frameH
 }
 
-export function CatSprite({ variant }: { variant: 'walk' | 'run' }) {
+export function catHeight(variant: CatVariant): number {
+  return SHEETS[variant].height
+}
+
+export function CatSprite({ variant, onEnd }: { variant: CatVariant; onEnd?: () => void }) {
   const meta = SHEETS[variant]
   const av = useState(() => new Animated.Value(0))[0]
+  const onEndRef = useRef(onEnd)
+  useEffect(() => {
+    onEndRef.current = onEnd
+  }, [onEnd])
   useEffect(() => {
     av.setValue(0)
-    const loop = Animated.loop(
-      Animated.timing(av, {
-        toValue: 4,
-        duration: meta.interval * 4,
-        easing: Easing.linear,
-        useNativeDriver: true,
-      }),
-    )
-    loop.start()
-    return () => loop.stop()
-  }, [variant, meta.interval, av])
-  const w = catWidth(variant)
-  // 연속 값 → 프레임 단위 계단 이동(스프라이트 셀 전환)
+    const timing = Animated.timing(av, {
+      toValue: 4,
+      duration: meta.interval * 4,
+      easing: Easing.linear,
+      useNativeDriver: true,
+    })
+    if (meta.loop) {
+      const loop = Animated.loop(timing)
+      loop.start()
+      return () => loop.stop()
+    }
+    timing.start(({ finished }) => {
+      if (finished) onEndRef.current?.()
+    })
+    return () => timing.stop()
+  }, [variant, meta.interval, meta.loop, av])
+  // 정수 폭 + 좌우 1px 인셋 — 서브픽셀 보간으로 옆 프레임이 끄트머리에 비치는 것 차단
+  const w = Math.round(catWidth(variant))
   const tx = av.interpolate({
     inputRange: [0, 0.9999, 1, 1.9999, 2, 2.9999, 3, 4],
-    outputRange: [0, 0, -w, -w, -2 * w, -2 * w, -3 * w, -3 * w],
+    outputRange: [-1, -1, -w - 1, -w - 1, -2 * w - 1, -2 * w - 1, -3 * w - 1, -3 * w - 1],
   })
   return (
-    <View style={{ width: w, height: meta.height, overflow: 'hidden' }}>
+    <View style={{ width: w - 2, height: meta.height, overflow: 'hidden' }}>
       <Animated.Image
         source={meta.src}
         style={{ width: w * 4, height: meta.height, transform: [{ translateX: tx }] }}

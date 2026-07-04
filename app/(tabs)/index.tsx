@@ -21,7 +21,7 @@ import Svg, { Circle, G, Path, Rect } from 'react-native-svg'
 
 import { Icon, Pill } from '@/components/brand'
 import { FallbackBadge } from '@/components/FallbackBadge'
-import { CatSprite, catWidth } from '@/components/CatSprite'
+import { CatSprite, catWidth, type CatVariant } from '@/components/CatSprite'
 import { HeroBackdrop } from '@/components/HeroBackdrop'
 import { usePlaces, type Poi } from '@/features/map/queries'
 import { useGganbuGreeting } from '@/features/gganbu/useGganbuGreeting'
@@ -297,7 +297,12 @@ function PlaceThumb({ category, height = 92 }: { category: string; height?: numb
 // 현재 카드가 근거리(≤2.5km)면 걷기, 원거리면 달리기 모션(두 모션의 실제 크기는 동일 축척).
 // 새 추천 카드가 중앙에 올 때마다 야옹 소리를 낸다.
 let meowPlayer: { seekTo: (s: number) => void; play: () => void } | null = null
+let lastMeowAt = 0
 function playMeow() {
+  // 연속 플릭·스크롤 중 다중 재생 방지 — 800ms 스로틀(플릭당 한 번)
+  const now = Date.now()
+  if (now - lastMeowAt < 800) return
+  lastMeowAt = now
   try {
     // eslint-disable-next-line @typescript-eslint/no-require-imports
     const { createAudioPlayer } = require('expo-audio') as typeof import('expo-audio')
@@ -313,15 +318,18 @@ function NearbyTrail({ km, idx, count }: { km: number | null; idx: number; count
   const far = (km ?? 0) > 2.5
   const [trackW, setTrackW] = useState(0)
   const pos = useState(() => new Animated.Value(0))[0]
+  // 상태 머신: walk/run 루프 + turn(방향 전환)/jump(걷기→달리기 전환) 원샷
+  const [anim, setAnim] = useState<CatVariant>('walk')
+  const [facing, setFacing] = useState<1 | -1>(1)
+  const pendingFacingRef = useRef<1 | -1>(1)
   // 플릭 진행도(0~1)에 비례해 고양이가 트랙 위를 이동 — 플릭 방향으로 한 걸음씩
   const progress = count > 1 ? Math.min(1, Math.max(0, idx / (count - 1))) : 0
   useEffect(() => {
     Animated.timing(pos, { toValue: progress, duration: 500, useNativeDriver: true }).start()
   }, [progress, pos])
-  // 새 추천 카드가 중앙에 오면 야옹 (첫 마운트는 제외) + 이동 방향 기록(역방향이면 좌우 반전)
+  // 새 추천 카드가 중앙에 오면 야옹 + 방향/속도 전환 애니메이션 트리거
   const firstRef = useRef(true)
   const prevIdxRef = useRef(idx)
-  const [facing, setFacing] = useState<1 | -1>(1)
   useEffect(() => {
     const prev = prevIdxRef.current
     prevIdxRef.current = idx
@@ -329,10 +337,35 @@ function NearbyTrail({ km, idx, count }: { km: number | null; idx: number; count
       firstRef.current = false
       return
     }
-    if (idx !== prev) setFacing(idx > prev ? 1 : -1) // 뒤로 플릭 → 왼쪽 보며 이동
     playMeow()
+    if (idx !== prev) {
+      const dir: 1 | -1 = idx > prev ? 1 : -1
+      if (dir !== facing) {
+        // 방향 전환 — turn 시트는 우→좌 회전이므로, 좌→우는 좌우 반전 재생
+        pendingFacingRef.current = dir
+        setAnim('turn')
+        return
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [idx])
-  const catW = catWidth(far ? 'run' : 'walk')
+  // 속도 전환 — 걷기→달리기는 점프로 연결, 달리기→걷기는 즉시
+  // 걷기↔달리기 상태 머신 구동 — far 변화에 반응해 전환 원샷을 트리거(의도된 setState)
+  /* eslint-disable react-hooks/set-state-in-effect */
+  useEffect(() => {
+    if (anim === 'turn' || anim === 'jump') return // 원샷 재생 중에는 대기
+    if (far && anim === 'walk') setAnim('jump')
+    else if (!far && anim === 'run') setAnim('walk')
+  }, [far, anim])
+  /* eslint-enable react-hooks/set-state-in-effect */
+  const onOneShotEnd = () => {
+    if (anim === 'turn') setFacing(pendingFacingRef.current)
+    // 점프 후 달리기 / 그 외엔 걷기로 복귀(원거리면 far-이펙트가 점프→달리기로 이어감)
+    setAnim(anim === 'jump' && far ? 'run' : 'walk')
+  }
+  // turn 시트는 우→좌 회전 원본 — 이전 방향(facing) 기준으로 반전해 좌→우 회전도 표현
+  const flip = facing
+  const catW = catWidth(anim)
   return (
     <View
       style={{
@@ -341,10 +374,10 @@ function NearbyTrail({ km, idx, count }: { km: number | null; idx: number; count
         alignItems: 'flex-end',
         gap: 4,
         marginLeft: 8,
-        height: 40,
+        height: 46,
       }}>
       <View
-        style={{ flex: 1, height: 40, justifyContent: 'flex-end' }}
+        style={{ flex: 1, height: 46, justifyContent: 'flex-end' }}
         onLayout={(e) => setTrackW(e.nativeEvent.layout.width)}>
         {trackW > 60 && (
           <Animated.View
@@ -361,8 +394,8 @@ function NearbyTrail({ km, idx, count }: { km: number | null; idx: number; count
                 },
               ],
             }}>
-            <View style={{ transform: [{ scaleX: facing }] }}>
-              <CatSprite variant={far ? 'run' : 'walk'} />
+            <View style={{ transform: [{ scaleX: flip }] }}>
+              <CatSprite variant={anim} onEnd={onOneShotEnd} />
             </View>
           </Animated.View>
         )}
