@@ -469,8 +469,12 @@ function BigTile({ tile, t }: { tile: (typeof TILES)[number]; t: (k: string) => 
           )}
         </View>
         <View>
-          <Text style={ss.bigTileTitle}>{t(tile.titleKey)}</Text>
-          <Text style={ss.bigTileSub}>{t(tile.subKey)}</Text>
+          <Text style={ss.bigTileTitle} numberOfLines={1}>
+            {t(tile.titleKey)}
+          </Text>
+          <Text style={ss.bigTileSub} numberOfLines={3}>
+            {t(tile.subKey)}
+          </Text>
         </View>
       </LinearGradient>
     </Pressable>
@@ -1446,7 +1450,14 @@ const ss = StyleSheet.create({
   },
 
   bigTile: { width: 148, borderRadius: 18, overflow: 'hidden', ...shadows.card },
-  bigTileGrad: { padding: 12, paddingBottom: 14, minHeight: 88, justifyContent: 'space-between' },
+  // flex:1 — 가로 행에서 가장 큰 타일 높이에 맞게 stretch돼도 그라데이션이 끝까지 채움(회색 띠 방지)
+  bigTileGrad: {
+    flex: 1,
+    padding: 12,
+    paddingBottom: 14,
+    minHeight: 88,
+    justifyContent: 'space-between',
+  },
   bigTileTop: {
     flexDirection: 'row',
     justifyContent: 'space-between',

@@ -1,5 +1,8 @@
-// gganbu — AI 깐부 챗봇 Edge Function (Claude API + TourAPI RAG)
-// PLANNING §18 페르소나·가드레일. 키 미설정 시 502(클라이언트 mock 폴백).
+// gganbu — AI 깐부 챗봇 Edge Function (Gemini 2.5 Flash-Lite 주력 + Claude 폴백, TourAPI RAG)
+// PLANNING §18 페르소나·가드레일. 모델 전략(2026-07 가성비 검토):
+//   주력 = Gemini 2.5 Flash-Lite($0.10/$0.40 per 1M — 여행 FAQ·장소 안내에 최적 가성비)
+//   폴백 = Claude(기존 티어링) — Gemini 키 미설정/오류 시 품질 백업
+// 키 모두 미설정 시 502(클라이언트 mock 폴백).
 // 일일 사용량 상한(REQ-TR-3, BM§3.3): 게스트/로그인 사용자별 KST 일 단위 카운팅.
 import 'jsr:@supabase/functions-js/edge-runtime.d.ts'
 import { createClient } from 'jsr:@supabase/supabase-js@2'
@@ -136,19 +139,47 @@ async function checkDailyCap(req: Request): Promise<Response | null> {
   return null
 }
 
+// 주력: Gemini 2.5 Flash-Lite — 실패(키 없음/오류) 시 null 반환해 Claude 폴백을 태운다
+const GEMINI_MODEL = Deno.env.get('GGANBU_GEMINI_MODEL') ?? 'gemini-2.5-flash-lite'
+
+async function callGemini(msgs: Msg[], sys: string, stream: boolean): Promise<Response | null> {
+  const gkey = Deno.env.get('GEMINI_API_KEY')
+  if (!gkey) return null
+  const method = stream ? 'streamGenerateContent?alt=sse&' : 'generateContent?'
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:${method}key=${gkey}`
+  try {
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        systemInstruction: { parts: [{ text: sys }] },
+        contents: msgs.map((m) => ({
+          role: m.role === 'user' ? 'user' : 'model',
+          parts: [{ text: m.text }],
+        })),
+        generationConfig: { maxOutputTokens: 512, temperature: 0.7 },
+      }),
+    })
+    if (!res.ok) return null
+    return res
+  } catch {
+    return null
+  }
+}
+
+// Gemini SSE에서 텍스트 델타 추출
+// deno-lint-ignore no-explicit-any
+function geminiChunkText(ev: any): string {
+  const parts = ev?.candidates?.[0]?.content?.parts ?? []
+  // deno-lint-ignore no-explicit-any
+  return parts.map((p: any) => p?.text ?? '').join('')
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: cors })
   try {
     const blocked = await checkDailyCap(req)
     if (blocked) return blocked
-
-    const apiKey = Deno.env.get('ANTHROPIC_API_KEY')
-    if (!apiKey) {
-      return new Response(
-        JSON.stringify({ error: 'no_key', message: 'ANTHROPIC_API_KEY 미설정' }),
-        { status: 502, headers: { ...cors, 'Content-Type': 'application/json' } },
-      )
-    }
 
     const {
       messages,
@@ -170,7 +201,70 @@ Deno.serve(async (req) => {
     const useRag = new URL(req.url).searchParams.get('rag') === '1'
     const rag = useRag ? await ragContext(dialect ? 'ko' : language) : ''
 
-    // 모델 티어링 — 질의 복잡도에 따라 Haiku(단순)/Sonnet(복잡) 선택
+    const sys = systemPrompt(language, location, rag, dialect, context)
+
+    // ── 주력: Gemini 2.5 Flash-Lite ──
+    const g = await callGemini(messages, sys, stream)
+    if (g) {
+      if (stream && g.body) {
+        // Gemini SSE → 평문 스트림(클라이언트는 누적 텍스트만 읽음)
+        const out = new ReadableStream({
+          async start(controller) {
+            const reader = g.body!.getReader()
+            const decoder = new TextDecoder()
+            const encoder = new TextEncoder()
+            let buf = ''
+            try {
+              for (;;) {
+                const { done, value } = await reader.read()
+                if (done) break
+                buf += decoder.decode(value, { stream: true })
+                const lines = buf.split('\n')
+                buf = lines.pop() ?? ''
+                for (const line of lines) {
+                  const t = line.trim()
+                  if (!t.startsWith('data:')) continue
+                  try {
+                    const txt = geminiChunkText(JSON.parse(t.slice(5).trim()))
+                    if (txt) controller.enqueue(encoder.encode(txt))
+                  } catch {
+                    // 비JSON 라인 무시
+                  }
+                }
+              }
+            } catch {
+              // 스트림 중단 — 받은 만큼 사용
+            }
+            controller.close()
+          },
+        })
+        return new Response(out, {
+          headers: {
+            ...cors,
+            'Content-Type': 'text/plain; charset=utf-8',
+            'Cache-Control': 'no-cache',
+            'x-kgb-model': GEMINI_MODEL,
+          },
+        })
+      }
+      const gj = await g.json()
+      const greply = geminiChunkText(gj)
+      if (greply.trim()) {
+        return new Response(JSON.stringify({ reply: greply }), {
+          headers: { ...cors, 'Content-Type': 'application/json', 'x-kgb-model': GEMINI_MODEL },
+        })
+      }
+      // 빈 응답 → 폴백 진행
+    }
+
+    // ── 폴백: Claude (기존 티어링) ──
+    const apiKey = Deno.env.get('ANTHROPIC_API_KEY')
+    if (!apiKey) {
+      return new Response(JSON.stringify({ error: 'no_key', message: 'AI 키 미설정' }), {
+        status: 502,
+        headers: { ...cors, 'Content-Type': 'application/json' },
+      })
+    }
     const tier = pickModel(messages)
     const res = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
@@ -183,7 +277,7 @@ Deno.serve(async (req) => {
         model: tier.model,
         max_tokens: tier.maxTokens,
         stream, // 스트리밍 요청 시 토큰 단위로 흘려보냄(체감 즉시 응답)
-        system: systemPrompt(language, location, rag, dialect, context),
+        system: sys,
         messages: messages.map((m) => ({ role: m.role, content: m.text })),
       }),
     })
