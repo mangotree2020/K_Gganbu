@@ -91,30 +91,43 @@ function buildHtml(lat: number, lng: number, markers: GoogleMarker[], lang: stri
       var m = { normal: 'roadmap', satellite: 'satellite', hybrid: 'hybrid' };
       map.setMapTypeId(m[type] || 'roadmap');
     }
-    // 내 위치 표시 — 아래가 뾰족한 파란 핀(다른 마커와 구분) + 방향 빔(나침반 회전).
-    // 빔은 위치점을 축으로 heading 각도만큼 회전한다. (NaverMap과 동일 규칙)
-    var myLocPin = null, myLocBeam = null, myHeading = 0;
+    // 내 위치 표시 — NaverMap과 완전히 동일한 SVG(연한 그라데이션 방향 빔 + 파란 핀 +
+    // 하단 네비게이션 바 AI 깐부와 같은 lucide Bot 글리프). Symbol은 그라데이션을 지원하지
+    // 않으므로 heading을 SVG에 구워 data URI 아이콘으로 교체한다.
+    var myLocPin = null, myHeading = 0;
+    function myLocSvg(){
+      return '<svg xmlns="http://www.w3.org/2000/svg" width="88" height="124" viewBox="-44 -87 88 124">'
+        + '<defs><linearGradient id="kgbBeam" x1="0" y1="0" x2="0" y2="-38" gradientUnits="userSpaceOnUse">'
+        + '<stop offset="0" stop-color="#3B82F6" stop-opacity="0.45"/>'
+        + '<stop offset="1" stop-color="#3B82F6" stop-opacity="0"/>'
+        + '</linearGradient></defs>'
+        + '<path d="M 0 0 L -13 -34 Q 0 -41 13 -34 Z" fill="url(#kgbBeam)" transform="rotate('+myHeading+')"/>'
+        + '<path d="M 0 0 C -2 -8 -11 -11 -11 -20 A 11 11 0 1 1 11 -20 C 11 -11 2 -8 0 0 Z" fill="#2563EB" stroke="#ffffff" stroke-width="2.5"/>'
+        + '<g transform="translate(-6,-26) scale(0.5)" fill="none" stroke="#ffffff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">'
+        + '<path d="M12 8V4H8"/><rect width="16" height="12" x="4" y="8" rx="2"/><path d="M2 14h2"/><path d="M20 14h2"/><path d="M15 13v2"/><path d="M9 13v2"/>'
+        + '</g>'
+        + '</svg>';
+    }
+    function myLocIcon(){
+      return {
+        url: 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(myLocSvg()),
+        anchor: new google.maps.Point(44, 87), // viewBox (0,0)=핀 끝
+      };
+    }
     function setMyLocation(lat, lng, zoom){
       if(!map) return;
       if(myLocPin) myLocPin.setMap(null);
-      if(myLocBeam) myLocBeam.setMap(null);
       var pos = { lat: lat, lng: lng };
-      myLocBeam = new google.maps.Marker({
-        position: pos, map: map, zIndex: 999, clickable: false,
-        icon: { path: 'M 0 0 L -11 -30 L 11 -30 Z', fillColor: '#2563EB', fillOpacity: 0.35, strokeWeight: 0, rotation: myHeading, anchor: new google.maps.Point(0, 0) },
-      });
       myLocPin = new google.maps.Marker({
         position: pos, map: map, zIndex: 1000, clickable: false,
-        // labelOrigin = 핀 머리 중심 — 깐부 로봇 아이콘을 머리 안에 표시
-        label: { text: '\\uD83E\\uDD16', fontSize: '12px' },
-        icon: { path: 'M 0 0 C -2 -8 -11 -11 -11 -20 A 11 11 0 1 1 11 -20 C 11 -11 2 -8 0 0 Z', fillColor: '#2563EB', fillOpacity: 1, strokeColor: '#ffffff', strokeWeight: 2.5, anchor: new google.maps.Point(0, 0), labelOrigin: new google.maps.Point(0, -20) },
+        icon: myLocIcon(),
       });
       map.panTo(pos);
       map.setZoom(zoom || 16);
     }
     function setHeading(deg){
       myHeading = deg;
-      if(myLocBeam){ var ic = myLocBeam.getIcon(); ic.rotation = deg; myLocBeam.setIcon(ic); }
+      if(myLocPin) myLocPin.setIcon(myLocIcon());
     }
     function clearMarkers(){ markers.forEach(function(m){ m.setMap(null); }); markers = []; }
     // 마커 클러스터링 — 줌이 낮으면 지역별로 묶어 숫자 배지로 표시(가독성),

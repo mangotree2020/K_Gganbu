@@ -107,13 +107,21 @@ function buildHtml(lat: number, lng: number, markers: NaverMarker[], lang: Naver
       map.setMapTypeId(m[type] || naver.maps.MapTypeId.NORMAL);
     }
     // 내 위치 표시 — GoogleMap과 완전히 동일한 SVG 지오메트리(같은 핀·빔 경로, 핀 끝 축 회전)로
-    // 방향 표기가 두 지도에서 정확히 일치하도록 한다. 핀 머리에는 깐부 로봇 아이콘.
+    // 방향 표기가 두 지도에서 정확히 일치하도록 한다.
+    // 방향 빔: 연한 그라데이션 콘(가까울수록 진하고 멀수록 투명).
+    // 핀 머리 아이콘: 하단 네비게이션 바 AI 깐부와 동일한 lucide Bot 글리프(일관성).
     var myLoc = null, myHeading = 0;
     function myLocContent(){
-      return '<svg width="88" height="120" viewBox="-44 -87 88 120" style="overflow:visible;display:block">'
-        + '<path d="M 0 0 L -11 -30 L 11 -30 Z" fill="#2563EB" fill-opacity="0.35" transform="rotate('+myHeading+')"/>'
+      return '<svg width="88" height="124" viewBox="-44 -87 88 124" style="overflow:visible;display:block">'
+        + '<defs><linearGradient id="kgbBeam" x1="0" y1="0" x2="0" y2="-38" gradientUnits="userSpaceOnUse">'
+        + '<stop offset="0" stop-color="#3B82F6" stop-opacity="0.45"/>'
+        + '<stop offset="1" stop-color="#3B82F6" stop-opacity="0"/>'
+        + '</linearGradient></defs>'
+        + '<path d="M 0 0 L -13 -34 Q 0 -41 13 -34 Z" fill="url(#kgbBeam)" transform="rotate('+myHeading+')"/>'
         + '<path d="M 0 0 C -2 -8 -11 -11 -11 -20 A 11 11 0 1 1 11 -20 C 11 -11 2 -8 0 0 Z" fill="#2563EB" stroke="#ffffff" stroke-width="2.5"/>'
-        + '<text x="0" y="-15.5" text-anchor="middle" font-size="12">\\uD83E\\uDD16</text>'
+        + '<g transform="translate(-6,-26) scale(0.5)" fill="none" stroke="#ffffff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">'
+        + '<path d="M12 8V4H8"/><rect width="16" height="12" x="4" y="8" rx="2"/><path d="M2 14h2"/><path d="M20 14h2"/><path d="M15 13v2"/><path d="M9 13v2"/>'
+        + '</g>'
         + '</svg>';
     }
     function myLocIcon(){
