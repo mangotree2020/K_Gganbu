@@ -36,6 +36,7 @@ import { conditionIcon, conditionLabelKey, useWeather } from '@/features/weather
 import { useCityLabel } from '@/features/weather/useCityLabel'
 import { useCurrentLocation } from '@/hooks/useCurrentLocation'
 import { useLocaleStore, useT } from '@/lib/i18n'
+import { storage } from '@/lib/mmkv'
 import { gradients, palette, shadows } from '@/theme/tokens'
 
 // 디자인 PLACES (실 TourAPI POI 없을 때 폴백)
@@ -576,8 +577,9 @@ export default function HomeScreen() {
     condition: weather?.condition,
     hour,
   })
-  // Today's Pick — AI가 오늘 날씨·위치·시간 고려해 동적 추천. 1시간마다 featured 회전.
-  // 좌우 스와이프로 추천 내역 확인(추천 리스트). 카드 배경 = 추천 장소 실사진.
+  // Today's Pick — AI가 오늘 날씨·위치·시간 고려해 동적 추천.
+  // 하루 단위 누적 덱(MMKV): 기본 3개로 시작해 매시간 새 추천이 앞에 추가(내역 누적),
+  // 날짜가 바뀌면 새로운 기본 3개로 리셋. 좌우 스와이프로 오늘의 내역 확인.
   const todaysPicks = useMemo(() => {
     const withImg = (pois ?? []).filter((p) => p.imageUrl)
     if (!withImg.length) return []
@@ -585,9 +587,39 @@ export default function HomeScreen() {
       .map((p) => ({ p, score: pickScore(p.cat, weather?.condition, hour) }))
       .sort((a, b) => b.score - a.score)
       .map((x) => x.p)
-    const off = hour % ranked.length // 1시간마다 추천 변경(시간으로 회전)
-    return [...ranked.slice(off), ...ranked.slice(0, off)].slice(0, 6)
+    const d = new Date()
+    const dkey = `picks:${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}`
+    let deck: { ids: string[]; lastHour: number } = { ids: [], lastHour: hour }
+    try {
+      deck = JSON.parse(storage.getString(dkey) ?? '') as typeof deck
+    } catch {
+      // 오늘 첫 방문 — 아래에서 기본 3개 시드
+    }
+    // 오늘 목록에서 사라진 POI(언어 전환 등) 제거
+    deck.ids = (deck.ids ?? []).filter((id) => ranked.some((p) => p.id === id))
+    if (!deck.ids.length) {
+      deck.ids = ranked.slice(0, 3).map((p) => p.id) // 새 날 기본 3개
+      deck.lastHour = hour
+    } else if (hour > deck.lastHour) {
+      // 지난 시간 수만큼 새 추천을 앞에 추가(누적)
+      for (let i = 0; i < hour - deck.lastHour; i++) {
+        const next = ranked.find((p) => !deck.ids.includes(p.id))
+        if (next) deck.ids.unshift(next.id)
+      }
+      deck.lastHour = hour
+    }
+    storage.set(dkey, JSON.stringify(deck))
+    return deck.ids
+      .map((id) => ranked.find((p) => p.id === id))
+      .filter((p): p is NonNullable<typeof p> => !!p)
   }, [pois, weather?.condition, hour])
+  // 현재 보이는 추천 카드 인덱스 — 헤더 우측 거리·예상 걸음수 표시용
+  const [pickIdx, setPickIdx] = useState(0)
+  const currentPick = todaysPicks[Math.min(pickIdx, todaysPicks.length - 1)]
+  const pickDistKm =
+    currentPick?.lat != null && currentPick?.lng != null
+      ? distKm(coords.latitude, coords.longitude, currentPick.lat, currentPick.lng)
+      : null
   // hero 배경용 관광지 사진 — 이미지 있는 POI만(최대 6장 순환).
   // useMemo로 참조 고정: 매 렌더마다 새 배열이면 HeroBackdrop 인터벌이 리셋돼 10초 회전이 끊김.
   const heroPhotos = useMemo(
@@ -723,15 +755,31 @@ export default function HomeScreen() {
         {/* ── Today's pick — AI 동적 추천(날씨·위치·시간), 1시간마다 변경, 좌우 스와이프 내역 ── */}
         <View style={{ paddingTop: 22 }}>
           <View style={{ paddingHorizontal: 16 }}>
-            <SectionHeader title={t('home.todayPick')} sub={t('home.curatedByAi')} />
+            <View style={ss.sectionHead}>
+              <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 6, flex: 1 }}>
+                <Text style={ss.sectionTitle}>{t('home.todayPick')}</Text>
+                <Text style={ss.sectionSub}>{t('home.curatedByAi')}</Text>
+              </View>
+              {/* 현재 카드까지의 거리 + 예상 걸음수(1km≈1,350보) — 깐부 블루 */}
+              {pickDistKm != null && (
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 3 }}>
+                  <Icon name="directions_walk" size={14} color={palette.blue[50]} filled />
+                  <Text style={ss.pickDistText}>
+                    {pickDistKm.toFixed(1)}km · {Math.round(pickDistKm * 1350).toLocaleString()}
+                  </Text>
+                </View>
+              )}
+            </View>
           </View>
           {todaysPicks.length > 0 ? (
             <ScrollView
               horizontal
-              pagingEnabled
               showsHorizontalScrollIndicator={false}
-              snapToInterval={SCREEN_W - 22}
+              snapToInterval={SCREEN_W - 62}
               decelerationRate="fast"
+              onMomentumScrollEnd={(e) =>
+                setPickIdx(Math.round(e.nativeEvent.contentOffset.x / (SCREEN_W - 62)))
+              }
               contentContainerStyle={{ paddingHorizontal: 16, gap: 10 }}>
               {todaysPicks.map((p, i) => (
                 <Pressable
@@ -750,7 +798,7 @@ export default function HomeScreen() {
                       },
                     })
                   }
-                  style={[ss.pickCard, { width: SCREEN_W - 32 }, shadows.card]}>
+                  style={[ss.pickCard, { width: SCREEN_W - 72 }, shadows.card]}>
                   <Image
                     source={{ uri: p.imageUrl as string }}
                     style={{ width: '100%', height: 180 }}
@@ -1255,6 +1303,7 @@ const ss = StyleSheet.create({
     borderColor: '#F1F5F9',
     ...shadows.card,
   },
+  pickDistText: { color: palette.blue[50], fontSize: 12.5, fontWeight: '800' },
   dealName: { fontSize: 14, fontWeight: '800', color: palette.zinc[900], marginTop: 4 },
   dealSub: { fontSize: 11.5, color: palette.zinc[500], marginTop: 1 },
   dealDisc: { fontSize: 14, fontWeight: '900', color: palette.coral[50] },
