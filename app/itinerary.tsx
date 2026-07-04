@@ -11,6 +11,7 @@ import { PlaceThumb } from '@/components/PlaceThumb'
 import {
   generateAiItinerary,
   getItineraries,
+  stopCoords,
   type ItinDuration,
   type ItinPrefs,
   type ItinTheme,
@@ -66,6 +67,19 @@ export default function ItineraryScreen() {
       pathname: '/place',
       params: { name: s.place, sub: s.sub, cat: s.cat },
     })
+
+  // 코스 전체 지도 보기 (UX_REVIEW §4-3) — 좌표 확보된 스팟을 지도 탭에
+  // 멀티 핀(순번) + 순서 폴리라인으로 펼친다. 스팟 2개 미만이면 지도만 연다.
+  const openCourseMap = (c: Itinerary) => {
+    const spots = c.stops
+      .map((s) => ({ name: s.place, ...(stopCoords(s.place) ?? {}) }))
+      .filter((s): s is { name: string; lat: number; lng: number } => 'lat' in s)
+    router.push({
+      pathname: '/(tabs)/map',
+      params:
+        spots.length >= 2 ? { course: JSON.stringify(spots), courseTitle: c.title } : undefined,
+    })
+  }
 
   // AI 일정 생성 (PLANNING §18) — 현재 필터를 선호로 사용, 결과를 상단에 누적
   const onGenerate = async () => {
@@ -209,8 +223,9 @@ export default function ItineraryScreen() {
               </View>
 
               <View style={ss.cardFoot}>
-                <Pressable style={ss.startBtn}>
-                  <Icon name="play_arrow" size={16} color="#fff" filled />
+                {/* Start = 코스 전체를 지도에 펼쳐 따라가기(멀티 핀 + 순서 폴리라인) */}
+                <Pressable style={ss.startBtn} onPress={() => openCourseMap(c)}>
+                  <Icon name="map" size={16} color="#fff" filled />
                   <Text style={ss.startText}>{t('itin.start')}</Text>
                 </Pressable>
                 <Pressable style={ss.customBtn}>

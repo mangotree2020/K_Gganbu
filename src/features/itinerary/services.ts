@@ -27,6 +27,26 @@ export type Itinerary = {
 
 export type ItinPrefs = { duration: ItinDuration; theme: ItinTheme }
 
+// 코스 스팟 좌표 — "코스 전체 지도 보기"(지도 멀티 핀 + 순서 폴리라인)용.
+// 구체 랜드마크만 등록하고 일반 명칭(카페·디저트 등)은 지도 핀을 생략한다.
+const STOP_COORDS: Record<string, { lat: number; lng: number }> = {
+  'Gamcheon Culture Village': { lat: 35.0975, lng: 129.0106 },
+  'Jagalchi Fish Market': { lat: 35.0966, lng: 129.0308 },
+  'BIFF Square street food': { lat: 35.0985, lng: 129.0284 },
+  'BIFF Square + street food': { lat: 35.0985, lng: 129.0284 },
+  'Haeundae Beach': { lat: 35.1587, lng: 129.1603 },
+  'SEA LIFE Aquarium': { lat: 35.159, lng: 129.1615 },
+  'Dongbaek Island trail': { lat: 35.1526, lng: 129.1518 },
+  'Seomyeon Underground Mall': { lat: 35.1579, lng: 129.0594 },
+  'Gwangalli Beach': { lat: 35.1532, lng: 129.1188 },
+  'Marine City skyline': { lat: 35.1567, lng: 129.1424 },
+  'Haedong Yonggungsa Temple': { lat: 35.1884, lng: 129.2233 },
+  'Songjeong Beach': { lat: 35.1786, lng: 129.1997 },
+  'Return to Busan Port': { lat: 35.1078, lng: 129.0405 },
+}
+export const stopCoords = (place: string): { lat: number; lng: number } | null =>
+  STOP_COORDS[place] ?? null
+
 // 부산 1차 큐레이션 (MVP). place 이름은 데이터(영문) 기준 — chrome만 i18n.
 const MOCK: Itinerary[] = [
   {

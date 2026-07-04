@@ -14,6 +14,7 @@ export type GoogleMarker = {
   label?: string
   outline?: string // 마커 테두리색 — Blend 동시 표시 시 소스 구분용(기본 흰색)
   glyph?: string // 카테고리 아이콘(이모지) — 검색 필터와 동일한 성격 구분
+  glyphColor?: string // 글리프 색 — 코스 순번 등 텍스트 글리프의 대비 확보용(기본 검정)
 }
 
 type Props = {
@@ -142,7 +143,9 @@ function buildHtml(lat: number, lng: number, markers: GoogleMarker[], lang: stri
       var mk = new google.maps.Marker({
         position: { lat: p.lat, lng: p.lng },
         map: map,
-        label: p.glyph ? { text: p.glyph, fontSize: '12px' } : undefined,
+        label: p.glyph
+          ? { text: p.glyph, fontSize: '12px', color: p.glyphColor || '#000000', fontWeight: '800' }
+          : undefined,
         icon: {
           path: google.maps.SymbolPath.CIRCLE,
           fillColor: p.color,

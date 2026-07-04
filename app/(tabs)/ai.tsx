@@ -19,6 +19,9 @@ import { router, useIsFocused } from 'expo-router'
 import { Icon } from '@/components/brand'
 import { FallbackBadge } from '@/components/FallbackBadge'
 import { track } from '@/features/analytics/service'
+import { useRequireAccount } from '@/features/auth/loginPrompt'
+import { matchDeal } from '@/features/coupon/matchDeal'
+import { useCoupons, type CouponCard } from '@/features/coupon/queries'
 import { askGganbuStream } from '@/features/gganbu/services'
 import {
   loadChatSessions,
@@ -125,6 +128,30 @@ export default function AiMateScreen() {
   const { data: weather } = useWeather(coords)
   const city = useCityLabel(coords, appLang)
   const { data: nearbyData } = useMapPois(appLang, 8)
+  // 추천 장소 카드 ↔ 오늘의 딜 매칭(REQ-CP-5, UX_REVIEW §4-2) — 이름 행이라 이름 판정,
+  // 좌표 보유 행이 생기면 matchDeal이 자동으로 LBS 우선 적용. 탭 → 쿠폰 QR 직행.
+  const requireAccount = useRequireAccount()
+  const { data: dealCoupons } = useCoupons()
+  const openDeal = (deal: CouponCard) => {
+    track('coupon_tap', {
+      coupon_id: String(deal.id),
+      name: deal.name,
+      cat: deal.filter,
+      is_mock: false,
+    })
+    requireAccount('auth.gateCoupon', () =>
+      router.push({
+        pathname: '/coupon-qr',
+        params: {
+          id: String(deal.id),
+          name: deal.name,
+          disc: deal.disc,
+          detail: deal.detail,
+          dist: deal.dist,
+        },
+      }),
+    )
+  }
   const scrollRef = useRef<ScrollView>(null)
   // 음성 질문(STT) — Gemini Live 전사 세션 + 마이크 캡처
   const sessionRef = useRef<LiveSession | null>(null)
@@ -537,25 +564,44 @@ export default function AiMateScreen() {
               {m.fallback && <FallbackBadge label="Offline reply" style={{ marginTop: 6 }} />}
               {m.schedule && (
                 <View style={ss.attachCard}>
-                  {m.schedule.map((s, j) => (
-                    <View key={j} style={ss.schedRow}>
-                      <View style={ss.schedIcon}>
-                        <Icon name={s.icon} size={16} color={palette.blue[30]} filled />
+                  {m.schedule.map((s, j) => {
+                    // 이 장소의 오늘의 딜 — 있으면 할인 배지(탭 → QR 직행)
+                    const dl = matchDeal({ name: s.place }, dealCoupons ?? [])
+                    return (
+                      <View key={j} style={ss.schedRow}>
+                        <View style={ss.schedIcon}>
+                          <Icon name={s.icon} size={16} color={palette.blue[30]} filled />
+                        </View>
+                        <Text style={ss.schedTime}>{s.time}</Text>
+                        <Text style={ss.schedPlace}>{s.place}</Text>
+                        {dl && (
+                          <Pressable onPress={() => openDeal(dl)} hitSlop={6} style={ss.dealChip}>
+                            <Text style={ss.dealChipText}>🎟 {dl.disc}</Text>
+                          </Pressable>
+                        )}
                       </View>
-                      <Text style={ss.schedTime}>{s.time}</Text>
-                      <Text style={ss.schedPlace}>{s.place}</Text>
-                    </View>
-                  ))}
+                    )
+                  })}
                 </View>
               )}
               {m.list && (
                 <View style={ss.attachCard}>
-                  {m.list.map((it) => (
-                    <View key={it.name} style={ss.listRow}>
-                      <Text style={ss.listName}>{it.name}</Text>
-                      <Text style={ss.listNote}>{it.note}</Text>
-                    </View>
-                  ))}
+                  {m.list.map((it) => {
+                    const dl = matchDeal({ name: it.name }, dealCoupons ?? [])
+                    return (
+                      <View key={it.name} style={ss.listRow}>
+                        <View style={{ flex: 1 }}>
+                          <Text style={ss.listName}>{it.name}</Text>
+                          <Text style={ss.listNote}>{it.note}</Text>
+                        </View>
+                        {dl && (
+                          <Pressable onPress={() => openDeal(dl)} hitSlop={6} style={ss.dealChip}>
+                            <Text style={ss.dealChipText}>🎟 {dl.disc}</Text>
+                          </Pressable>
+                        )}
+                      </View>
+                    )
+                  })}
                 </View>
               )}
               {m.quick && (
@@ -726,6 +772,17 @@ const ss = StyleSheet.create({
   },
   listName: { fontSize: 12.5, fontWeight: '700', color: palette.zinc[900] },
   listNote: { fontSize: 10, color: palette.zinc[500] },
+  // 추천 행 딜 배지 — 홈/지도와 동일한 코럴 톤(탭 → 쿠폰 QR 직행)
+  dealChip: {
+    backgroundColor: '#FFF7ED',
+    borderWidth: 1,
+    borderColor: '#FDBA74',
+    borderRadius: 999,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    marginLeft: 6,
+  },
+  dealChipText: { fontSize: 10.5, fontWeight: '800', color: palette.coral[50] },
   quickWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
   quickChip: {
     borderWidth: 0.5,

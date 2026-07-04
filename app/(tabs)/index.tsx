@@ -28,6 +28,7 @@ import { useGganbuGreeting } from '@/features/gganbu/useGganbuGreeting'
 import { ProfileAvatar } from '@/features/profile/Avatar'
 import { track } from '@/features/analytics/service'
 import { useRequireAccount } from '@/features/auth/loginPrompt'
+import { matchDeal } from '@/features/coupon/matchDeal'
 import { useCoupons } from '@/features/coupon/queries'
 import { useCruiseStore } from '@/features/cruise/prefs'
 import { getTickets, type Ticket } from '@/features/ticket/services'
@@ -489,45 +490,7 @@ function BigTile({ tile, t }: { tile: (typeof TILES)[number]; t: (k: string) => 
 }
 
 // 추천 장소 ↔ 오늘의 딜(쿠폰·티켓) 매칭 — LBS 근접성 우선(BM §5 S-7).
-// 1순위: 딜의 매장 좌표(파트너 등록 시 주소 지오코딩, partners.lat/lng)와 장소 좌표의
-//        거리 ≤ DEAL_NEAR_M이면 같은 장소로 판정 — 가장 가까운 딜 선택.
-// 2순위: 좌표가 없는 딜(지오코딩 실패분)만 이름 토큰 겹침 폴백.
-const DEAL_NEAR_M = 150 // 동일 부지 판정 반경(m) — 몰 내 점포·부속 시설 오차 흡수
-const normTokens = (s: string) =>
-  s
-    .toLowerCase()
-    .replace(/[^a-z0-9가-힣\s]/g, ' ')
-    .split(/\s+/)
-    .filter((w) => w.length >= 3)
-type DealPoint = { name: string; lat?: number | null; lng?: number | null }
-function matchDeal<T extends DealPoint>(poi: DealPoint, deals: T[]): T | null {
-  // 1) 좌표 근접 — 반경 내 최근접 딜
-  if (poi.lat != null && poi.lng != null) {
-    let best: T | null = null
-    let bestM = DEAL_NEAR_M
-    for (const d of deals) {
-      if (d.lat == null || d.lng == null) continue
-      const m = distKm(poi.lat, poi.lng, d.lat, d.lng) * 1000
-      if (m <= bestM) {
-        best = d
-        bestM = m
-      }
-    }
-    if (best) return best
-  }
-  // 2) 이름 토큰 폴백 — 좌표 있는 딜은 위에서 이미 판정됐으므로 제외
-  const pt = normTokens(poi.name)
-  if (!pt.length) return null
-  for (const c of deals) {
-    if (c.lat != null && c.lng != null) continue
-    const ct = normTokens(c.name)
-    if (!ct.length) continue
-    const overlap = ct.filter((w) => pt.some((p) => p.includes(w) || w.includes(p))).length
-    // 딜명 토큰 2개 이상 겹치거나, 단일 토큰 딜명이 그대로 포함되면 동일 장소로 판정
-    if (overlap >= 2 || (overlap >= 1 && ct.length === 1)) return c
-  }
-  return null
-}
+// 공용 모듈 @/features/coupon/matchDeal 사용(지도 장소 시트·AI 추천 카드와 동일 판정).
 
 function PlaceCard({
   cat,
@@ -692,6 +655,22 @@ export default function HomeScreen() {
     const tk = matchDeal(p, ticketDeals)
     return tk ? `₩${tk.price.toLocaleString()}` : undefined
   }
+  // 추천 코스 섹션 — 크루즈 고객은 딜·주변보다 위에 배치(S-7 3순위:
+  // 기항 체류 시간 내 동선 계획이 우선 가치), 일반 고객은 기존 위치 유지
+  const coursesSection = (
+    <View style={{ paddingHorizontal: 16, paddingTop: 22 }}>
+      <SectionHeader
+        title={t('home.courses')}
+        action={t('home.seeAll')}
+        onAction={() => router.push('/itinerary' as never)}
+      />
+      <View style={{ gap: 10 }}>
+        {COURSES.map((c) => (
+          <CourseCard key={c.id} course={c} />
+        ))}
+      </View>
+    </View>
+  )
   const deals = useMemo(() => {
     type Deal = {
       kind: 'coupon' | 'ticket'
@@ -1188,6 +1167,9 @@ export default function HomeScreen() {
           )}
         </View>
 
+        {/* 크루즈 고객: 추천 코스를 딜 위로 (S-7 3순위) */}
+        {isCruise && coursesSection}
+
         {/* ── Today's deals ── */}
         <View style={{ paddingHorizontal: 16, paddingTop: 22 }}>
           <SectionHeader
@@ -1309,19 +1291,8 @@ export default function HomeScreen() {
           </ScrollView>
         </View>
 
-        {/* ── Recommended courses ── */}
-        <View style={{ paddingHorizontal: 16, paddingTop: 22 }}>
-          <SectionHeader
-            title={t('home.courses')}
-            action={t('home.seeAll')}
-            onAction={() => router.push('/itinerary' as never)}
-          />
-          <View style={{ gap: 10 }}>
-            {COURSES.map((c) => (
-              <CourseCard key={c.id} course={c} />
-            ))}
-          </View>
-        </View>
+        {/* ── Recommended courses ── (일반 고객 위치, 크루즈는 딜 위로 이동) */}
+        {!isCruise && coursesSection}
 
         {/* ── From travelers ── */}
         <View style={{ paddingHorizontal: 16, paddingTop: 22, paddingBottom: 28 }}>

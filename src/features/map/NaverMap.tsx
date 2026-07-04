@@ -13,6 +13,7 @@ export type NaverMarker = {
   label?: string
   outline?: string // 마커 테두리색 — Blend 동시 표시 시 소스 구분용(기본 흰색)
   glyph?: string // 카테고리 아이콘(이모지) — 검색 필터와 동일한 성격 구분
+  glyphColor?: string // 글리프 색 — 코스 순번 등 텍스트 글리프의 대비 확보용(기본 검정)
 }
 
 type Props = {
@@ -156,7 +157,7 @@ function buildHtml(lat: number, lng: number, markers: NaverMarker[], lang: Naver
             position: new naver.maps.LatLng(p.lat, p.lng),
             map: map,
             icon: {
-              content: '<div style="width:26px;height:26px;border-radius:50%;background:'+p.color+';border:3px solid '+(p.outline||'#fff')+';box-shadow:0 1px 4px rgba(0,0,0,.4);display:flex;align-items:center;justify-content:center;font-size:13px;line-height:1">'+(p.glyph||'')+'</div>',
+              content: '<div style="width:26px;height:26px;border-radius:50%;background:'+p.color+';border:3px solid '+(p.outline||'#fff')+';box-shadow:0 1px 4px rgba(0,0,0,.4);display:flex;align-items:center;justify-content:center;font-size:13px;line-height:1;font-weight:800;font-family:sans-serif;color:'+(p.glyphColor||'#000')+'">'+(p.glyph||'')+'</div>',
               anchor: new naver.maps.Point(13, 13),
             },
           });
@@ -181,7 +182,7 @@ function buildHtml(lat: number, lng: number, markers: NaverMarker[], lang: Naver
           var mk = new naver.maps.Marker({
             position: new naver.maps.LatLng(p.lat, p.lng), map: map,
             icon: {
-              content: '<div style="width:26px;height:26px;border-radius:50%;background:'+p.color+';border:3px solid '+(p.outline||'#fff')+';box-shadow:0 1px 4px rgba(0,0,0,.4);display:flex;align-items:center;justify-content:center;font-size:13px;line-height:1">'+(p.glyph||'')+'</div>',
+              content: '<div style="width:26px;height:26px;border-radius:50%;background:'+p.color+';border:3px solid '+(p.outline||'#fff')+';box-shadow:0 1px 4px rgba(0,0,0,.4);display:flex;align-items:center;justify-content:center;font-size:13px;line-height:1;font-weight:800;font-family:sans-serif;color:'+(p.glyphColor||'#000')+'">'+(p.glyph||'')+'</div>',
               anchor: new naver.maps.Point(13, 13),
             },
           });

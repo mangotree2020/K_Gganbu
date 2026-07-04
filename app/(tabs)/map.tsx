@@ -1,5 +1,5 @@
 import * as Location from 'expo-location'
-import { useIsFocused, useLocalSearchParams } from 'expo-router'
+import { router, useIsFocused, useLocalSearchParams } from 'expo-router'
 import Slider from '@react-native-community/slider'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import {
@@ -20,6 +20,10 @@ import { SafeAreaView } from 'react-native-safe-area-context'
 import { Icon } from '@/components/brand'
 import { FallbackBadge } from '@/components/FallbackBadge'
 import { PlaceThumb } from '@/components/PlaceThumb'
+import { track } from '@/features/analytics/service'
+import { useRequireAccount } from '@/features/auth/loginPrompt'
+import { matchDeal } from '@/features/coupon/matchDeal'
+import { useCoupons } from '@/features/coupon/queries'
 import { useFavorites, useToggleFavorite } from '@/features/favorites/queries'
 import { GoogleMap, type GoogleMapHandle } from '@/features/map/GoogleMap'
 import {
@@ -39,6 +43,7 @@ import {
 } from '@/features/map/NaverMap'
 import { usePlaceReviews, type PlaceReview } from '@/features/review/queries'
 import { useReviewInsights } from '@/features/review/insights'
+import { getTickets, type Ticket } from '@/features/ticket/services'
 import { translateText } from '@/features/translate/services'
 import { useCurrentLocation } from '@/hooks/useCurrentLocation'
 import { useTabBarAutoHide, useTabBarStore } from '@/hooks/useTabBarAutoHide'
@@ -530,6 +535,53 @@ export default function MapScreen() {
   const sheetHeadPan = useMemo(() => makeSheetPan(false), [sheetH])
   /* eslint-enable react-hooks/refs */
 
+  // 선택 장소의 오늘의 딜 — LBS 근접 매칭(REQ-CP-5, UX_REVIEW §4-1).
+  // 쿠폰 우선(탭→QR 발급 직행), 없으면 티켓(탭→예매 아웃링크).
+  const requireAccount = useRequireAccount()
+  const { data: dealCoupons } = useCoupons()
+  const [dealTickets, setDealTickets] = useState<Ticket[]>([])
+  useEffect(() => {
+    let alive = true
+    getTickets().then((ts) => alive && setDealTickets(ts))
+    return () => {
+      alive = false
+    }
+  }, [])
+  const placeDeal = place ? matchDeal(place, dealCoupons ?? []) : null
+  const placeTicket =
+    place && !placeDeal
+      ? matchDeal(
+          place,
+          dealTickets.map((x) => ({ ...x, name: x.title })),
+        )
+      : null
+  const openPlaceDeal = () => {
+    if (!placeDeal) return
+    track('coupon_tap', {
+      coupon_id: String(placeDeal.id),
+      name: placeDeal.name,
+      cat: placeDeal.filter,
+      is_mock: false,
+    })
+    requireAccount('auth.gateCoupon', () =>
+      router.push({
+        pathname: '/coupon-qr',
+        params: {
+          id: String(placeDeal.id),
+          name: placeDeal.name,
+          disc: placeDeal.disc,
+          detail: placeDeal.detail,
+          dist: placeDeal.dist,
+        },
+      }),
+    )
+  }
+  const openPlaceTicket = () => {
+    if (!placeTicket) return
+    track('ticket_outlink', { ticket_id: String(placeTicket.id), category: placeTicket.category })
+    Linking.openURL(placeTicket.outlinkUrl).catch(() => {})
+  }
+
   // 즐겨찾기 (BACKLOG #20)
   const { data: favorites } = useFavorites()
   const toggleFav = useToggleFavorite()
@@ -672,6 +724,8 @@ export default function MapScreen() {
     fLng?: string
     fCat?: string
     nav?: string
+    course?: string // 코스 전체 지도 보기 — JSON [{name,lat,lng}...] (순서 = 방문 순서)
+    courseTitle?: string
   }>()
   const focusHandledRef = useRef<string | null>(null)
   useEffect(() => {
@@ -703,6 +757,45 @@ export default function MapScreen() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [focus.fId, focus.fName, focus.fLat, focus.fLng, focus.nav])
 
+  // 코스 전체 지도 보기 (UX_REVIEW §4-3) — itinerary가 넘긴 스팟 배열을
+  // 순번 마커 + 방문 순서 폴리라인으로 펼치고 전체가 보이도록 영역을 맞춘다.
+  const courseSpots = useMemo(() => {
+    if (!focus.course) return null
+    try {
+      const arr = JSON.parse(String(focus.course)) as { name: string; lat: number; lng: number }[]
+      return Array.isArray(arr) && arr.length >= 2 ? arr : null
+    } catch {
+      return null
+    }
+  }, [focus.course])
+  const courseHandledRef = useRef<string | null>(null)
+  useEffect(() => {
+    if (!courseSpots || courseHandledRef.current === focus.course) return
+    courseHandledRef.current = String(focus.course)
+    const path = courseSpots.map((s) => ({ latitude: s.lat, longitude: s.lng }))
+    // WebView 지도 로딩·초기 센터링 이후에 그려 fitBounds가 유지되도록 지연
+    setTimeout(() => {
+      routePathRef.current = path
+      naverRef.current?.drawRoute(path)
+      googleRef.current?.drawRoute(path)
+    }, 900)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [courseSpots])
+  // 코스 순번 마커 — 인디고 원 + 흰 숫자(두 지도 공통)
+  const courseMarkers: NaverMarker[] = useMemo(
+    () =>
+      (courseSpots ?? []).map((s, i) => ({
+        id: `course:${i}`,
+        lat: s.lat,
+        lng: s.lng,
+        color: palette.indigo[40],
+        glyph: String(i + 1),
+        glyphColor: '#fff',
+        label: s.name,
+      })),
+    [courseSpots],
+  )
+
   const showGoogle = true
   const showNaver = true
   const isBlend = true
@@ -718,24 +811,23 @@ export default function MapScreen() {
 
   // Blend 마커: 두 지도 모두 기본 표시(음식점 등 POI 마커를 구글에도 동일하게).
   // 테두리색으로 소스 구분(Naver 초록/Google 파랑), 바의 Naver/Google 버튼으로 켜고 끔.
-  const naverMarkers = useMemo(
-    () =>
-      !isBlend
-        ? mapMarkers
-        : naverMarkersOn
-          ? mapMarkers.map((m) => ({ ...m, outline: '#03C75A' }))
-          : [],
-    [mapMarkers, isBlend, naverMarkersOn],
-  )
-  const googleMarkers = useMemo(
-    () =>
-      !isBlend
-        ? mapMarkers
-        : googleMarkersOn
-          ? mapMarkers.map((m) => ({ ...m, outline: '#4285F4' }))
-          : [],
-    [mapMarkers, isBlend, googleMarkersOn],
-  )
+  const naverMarkers = useMemo(() => {
+    const base = !isBlend
+      ? mapMarkers
+      : naverMarkersOn
+        ? mapMarkers.map((m) => ({ ...m, outline: '#03C75A' }))
+        : []
+    // 코스 순번 마커는 소스 구분 없이 항상 표시(흰 테두리 유지)
+    return [...base, ...courseMarkers]
+  }, [mapMarkers, isBlend, naverMarkersOn, courseMarkers])
+  const googleMarkers = useMemo(() => {
+    const base = !isBlend
+      ? mapMarkers
+      : googleMarkersOn
+        ? mapMarkers.map((m) => ({ ...m, outline: '#4285F4' }))
+        : []
+    return [...base, ...courseMarkers]
+  }, [mapMarkers, isBlend, googleMarkersOn, courseMarkers])
 
   // 외부 지도 앱 딥링크 (현지인=Naver / 외국인=Google)
   // Naver: 공식 앱 스킴 nmap://place(좌표+이름 → 정확한 장소 핀) → 미설치 시 웹 지도 검색 폴백
@@ -1061,6 +1153,27 @@ export default function MapScreen() {
                 )}
               </Pressable>
             </View>
+            {/* 이 장소의 오늘의 딜 — 쿠폰(QR 직행) 또는 티켓(예매 아웃링크). LBS 매칭 */}
+            {placeDeal && (
+              <Pressable onPress={openPlaceDeal} style={ss.dealBar}>
+                <Text style={ss.dealBarDisc}>🎟 {placeDeal.disc}</Text>
+                <Text style={ss.dealBarText} numberOfLines={1}>
+                  {placeDeal.name}
+                </Text>
+                <Text style={ss.dealBarCta}>{t('map.dealGet')}</Text>
+                <Icon name="chevron_right" size={15} color={palette.coral[50]} />
+              </Pressable>
+            )}
+            {placeTicket && (
+              <Pressable onPress={openPlaceTicket} style={ss.dealBar}>
+                <Text style={ss.dealBarDisc}>🎫 ₩{placeTicket.price.toLocaleString()}</Text>
+                <Text style={ss.dealBarText} numberOfLines={1}>
+                  {placeTicket.title}
+                </Text>
+                <Text style={ss.dealBarCta}>{t('map.dealBook')}</Text>
+                <Icon name="open_in_new" size={14} color={palette.coral[50]} />
+              </Pressable>
+            )}
             <ScrollView
               showsVerticalScrollIndicator
               contentContainerStyle={{ paddingBottom: 28 }}
@@ -1498,6 +1611,24 @@ const ss = StyleSheet.create({
     marginBottom: 8,
   },
   routeText: { flex: 1, fontSize: 12.5, fontWeight: '700', color: palette.blue[30] },
+
+  // 선택 장소 딜 바 — 쿠폰/티켓 배지(코럴 톤, S-7 "가치 먼저" 원칙에 맞춘 정보형 표시)
+  dealBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: '#FFF7ED',
+    borderWidth: 1,
+    borderColor: '#FDBA74',
+    borderRadius: 12,
+    paddingHorizontal: 11,
+    paddingVertical: 8,
+    marginTop: 4,
+    marginBottom: 6,
+  },
+  dealBarDisc: { fontSize: 12.5, fontWeight: '800', color: palette.coral[50] },
+  dealBarText: { flex: 1, fontSize: 12, fontWeight: '600', color: palette.zinc[700] },
+  dealBarCta: { fontSize: 12, fontWeight: '800', color: palette.coral[50] },
 
   // 리뷰 — 한국인/외국인 좌우 카드
   aiSummaryCard: {
