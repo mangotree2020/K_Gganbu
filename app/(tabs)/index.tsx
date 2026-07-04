@@ -3,7 +3,16 @@
 import { LinearGradient } from 'expo-linear-gradient'
 import { router } from 'expo-router'
 import { useEffect, useMemo, useState } from 'react'
-import { Dimensions, Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
+import {
+  Animated,
+  Dimensions,
+  Image,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native'
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 
 import { useTabBarAutoHide } from '@/hooks/useTabBarAutoHide'
@@ -458,7 +467,23 @@ export default function HomeScreen() {
   // 실시간 위치·날씨·도시명
   const { coords } = useCurrentLocation()
   const { data: weather } = useWeather(coords)
-  const steps = useTodaySteps() // 만보기 — 측정 불가면 null(위젯 숨김)
+  const { steps, walking } = useTodaySteps() // 만보기 — 측정 불가면 null(위젯 숨김)
+  // 걷는 중 도보 아이콘 바운스 애니메이션 (걸음 감지 시에만 동작)
+  const walkBounce = useState(() => new Animated.Value(0))[0]
+  useEffect(() => {
+    if (!walking) {
+      walkBounce.setValue(0)
+      return
+    }
+    const loop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(walkBounce, { toValue: -3, duration: 240, useNativeDriver: true }),
+        Animated.timing(walkBounce, { toValue: 0, duration: 240, useNativeDriver: true }),
+      ]),
+    )
+    loop.start()
+    return () => loop.stop()
+  }, [walking, walkBounce])
   const city = useCityLabel(coords, lang)
   const hour = new Date().getHours()
   // AI 깐부 인사 — 앱 시작 시 greeting, 이후 장소·시간·날씨 맞춤 메시지 30초 순환(변경 시 TTS)
@@ -539,7 +564,17 @@ export default function HomeScreen() {
                 <Text style={ss.locationText}>{city ?? 'Busan'}</Text>
                 <Icon name="expand_more" size={14} color="#fff" />
               </Pressable>
-              <View style={{ flexDirection: 'row', gap: 8 }}>
+              <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}>
+                {/* 만보기 배지(REQ-PD-3) — 알림·프로필 옆 상시 노출, 걷는 중이면 아이콘 바운스 */}
+                {steps != null && (
+                  <View style={ss.stepsPill}>
+                    <Animated.View style={{ transform: [{ translateY: walkBounce }] }}>
+                      <Icon name="directions_walk" size={14} color="#fff" filled />
+                    </Animated.View>
+                    <Text style={ss.stepsPillText}>{steps.toLocaleString()}</Text>
+                    <Text style={ss.stepsPillPts}>+{stepsToPoints(steps)}P</Text>
+                  </View>
+                )}
                 <Pressable
                   style={ss.iconBtn}
                   onPress={() => router.push('/notifications' as never)}>
@@ -583,17 +618,6 @@ export default function HomeScreen() {
                 <>
                   <Icon name="wind" size={14} color="#fff" />
                   <Text style={ss.weatherText}>{weather?.windKph ?? 0}km/h</Text>
-                </>
-              )}
-              {/* 만보기 (REQ-PD-3) — 오늘 걸음수 + 예상 포인트(1,000보=10P, 일 100P 상한).
-                  측정 불가(모듈/권한/기기) 시 숨김 */}
-              {steps != null && (
-                <>
-                  <Text style={ss.weatherDot}>·</Text>
-                  <Text style={ss.weatherText}>👣 {steps.toLocaleString()}</Text>
-                  <Text style={[ss.weatherText, { fontWeight: '800' }]}>
-                    +{stepsToPoints(steps)}P
-                  </Text>
                 </>
               )}
             </View>
@@ -882,6 +906,20 @@ const ss = StyleSheet.create({
     paddingHorizontal: 10,
     paddingVertical: 5,
   },
+  // 만보기 배지 — 헤더 우상단(알림 옆), 배경 사진 위 가독 확보
+  stepsPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: 'rgba(15,23,42,.38)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,.35)',
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    height: 32,
+  },
+  stepsPillText: { color: '#fff', fontSize: 12.5, fontWeight: '800' },
+  stepsPillPts: { color: '#FDE68A', fontSize: 11.5, fontWeight: '800' },
   locationText: { color: '#fff', fontSize: 11, fontWeight: '600' },
   iconBtn: {
     width: 34,
