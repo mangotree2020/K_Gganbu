@@ -637,13 +637,14 @@ export default function AiMateScreen() {
 
 const ss = StyleSheet.create({
   container: { flex: 1, backgroundColor: palette.zinc[50] },
-  header: {
-    backgroundColor: '#fff',
-    borderBottomWidth: 0.5,
-    borderBottomColor: palette.zinc[200],
+  // 좌우 16 패딩 — 다른 그라데이션 헤더(gheader)와 X 버튼 우측 여백 통일
+  headerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingVertical: 12,
     paddingHorizontal: 16,
   },
-  headerRow: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 12 },
   avatar: {
     width: 44,
     height: 44,

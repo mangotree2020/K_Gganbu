@@ -1,4 +1,5 @@
 // 음성 통역 대화 이력 화면 — 로컬(MMKV) + 원격(Supabase, 사용자별) 세션 병합 조회.
+import { LinearGradient } from 'expo-linear-gradient'
 import { router } from 'expo-router'
 import { useEffect, useState } from 'react'
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
@@ -55,24 +56,34 @@ export default function VoiceHistoryScreen() {
 
   return (
     <View style={ss.container}>
-      <SafeAreaView edges={['top', 'bottom']} style={{ flex: 1 }}>
-        <View style={ss.header}>
-          <View style={ss.headerIcon}>
-            <Icon name="history" size={20} color={palette.teal[40]} filled />
-          </View>
-          <Text style={ss.title}>{t('voice.history')}</Text>
-          <View style={ss.headerActions}>
-            {sessions.length > 0 && (
-              <Pressable onPress={clearAll} hitSlop={8} style={ss.clearBtn}>
-                <Text style={ss.clearText}>{t('voice.clearAll')}</Text>
+      {/* 헤더 — Teal 그라데이션이 상태바 영역까지(통역 계열, 퀵 타일 상세와 동일 스타일) */}
+      <LinearGradient
+        colors={['#5EEAD4', '#14B8A6', '#0F766E']}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}>
+        <SafeAreaView edges={['top']}>
+          <View style={ss.header}>
+            <View style={ss.headerIcon}>
+              <Icon name="history" size={20} color="#fff" filled />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={ss.title}>{t('voice.history')}</Text>
+              <Text style={ss.sub}>{t('voice.historySub')}</Text>
+            </View>
+            <View style={ss.headerActions}>
+              {sessions.length > 0 && (
+                <Pressable onPress={clearAll} hitSlop={8} style={ss.clearBtn}>
+                  <Text style={ss.clearText}>{t('voice.clearAll')}</Text>
+                </Pressable>
+              )}
+              <Pressable onPress={() => router.back()} style={ss.close}>
+                <Icon name="close" size={18} color="#fff" />
               </Pressable>
-            )}
-            <Pressable onPress={() => router.back()} style={ss.close}>
-              <Icon name="close" size={18} color={palette.zinc[700]} />
-            </Pressable>
+            </View>
           </View>
-        </View>
-
+        </SafeAreaView>
+      </LinearGradient>
+      <SafeAreaView edges={['bottom']} style={{ flex: 1 }}>
         {sessions.length === 0 ? (
           <View style={ss.empty}>
             <Icon name="history" size={40} color={palette.zinc[300]} />
@@ -127,39 +138,40 @@ export default function VoiceHistoryScreen() {
 
 const ss = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#fff' },
+  // 그라데이션 헤더 — 퀵 타일 상세(gheader)와 동일 패턴
   header: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
     paddingHorizontal: 16,
-    paddingTop: 4,
-    paddingBottom: 12,
-    borderBottomWidth: 0.5,
-    borderBottomColor: palette.zinc[200],
+    paddingTop: 8,
+    paddingBottom: 14,
   },
   headerIcon: {
-    width: 36,
-    height: 36,
+    width: 38,
+    height: 38,
     borderRadius: 12,
-    backgroundColor: palette.teal[95],
+    backgroundColor: 'rgba(255,255,255,.22)',
     alignItems: 'center',
     justifyContent: 'center',
   },
-  title: {
-    flex: 1,
-    fontSize: 17,
-    fontWeight: '700',
-    letterSpacing: -0.3,
-    color: palette.zinc[900],
-  },
+  title: { fontSize: 17, fontWeight: '800', letterSpacing: -0.3, color: '#fff' },
+  sub: { fontSize: 11.5, color: 'rgba(255,255,255,.85)', marginTop: 2 },
   headerActions: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  clearBtn: { paddingHorizontal: 10, paddingVertical: 6 },
-  clearText: { fontSize: 13, fontWeight: '700', color: palette.error[50] },
+  clearBtn: {
+    paddingHorizontal: 12,
+    height: 30,
+    borderRadius: 999,
+    backgroundColor: 'rgba(255,255,255,.22)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  clearText: { fontSize: 12.5, fontWeight: '700', color: '#fff' },
   close: {
     width: 32,
     height: 32,
     borderRadius: 999,
-    backgroundColor: palette.zinc[100],
+    backgroundColor: 'rgba(255,255,255,.2)',
     alignItems: 'center',
     justifyContent: 'center',
   },
