@@ -1070,6 +1070,55 @@ export default function HomeScreen() {
           )}
         </View>
 
+        {/* ── Today's deals ── */}
+        <View style={{ paddingHorizontal: 16, paddingTop: 22 }}>
+          <SectionHeader
+            title={t('home.deals')}
+            action={t('home.seeAll')}
+            onAction={() => router.push('/(tabs)/coupons' as never)}
+          />
+          {/* 쿠폰·티켓 교차 슬라이드 — 수평 플릭, 탭 시 해당 상세로 즉시 이동 */}
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            snapToInterval={SCREEN_W - 72}
+            decelerationRate="fast"
+            contentContainerStyle={{ gap: 10, paddingRight: 16 }}>
+            {deals.map((d) => (
+              <Pressable
+                key={`${d.kind}-${d.id}`}
+                onPress={d.onPress}
+                style={[ss.dealCard, { width: SCREEN_W - 82 }]}>
+                <View style={{ width: 64, height: 64, borderRadius: 14, overflow: 'hidden' }}>
+                  {dealPhotos[d.title] ? (
+                    <Image
+                      source={{ uri: dealPhotos[d.title] as string }}
+                      style={{ width: 64, height: 64 }}
+                      resizeMode="cover"
+                    />
+                  ) : (
+                    <PlaceThumb category={d.thumb} height={64} />
+                  )}
+                </View>
+                <View style={{ flex: 1 }}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                    <Pill tone={d.kind === 'coupon' ? 'coral' : 'blue'} size="sm">
+                      {d.kind === 'coupon' ? t('home.dealCoupon') : t('home.dealTicket')}
+                    </Pill>
+                  </View>
+                  <Text style={ss.dealName} numberOfLines={1}>
+                    {d.title}
+                  </Text>
+                  <Text style={ss.dealSub} numberOfLines={1}>
+                    {d.sub}
+                  </Text>
+                </View>
+                <Text style={ss.dealDisc}>{d.disc}</Text>
+              </Pressable>
+            ))}
+          </ScrollView>
+        </View>
+
         {/* ── Nearby now (실 POI + 폴백) ── */}
         <View style={{ paddingTop: 22 }}>
           <View style={{ paddingHorizontal: 16 }}>
@@ -1137,55 +1186,6 @@ export default function HomeScreen() {
                     extId={p.id}
                   />
                 ))}
-          </ScrollView>
-        </View>
-
-        {/* ── Today's deals ── */}
-        <View style={{ paddingHorizontal: 16, paddingTop: 22 }}>
-          <SectionHeader
-            title={t('home.deals')}
-            action={t('home.seeAll')}
-            onAction={() => router.push('/(tabs)/coupons' as never)}
-          />
-          {/* 쿠폰·티켓 교차 슬라이드 — 수평 플릭, 탭 시 해당 상세로 즉시 이동 */}
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            snapToInterval={SCREEN_W - 72}
-            decelerationRate="fast"
-            contentContainerStyle={{ gap: 10, paddingRight: 16 }}>
-            {deals.map((d) => (
-              <Pressable
-                key={`${d.kind}-${d.id}`}
-                onPress={d.onPress}
-                style={[ss.dealCard, { width: SCREEN_W - 82 }]}>
-                <View style={{ width: 64, height: 64, borderRadius: 14, overflow: 'hidden' }}>
-                  {dealPhotos[d.title] ? (
-                    <Image
-                      source={{ uri: dealPhotos[d.title] as string }}
-                      style={{ width: 64, height: 64 }}
-                      resizeMode="cover"
-                    />
-                  ) : (
-                    <PlaceThumb category={d.thumb} height={64} />
-                  )}
-                </View>
-                <View style={{ flex: 1 }}>
-                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                    <Pill tone={d.kind === 'coupon' ? 'coral' : 'blue'} size="sm">
-                      {d.kind === 'coupon' ? t('home.dealCoupon') : t('home.dealTicket')}
-                    </Pill>
-                  </View>
-                  <Text style={ss.dealName} numberOfLines={1}>
-                    {d.title}
-                  </Text>
-                  <Text style={ss.dealSub} numberOfLines={1}>
-                    {d.sub}
-                  </Text>
-                </View>
-                <Text style={ss.dealDisc}>{d.disc}</Text>
-              </Pressable>
-            ))}
           </ScrollView>
         </View>
 
