@@ -91,6 +91,8 @@ function buildHtml(lat: number, lng: number, markers: NaverMarker[], lang: Naver
         var c = map.getCenter();
         post({type:'view', lat: c.lat(), lng: c.lng(), zoom: map.getZoom()});
       });
+      // 줌 변경 시 클러스터 재계산(묶기/풀기)
+      naver.maps.Event.addListener(map, 'zoom_changed', function(){ setTimeout(renderMarkers, 80); });
       // 지도 탭 좌표 통지 — RN이 최근접 장소를 해석해 정보 시트 표시(POI 아이콘 탭 대용)
       naver.maps.Event.addListener(map, 'click', function(e){
         post({type:'mapclick', lat: e.coord.lat(), lng: e.coord.lng()});
@@ -114,21 +116,69 @@ function buildHtml(lat: number, lng: number, markers: NaverMarker[], lang: Naver
       map.morph(new naver.maps.LatLng(lat, lng), zoom || 16);
     }
     function clearMarkers(){ markers.forEach(function(m){ m.setMap(null); }); markers = []; }
-    function setMarkers(list){
+    // 마커 클러스터링 — 줌이 낮으면 지역별로 묶어 숫자 배지로 표시(가독성),
+    // 클러스터 탭 시 해당 지역으로 확대, 줌 15+에서는 개별 마커 표시.
+    var markerData = [];
+    var CLUSTER_MAX_ZOOM = 14;
+    function renderMarkers(){
       clearMarkers();
-      list.forEach(function(p){
-        var mk = new naver.maps.Marker({
-          position: new naver.maps.LatLng(p.lat, p.lng),
-          map: map,
-          icon: {
-            content: '<div style="width:22px;height:22px;border-radius:50%;background:'+p.color+';border:3px solid '+(p.outline||'#fff')+';box-shadow:0 1px 4px rgba(0,0,0,.4)"></div>',
-            anchor: new naver.maps.Point(11, 11),
-          },
+      if(!map) return;
+      var zoom = map.getZoom();
+      if(zoom > CLUSTER_MAX_ZOOM){
+        markerData.forEach(function(p){
+          var mk = new naver.maps.Marker({
+            position: new naver.maps.LatLng(p.lat, p.lng),
+            map: map,
+            icon: {
+              content: '<div style="width:22px;height:22px;border-radius:50%;background:'+p.color+';border:3px solid '+(p.outline||'#fff')+';box-shadow:0 1px 4px rgba(0,0,0,.4)"></div>',
+              anchor: new naver.maps.Point(11, 11),
+            },
+          });
+          naver.maps.Event.addListener(mk, 'click', function(){ post({type:'marker', id:p.id}); });
+          markers.push(mk);
         });
-        naver.maps.Event.addListener(mk, 'click', function(){ post({type:'marker', id:p.id}); });
-        markers.push(mk);
+        return;
+      }
+      // 격자 클러스터 — 줌에 비례한 셀 크기(도 단위)로 그룹핑
+      var cell = 360 / Math.pow(2, zoom) / 3;
+      var groups = {};
+      markerData.forEach(function(p){
+        var key = Math.floor(p.lat / cell) + ':' + Math.floor(p.lng / cell);
+        (groups[key] = groups[key] || []).push(p);
+      });
+      Object.keys(groups).forEach(function(key){
+        var g = groups[key];
+        var lat = g.reduce(function(s,p){ return s+p.lat; },0)/g.length;
+        var lng = g.reduce(function(s,p){ return s+p.lng; },0)/g.length;
+        if(g.length === 1){
+          var p = g[0];
+          var mk = new naver.maps.Marker({
+            position: new naver.maps.LatLng(p.lat, p.lng), map: map,
+            icon: {
+              content: '<div style="width:22px;height:22px;border-radius:50%;background:'+p.color+';border:3px solid '+(p.outline||'#fff')+';box-shadow:0 1px 4px rgba(0,0,0,.4)"></div>',
+              anchor: new naver.maps.Point(11, 11),
+            },
+          });
+          naver.maps.Event.addListener(mk, 'click', function(){ post({type:'marker', id:p.id}); });
+          markers.push(mk);
+        } else {
+          var size = g.length >= 10 ? 44 : 36;
+          var cl = new naver.maps.Marker({
+            position: new naver.maps.LatLng(lat, lng), map: map, zIndex: 500,
+            icon: {
+              content: '<div style="width:'+size+'px;height:'+size+'px;border-radius:50%;background:#0EA5E9;border:3px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,.35);color:#fff;font-weight:800;font-size:14px;display:flex;align-items:center;justify-content:center;font-family:sans-serif">'+g.length+'</div>',
+              anchor: new naver.maps.Point(size/2, size/2),
+            },
+          });
+          naver.maps.Event.addListener(cl, 'click', function(){
+            // 클러스터 탭 → 해당 지역 확대(개별 마커가 보일 때까지 단계 확대)
+            map.morph(new naver.maps.LatLng(lat, lng), Math.min(zoom + 2, CLUSTER_MAX_ZOOM + 1));
+          });
+          markers.push(cl);
+        }
       });
     }
+    function setMarkers(list){ markerData = list; renderMarkers(); }
     // Blend 레이어 투명도 — 지도 전체(#map)에 CSS opacity 적용
     function setLayerOpacity(v){ var el=document.getElementById('map'); if(el) el.style.opacity=v; }
     function moveTo(lat, lng, zoom){

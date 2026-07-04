@@ -79,6 +79,8 @@ function buildHtml(lat: number, lng: number, markers: GoogleMarker[], lang: stri
         var c = map.getCenter();
         post({type:'view', lat: c.lat(), lng: c.lng(), zoom: map.getZoom()});
       });
+      // 줌 변경 시 클러스터 재계산(묶기/풀기)
+      map.addListener('zoom_changed', function(){ setTimeout(renderMarkers, 80); });
     }
     window.initMap = initMap;
     // 지도 유형 전환 (일반/위성/하이브리드)
@@ -100,25 +102,63 @@ function buildHtml(lat: number, lng: number, markers: GoogleMarker[], lang: stri
       map.setZoom(zoom || 16);
     }
     function clearMarkers(){ markers.forEach(function(m){ m.setMap(null); }); markers = []; }
-    function setMarkers(list){
+    // 마커 클러스터링 — 줌이 낮으면 지역별로 묶어 숫자 배지로 표시(가독성),
+    // 클러스터 탭 시 해당 지역으로 확대, 줌 15+에서는 개별 마커 표시. (NaverMap과 동일 규칙)
+    var markerData = [];
+    var CLUSTER_MAX_ZOOM = 14;
+    function makeDot(p){
+      var mk = new google.maps.Marker({
+        position: { lat: p.lat, lng: p.lng },
+        map: map,
+        icon: {
+          path: google.maps.SymbolPath.CIRCLE,
+          fillColor: p.color,
+          fillOpacity: 1,
+          strokeColor: p.outline || '#ffffff',
+          strokeWeight: 3,
+          scale: 8,
+        },
+      });
+      mk.addListener('click', function(){ post({type:'marker', id:p.id}); });
+      markers.push(mk);
+    }
+    function renderMarkers(){
       clearMarkers();
-      list.forEach(function(p){
-        var mk = new google.maps.Marker({
-          position: { lat: p.lat, lng: p.lng },
-          map: map,
+      if(!map) return;
+      var zoom = map.getZoom();
+      if(zoom > CLUSTER_MAX_ZOOM){ markerData.forEach(makeDot); return; }
+      var cell = 360 / Math.pow(2, zoom) / 3;
+      var groups = {};
+      markerData.forEach(function(p){
+        var key = Math.floor(p.lat / cell) + ':' + Math.floor(p.lng / cell);
+        (groups[key] = groups[key] || []).push(p);
+      });
+      Object.keys(groups).forEach(function(key){
+        var g = groups[key];
+        if(g.length === 1){ makeDot(g[0]); return; }
+        var lat = g.reduce(function(s,p){ return s+p.lat; },0)/g.length;
+        var lng = g.reduce(function(s,p){ return s+p.lng; },0)/g.length;
+        var cl = new google.maps.Marker({
+          position: { lat: lat, lng: lng }, map: map, zIndex: 500,
+          label: { text: String(g.length), color: '#ffffff', fontWeight: '800', fontSize: '13px' },
           icon: {
             path: google.maps.SymbolPath.CIRCLE,
-            fillColor: p.color,
+            fillColor: '#0EA5E9',
             fillOpacity: 1,
-            strokeColor: p.outline || '#ffffff',
+            strokeColor: '#ffffff',
             strokeWeight: 3,
-            scale: 8,
+            scale: g.length >= 10 ? 20 : 16,
           },
         });
-        mk.addListener('click', function(){ post({type:'marker', id:p.id}); });
-        markers.push(mk);
+        cl.addListener('click', function(){
+          // 클러스터 탭 → 해당 지역 확대(개별 마커가 보일 때까지 단계 확대)
+          map.panTo({ lat: lat, lng: lng });
+          map.setZoom(Math.min(zoom + 2, CLUSTER_MAX_ZOOM + 1));
+        });
+        markers.push(cl);
       });
     }
+    function setMarkers(list){ markerData = list; renderMarkers(); }
     function moveTo(lat, lng, zoom){
       if(!map) return;
       map.panTo({ lat: lat, lng: lng });
