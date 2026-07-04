@@ -972,10 +972,12 @@ export default function HomeScreen() {
               </View>
               {/* 현재 카드까지의 거리 + 예상 걸음수(1km≈1,350보) — 깐부 블루 */}
               {pickDistKm != null && (
+                // 순서: 거리 → 발 아이콘 → 예상 걸음수(아이콘 뒤 숫자 = 걸음수로 즉시 인식)
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 3 }}>
+                  <Text style={ss.pickDistText}>{pickDistKm.toFixed(1)}km</Text>
                   <Icon name="directions_walk" size={14} color={palette.blue[50]} filled />
                   <Text style={ss.pickDistText}>
-                    {pickDistKm.toFixed(1)}km · {Math.round(pickDistKm * 1350).toLocaleString()}
+                    {Math.round(pickDistKm * 1350).toLocaleString()}
                   </Text>
                 </View>
               )}
