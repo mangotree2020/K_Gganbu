@@ -488,6 +488,27 @@ function BigTile({ tile, t }: { tile: (typeof TILES)[number]; t: (k: string) => 
   )
 }
 
+// 추천 장소 ↔ 오늘의 딜(쿠폰) 매칭 — 이름 토큰 겹침으로 판정.
+// MD 관점: 추천으로 생긴 방문 의사가 그 자리에서 할인으로 이어지도록 연결(BM §5 S-7).
+const normTokens = (s: string) =>
+  s
+    .toLowerCase()
+    .replace(/[^a-z0-9가-힣\s]/g, ' ')
+    .split(/\s+/)
+    .filter((w) => w.length >= 3)
+function matchDeal<T extends { name: string }>(poiName: string, coupons: T[]): T | null {
+  const pt = normTokens(poiName)
+  if (!pt.length) return null
+  for (const c of coupons) {
+    const ct = normTokens(c.name)
+    if (!ct.length) continue
+    const overlap = ct.filter((w) => pt.some((p) => p.includes(w) || w.includes(p))).length
+    // 쿠폰명 토큰 2개 이상 겹치거나, 단일 토큰 쿠폰명이 그대로 포함되면 동일 장소로 판정
+    if (overlap >= 2 || (overlap >= 1 && ct.length === 1)) return c
+  }
+  return null
+}
+
 function PlaceCard({
   cat,
   name,
@@ -1022,62 +1043,86 @@ export default function HomeScreen() {
                 setPickIdx(Math.round(e.nativeEvent.contentOffset.x / (SCREEN_W - 62)))
               }
               contentContainerStyle={{ paddingHorizontal: 16, gap: 10 }}>
-              {todaysPicks.map((p, i) => (
-                <Pressable
-                  key={p.id}
-                  onPress={() =>
-                    router.push({
-                      pathname: '/place',
-                      params: {
-                        cat: p.cat,
-                        name: p.name,
-                        sub: p.address ?? 'Busan',
-                        img: p.imageUrl ?? '',
-                        extId: p.id,
-                        lat: p.lat != null ? String(p.lat) : '',
-                        lng: p.lng != null ? String(p.lng) : '',
-                      },
-                    })
-                  }
-                  style={[ss.pickCard, { width: SCREEN_W - 72 }, shadows.card]}>
-                  <Image
-                    source={{ uri: p.imageUrl as string }}
-                    style={{ width: '100%', height: 180 }}
-                    resizeMode="cover"
-                  />
-                  <View style={ss.pickTrending}>
-                    <Icon name="auto_awesome" size={12} color={palette.blue[50]} filled />
-                    <Text style={ss.pickTrendingText}>
-                      {' '}
-                      {i === 0 ? t('home.aiPickNow') : t('home.aiPick')}
-                    </Text>
-                  </View>
-                  <View style={ss.pickScrim} />
-                  <View style={ss.pickOverlay}>
-                    <Text style={ss.pickName} numberOfLines={1}>
-                      {p.name}
-                    </Text>
-                    <View style={[ss.row, { gap: 10, marginTop: 2 }]}>
-                      <View style={ss.row}>
-                        <Icon name="location_on" size={12} color="#fff" filled />
-                        <Text style={ss.pickMeta} numberOfLines={1}>
-                          {' '}
-                          {p.address ?? 'Busan'}
-                        </Text>
-                      </View>
-                      {p.lat != null && p.lng != null && (
+              {todaysPicks.map((p, i) => {
+                // 이 장소의 오늘의 딜 — 있으면 우상단 쿠폰 배지(탭 → QR 발급 직행)
+                const deal = matchDeal(p.name, dealCoupons ?? [])
+                return (
+                  <Pressable
+                    key={p.id}
+                    onPress={() =>
+                      router.push({
+                        pathname: '/place',
+                        params: {
+                          cat: p.cat,
+                          name: p.name,
+                          sub: p.address ?? 'Busan',
+                          img: p.imageUrl ?? '',
+                          extId: p.id,
+                          lat: p.lat != null ? String(p.lat) : '',
+                          lng: p.lng != null ? String(p.lng) : '',
+                        },
+                      })
+                    }
+                    style={[ss.pickCard, { width: SCREEN_W - 72 }, shadows.card]}>
+                    <Image
+                      source={{ uri: p.imageUrl as string }}
+                      style={{ width: '100%', height: 180 }}
+                      resizeMode="cover"
+                    />
+                    <View style={ss.pickTrending}>
+                      <Icon name="auto_awesome" size={12} color={palette.blue[50]} filled />
+                      <Text style={ss.pickTrendingText}>
+                        {' '}
+                        {i === 0 ? t('home.aiPickNow') : t('home.aiPick')}
+                      </Text>
+                    </View>
+                    {deal && (
+                      <Pressable
+                        onPress={() =>
+                          requireAccount('auth.gateCoupon', () =>
+                            router.push({
+                              pathname: '/coupon-qr',
+                              params: {
+                                id: String(deal.id),
+                                name: deal.name,
+                                disc: deal.disc,
+                                detail: deal.detail,
+                                dist: deal.dist,
+                              },
+                            }),
+                          )
+                        }
+                        style={ss.pickDealBadge}>
+                        <Text style={ss.pickDealText}>🎟 {deal.disc}</Text>
+                      </Pressable>
+                    )}
+                    <View style={ss.pickScrim} />
+                    <View style={ss.pickOverlay}>
+                      <Text style={ss.pickName} numberOfLines={1}>
+                        {p.name}
+                      </Text>
+                      <View style={[ss.row, { gap: 10, marginTop: 2 }]}>
                         <View style={ss.row}>
-                          <Icon name="directions_walk" size={12} color="#fff" />
-                          <Text style={ss.pickMeta}>
+                          <Icon name="location_on" size={12} color="#fff" filled />
+                          <Text style={ss.pickMeta} numberOfLines={1}>
                             {' '}
-                            {distKm(coords.latitude, coords.longitude, p.lat, p.lng).toFixed(1)}km
+                            {p.address ?? 'Busan'}
                           </Text>
                         </View>
-                      )}
+                        {p.lat != null && p.lng != null && (
+                          <View style={ss.row}>
+                            <Icon name="directions_walk" size={12} color="#fff" />
+                            <Text style={ss.pickMeta}>
+                              {' '}
+                              {distKm(coords.latitude, coords.longitude, p.lat, p.lng).toFixed(1)}km
+                            </Text>
+                          </View>
+                        )}
+                      </View>
                     </View>
-                  </View>
-                </Pressable>
-              ))}
+                  </Pressable>
+                )
+              })}
             </ScrollView>
           ) : (
             <View style={{ paddingHorizontal: 16 }}>
@@ -1195,6 +1240,8 @@ export default function HomeScreen() {
                     extId={p.id}
                     lat={p.lat}
                     lng={p.lng}
+                    // 이 장소의 오늘의 딜이 있으면 할인 배지 노출(추천→쿠폰 연결, S-7)
+                    badge={matchDeal(p.name, dealCoupons ?? [])?.disc}
                   />
                 ))
               : PLACES.map((p) => (
@@ -1545,6 +1592,17 @@ const ss = StyleSheet.create({
     borderRadius: 999,
   },
   pickTrendingText: { fontSize: 11, fontWeight: '700', color: palette.coral[50] },
+  // 추천 카드 우상단 딜 배지 — 탭하면 쿠폰 QR 직행(추천→쿠폰 전환 동선, S-7)
+  pickDealBadge: {
+    position: 'absolute',
+    right: 12,
+    top: 12,
+    backgroundColor: palette.coral[50],
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 999,
+  },
+  pickDealText: { fontSize: 11, fontWeight: '800', color: '#fff' },
   pickScrim: {
     position: 'absolute',
     left: 0,
