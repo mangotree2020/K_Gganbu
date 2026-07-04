@@ -587,6 +587,20 @@ export default function HomeScreen() {
       .map((p) => ({ p, score: pickScore(p.cat, weather?.condition, hour) }))
       .sort((a, b) => b.score - a.score)
       .map((x) => x.p)
+    // 도보 접근(≤2.5km) 2개 → 원거리 1개 반복 루틴으로 선별
+    const WALKABLE_KM = 2.5
+    const isWalkable = (p: Poi) =>
+      p.lat != null &&
+      p.lng != null &&
+      distKm(coords.latitude, coords.longitude, p.lat, p.lng) <= WALKABLE_KM
+    const walkPool = ranked.filter(isWalkable)
+    const farPool = ranked.filter((p) => !isWalkable(p))
+    const pickNext = (ids: string[]): Poi | undefined => {
+      const wantWalk = ids.length % 3 !== 2 // 0,1번째=도보 / 2번째=원거리 (3개 주기 반복)
+      const primary = wantWalk ? walkPool : farPool
+      const fallback = wantWalk ? farPool : walkPool
+      return primary.find((p) => !ids.includes(p.id)) ?? fallback.find((p) => !ids.includes(p.id))
+    }
     const d = new Date()
     const dkey = `picks:${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}`
     let deck: { ids: string[]; lastHour: number } = { ids: [], lastHour: hour }
@@ -598,12 +612,16 @@ export default function HomeScreen() {
     // 오늘 목록에서 사라진 POI(언어 전환 등) 제거
     deck.ids = (deck.ids ?? []).filter((id) => ranked.some((p) => p.id === id))
     if (!deck.ids.length) {
-      deck.ids = ranked.slice(0, 3).map((p) => p.id) // 새 날 기본 3개
+      // 새 날 기본 3개 — 도보 2 + 원거리 1
+      for (let i = 0; i < 3; i++) {
+        const next = pickNext(deck.ids)
+        if (next) deck.ids.push(next.id)
+      }
       deck.lastHour = hour
     } else if (hour > deck.lastHour) {
-      // 지난 시간 수만큼 새 추천을 앞에 추가(누적)
+      // 지난 시간 수만큼 새 추천을 앞에 추가(누적) — 루틴 패턴 유지
       for (let i = 0; i < hour - deck.lastHour; i++) {
-        const next = ranked.find((p) => !deck.ids.includes(p.id))
+        const next = pickNext(deck.ids)
         if (next) deck.ids.unshift(next.id)
       }
       deck.lastHour = hour
@@ -612,6 +630,7 @@ export default function HomeScreen() {
     return deck.ids
       .map((id) => ranked.find((p) => p.id === id))
       .filter((p): p is NonNullable<typeof p> => !!p)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pois, weather?.condition, hour])
   // 현재 보이는 추천 카드 인덱스 — 헤더 우측 거리·예상 걸음수 표시용
   const [pickIdx, setPickIdx] = useState(0)
@@ -620,6 +639,18 @@ export default function HomeScreen() {
     currentPick?.lat != null && currentPick?.lng != null
       ? distKm(coords.latitude, coords.longitude, currentPick.lat, currentPick.lng)
       : null
+  // 주변 추천 정렬 — ① 내 위치 5km 이내에서 가까운 순 최대 5개
+  // ② 나머지(5km 밖 + 초과분)는 거리 제한 없이 같은 지역 추천을 거리순으로 이어붙임
+  const nearbyPois = useMemo(() => {
+    const list = (pois ?? []).filter((p) => p.lat != null && p.lng != null)
+    const withDist = list
+      .map((p) => ({ p, d: distKm(coords.latitude, coords.longitude, p.lat!, p.lng!) }))
+      .sort((a, b) => a.d - b.d)
+    const near = withDist.filter((x) => x.d <= 5).slice(0, 5)
+    const rest = withDist.filter((x) => !near.includes(x))
+    return [...near, ...rest].map((x) => x.p)
+  }, [pois, coords.latitude, coords.longitude])
+
   // hero 배경용 관광지 사진 — 이미지 있는 POI만(최대 6장 순환).
   // useMemo로 참조 고정: 매 렌더마다 새 배열이면 HeroBackdrop 인터벌이 리셋돼 10초 회전이 끊김.
   const heroPhotos = useMemo(
@@ -869,8 +900,8 @@ export default function HomeScreen() {
             horizontal
             showsHorizontalScrollIndicator={false}
             contentContainerStyle={{ paddingHorizontal: 16, gap: 12 }}>
-            {pois && pois.length > 0
-              ? pois.map((p: Poi) => (
+            {nearbyPois.length > 0
+              ? nearbyPois.map((p: Poi) => (
                   <PlaceCard
                     key={p.id}
                     cat={p.cat}
