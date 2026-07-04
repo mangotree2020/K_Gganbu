@@ -11,11 +11,13 @@ export type CatVariant = 'walk' | 'run' | 'turn' | 'jump'
 // 각 시트는 셀 여백(가로 16·세로 8px)을 포함 — 표시 높이는 고양이 실크기 기준으로 보정됨.
 const SHEETS = {
   walk: {
+    // cat_walk + cat_walk2 두 시트를 위상 교차한 8프레임 사이클 — 더 자연스러운 보행
     src: require('../../assets/cats/cat_walk.png') as number,
     frameW: 490,
     frameH: 307, // 여백 포함(꼬리 클리핑 방지)
-    height: 27, // 5% 축소(사용자 피드백)
-    interval: 200,
+    height: 27,
+    interval: 150,
+    frames: 8,
     loop: true,
   },
   run: {
@@ -31,8 +33,8 @@ const SHEETS = {
     src: require('../../assets/cats/cat_turn.png') as number,
     frameW: 491,
     frameH: 361, // 여백 포함
-    height: 30, // 추가 3% 축소(사용자 피드백)
-    interval: 170, // 전환이 눈에 보이도록 감속
+    height: 29, // 추가 2% 축소(사용자 피드백)
+    interval: 230, // 턴을 더 느긋하게(사용자 피드백)
     loop: false,
   },
   jump: {
@@ -61,11 +63,12 @@ export function CatSprite({ variant, onEnd }: { variant: CatVariant; onEnd?: () 
   useEffect(() => {
     onEndRef.current = onEnd
   }, [onEnd])
+  const frames = 'frames' in meta ? meta.frames : 4
   useEffect(() => {
     av.setValue(0)
     const timing = Animated.timing(av, {
-      toValue: 4,
-      duration: meta.interval * 4,
+      toValue: frames,
+      duration: meta.interval * frames,
       easing: Easing.linear,
       useNativeDriver: true,
     })
@@ -78,18 +81,22 @@ export function CatSprite({ variant, onEnd }: { variant: CatVariant; onEnd?: () 
       if (finished) onEndRef.current?.()
     })
     return () => timing.stop()
-  }, [variant, meta.interval, meta.loop, av])
+  }, [variant, meta.interval, meta.loop, frames, av])
   // 시트가 프레임별 성분 분리 + 넉넉한 여백으로 생성되어 인셋 없이 전체 프레임 표시(꼬리 보존)
   const w = catWidth(variant)
-  const tx = av.interpolate({
-    inputRange: [0, 0.9999, 1, 1.9999, 2, 2.9999, 3, 4],
-    outputRange: [0, 0, -w, -w, -2 * w, -2 * w, -3 * w, -3 * w],
-  })
+  // N프레임 계단 보간 — [0,1) 구간마다 프레임 고정 후 순간 전환
+  const inputRange: number[] = []
+  const outputRange: number[] = []
+  for (let i = 0; i < frames; i++) {
+    inputRange.push(i, i + 0.9999)
+    outputRange.push(-i * w, -i * w)
+  }
+  const tx = av.interpolate({ inputRange, outputRange })
   return (
     <View style={{ width: w, height: meta.height, overflow: 'hidden' }}>
       <Animated.Image
         source={meta.src}
-        style={{ width: w * 4, height: meta.height, transform: [{ translateX: tx }] }}
+        style={{ width: w * frames, height: meta.height, transform: [{ translateX: tx }] }}
         resizeMode="stretch"
       />
     </View>
