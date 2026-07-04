@@ -332,8 +332,13 @@ function NearbyTrail({ km, idx, count }: { km: number | null; idx: number; count
   // 플릭 진행도(0~1)에 비례해 고양이가 트랙 위를 이동 — 플릭 방향으로 한 걸음씩
   const progress = count > 1 ? Math.min(1, Math.max(0, idx / (count - 1))) : 0
   useEffect(() => {
+    // 제자리 턴 — 턴 재생 중에는 이동을 멈추고, 끝나면 이 이펙트가 다시 돌며 이동 재개
+    if (anim === 'turn') {
+      pos.stopAnimation()
+      return
+    }
     Animated.timing(pos, { toValue: progress, duration: 500, useNativeDriver: true }).start()
-  }, [progress, pos])
+  }, [progress, pos, anim])
   // 새 추천 카드가 중앙에 오면(플릭) 야옹 + 희망 방향 갱신
   const firstRef = useRef(true)
   const prevIdxRef = useRef(idx)
