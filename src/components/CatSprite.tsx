@@ -24,7 +24,7 @@ const SHEETS = {
     src: require('../../assets/cats/cat_run.png') as number,
     frameW: 401,
     frameH: 215, // 여백 포함
-    height: 28,
+    height: 28.15, // 0.5% 확대(사용자 피드백)
     interval: 110,
     loop: true,
   },
