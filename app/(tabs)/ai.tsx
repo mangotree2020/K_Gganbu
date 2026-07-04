@@ -14,7 +14,7 @@ import {
   View,
 } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
-import { useIsFocused } from 'expo-router'
+import { router, useIsFocused } from 'expo-router'
 
 import { Icon } from '@/components/brand'
 import { FallbackBadge } from '@/components/FallbackBadge'
@@ -390,7 +390,8 @@ export default function AiMateScreen() {
     setInput('')
     setHistOpen(false)
   }
-  // 헤더 X(닫기) — 현재 대화를 이력 저장(로컬 최종 + 서버) 후 새 대화로 초기화.
+  // 헤더 X(닫기) — 다른 상세화면과 동일하게 화면을 닫는다.
+  // 현재 대화는 이력 저장(로컬 최종 + 서버) 후 새 대화로 초기화하고 홈으로 복귀.
   const closeChat = () => {
     const hasUser = msgs.some((m) => m.role === 'user' && m.text.trim())
     if (hasUser) {
@@ -403,6 +404,8 @@ export default function AiMateScreen() {
       saveChatSessionRemote({ id: sid, at: Date.now(), title: title ?? '', messages: slim }) // 서버(큐+재시도)
     }
     newChat()
+    if (router.canGoBack()) router.back()
+    else router.navigate('/(tabs)')
   }
   const removeSession = (id: number) => {
     deleteChatSession(id)
@@ -459,17 +462,12 @@ export default function AiMateScreen() {
                 {satoori ? dialect.label : t('ai.dialect')}
               </Text>
             </Pressable>
-            <Pressable
-              onPress={openHistory}
-              style={({ pressed }) => [ss.historyBtn, { opacity: pressed ? 0.7 : 1 }]}
-              accessibilityRole="button">
+            {/* 원형 버튼은 plain 배열 style — 함수형 style 간헐 미적용 이슈(CLAUDE.md) 회피 */}
+            <Pressable onPress={openHistory} style={ss.gclose} accessibilityRole="button">
               <Icon name="history" size={18} color="#fff" />
             </Pressable>
-            {/* X(닫기) — 대화 이력 저장(로컬+서버) 후 새 대화 */}
-            <Pressable
-              onPress={closeChat}
-              style={({ pressed }) => [ss.historyBtn, { opacity: pressed ? 0.7 : 1 }]}
-              accessibilityRole="button">
+            {/* X(닫기) — 대화 이력 저장(로컬+서버) 후 화면 닫기(다른 상세화면과 동일) */}
+            <Pressable onPress={closeChat} style={ss.gclose} accessibilityRole="button">
               <Icon name="close" size={18} color="#fff" />
             </Pressable>
           </View>
@@ -656,11 +654,12 @@ const ss = StyleSheet.create({
   headerTitle: { fontSize: 16, fontWeight: '800', color: palette.zinc[900], letterSpacing: -0.2 },
   statusRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 2 },
   statusText: { fontSize: 11, color: palette.zinc[500] },
-  historyBtn: {
-    width: 36,
-    height: 36,
+  // 그라데이션 헤더 공용 원형 버튼(다른 상세화면 gclose와 동일 스펙)
+  gclose: {
+    width: 32,
+    height: 32,
     borderRadius: 999,
-    backgroundColor: palette.zinc[100],
+    backgroundColor: 'rgba(255,255,255,.2)',
     alignItems: 'center',
     justifyContent: 'center',
   },

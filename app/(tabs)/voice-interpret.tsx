@@ -2,6 +2,7 @@
 // 길거리에서 여러 명이 각자 언어로 번갈아 대화하는 상황 대응. 목표 = 앱 설정 언어.
 // 발화 언어를 스크립트로 감지해 국기·언어 칩 + 화자(언어)별 색상으로 구분.
 // 마이크 16kHz PCM(react-native-audio-api) → Gemini Live → 통역 음성 24kHz + 원문/통역 자막.
+import { LinearGradient } from 'expo-linear-gradient'
 import { router, useFocusEffect } from 'expo-router'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import {
@@ -651,31 +652,37 @@ export default function VoiceInterpretScreen() {
 
   return (
     <View style={ss.container}>
-      <SafeAreaView edges={['top']} style={{ flex: 1 }}>
-        {/* 헤더 — 아이콘·타이틀·이력 (종료는 하단 플로팅 버튼) */}
-        <View style={ss.header}>
-          <View style={ss.headerIcon}>
-            <Icon name="mic" size={20} color={palette.teal[40]} filled />
+      {/* 헤더 — Teal 그라데이션이 상태바 영역까지(통역 계열, 퀵 타일 상세와 동일 스타일) */}
+      <LinearGradient
+        colors={['#5EEAD4', '#14B8A6', '#0F766E']}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}>
+        <SafeAreaView edges={['top']}>
+          <View style={ss.header}>
+            <View style={ss.headerIcon}>
+              <Icon name="mic" size={20} color="#fff" filled />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={ss.title}>{t('voice.title')}</Text>
+              <Text style={ss.sub}>{t('voice.headerSub')}</Text>
+            </View>
+            <Pressable onPress={() => router.push('/voice-history')} style={ss.close}>
+              <Icon name="history" size={18} color="#fff" />
+            </Pressable>
+            {/* X — 대화 종료 + 이력 저장(로컬·원격) 후 닫기 */}
+            <Pressable
+              onPress={() => {
+                persist()
+                teardown()
+                router.back()
+              }}
+              style={ss.close}>
+              <Icon name="close" size={18} color="#fff" />
+            </Pressable>
           </View>
-          <View style={{ flex: 1 }}>
-            <Text style={ss.title}>{t('voice.title')}</Text>
-            <Text style={ss.sub}>{t('voice.headerSub')}</Text>
-          </View>
-          <Pressable onPress={() => router.push('/voice-history')} style={ss.close}>
-            <Icon name="history" size={18} color={palette.zinc[700]} />
-          </Pressable>
-          {/* X — 대화 종료 + 이력 저장(로컬·원격) 후 닫기 */}
-          <Pressable
-            onPress={() => {
-              persist()
-              teardown()
-              router.back()
-            }}
-            style={ss.close}>
-            <Icon name="close" size={18} color={palette.zinc[700]} />
-          </Pressable>
-        </View>
-
+        </SafeAreaView>
+      </LinearGradient>
+      <View style={{ flex: 1 }}>
         {active ? (
           <View style={ss.body}>
             {/* 상단 툴바 — 상태 표시(펄스) + 마이크·볼륨 설정 버튼 */}
@@ -949,38 +956,37 @@ export default function VoiceInterpretScreen() {
             </Pressable>
           </Pressable>
         </Modal>
-      </SafeAreaView>
+      </View>
     </View>
   )
 }
 
 const ss = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#fff' },
+  // 그라데이션 헤더 — 퀵 타일 상세(gheader)와 동일 패턴
   header: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
     paddingHorizontal: 16,
-    paddingTop: 4,
-    paddingBottom: 12,
-    borderBottomWidth: 0.5,
-    borderBottomColor: palette.zinc[200],
+    paddingTop: 8,
+    paddingBottom: 14,
   },
   headerIcon: {
-    width: 36,
-    height: 36,
+    width: 38,
+    height: 38,
     borderRadius: 12,
-    backgroundColor: palette.teal[95],
+    backgroundColor: 'rgba(255,255,255,.22)',
     alignItems: 'center',
     justifyContent: 'center',
   },
-  title: { fontSize: 17, fontWeight: '700', letterSpacing: -0.3, color: palette.zinc[900] },
-  sub: { fontSize: 12, color: palette.zinc[500], marginTop: 1 },
+  title: { fontSize: 17, fontWeight: '800', letterSpacing: -0.3, color: '#fff' },
+  sub: { fontSize: 11.5, color: 'rgba(255,255,255,.85)', marginTop: 2 },
   close: {
     width: 32,
     height: 32,
     borderRadius: 999,
-    backgroundColor: palette.zinc[100],
+    backgroundColor: 'rgba(255,255,255,.2)',
     alignItems: 'center',
     justifyContent: 'center',
   },

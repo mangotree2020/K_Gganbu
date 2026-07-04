@@ -1,9 +1,11 @@
 import { LinearGradient } from 'expo-linear-gradient'
 import * as ImagePicker from 'expo-image-picker'
 import { router } from 'expo-router'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import {
   ActivityIndicator,
+  Animated,
+  Easing,
   Image,
   Modal,
   Pressable,
@@ -89,6 +91,48 @@ const MODES: { id: Mode; icon: string; label: string }[] = [
   { id: 'camera', icon: 'photo_camera', label: 'Camera' },
   { id: 'text', icon: 'keyboard', label: 'K-Talk Quest' },
 ]
+
+// 마이크 아이콘 사운드 파동 — 리플 2겹이 번갈아 퍼지며 사라짐(음성 대기 느낌, 네이티브 드라이버)
+function PulsingMic() {
+  const r1 = useState(() => new Animated.Value(0))[0]
+  const r2 = useState(() => new Animated.Value(0))[0]
+  useEffect(() => {
+    const ripple = (av: Animated.Value, delay: number) =>
+      Animated.loop(
+        Animated.sequence([
+          Animated.delay(delay),
+          Animated.timing(av, {
+            toValue: 1,
+            duration: 1600,
+            easing: Easing.out(Easing.quad),
+            useNativeDriver: true,
+          }),
+          Animated.timing(av, { toValue: 0, duration: 0, useNativeDriver: true }),
+        ]),
+      )
+    const a1 = ripple(r1, 0)
+    const a2 = ripple(r2, 800)
+    a1.start()
+    a2.start()
+    return () => {
+      a1.stop()
+      a2.stop()
+    }
+  }, [r1, r2])
+  const ringStyle = (av: Animated.Value) => ({
+    transform: [{ scale: av.interpolate({ inputRange: [0, 1], outputRange: [1, 1.65] }) }],
+    opacity: av.interpolate({ inputRange: [0, 0.15, 1], outputRange: [0, 0.55, 0] }),
+  })
+  return (
+    <View style={ss.voiceMicWrap}>
+      <Animated.View style={[ss.voiceRipple, ringStyle(r1)]} />
+      <Animated.View style={[ss.voiceRipple, ringStyle(r2)]} />
+      <View style={ss.voiceMic}>
+        <Icon name="mic" size={32} color={palette.teal[40]} filled />
+      </View>
+    </View>
+  )
+}
 
 export default function TranslateScreen() {
   const t = useT()
@@ -234,18 +278,16 @@ export default function TranslateScreen() {
               {/* 언어 설정 스위치 박스 */}
               {langSwitcher}
 
-              {/* 통역 전단계 — Start 시 풀스크린 라이브 세션으로 이동 */}
-              <View style={ss.voiceCard}>
-                <View style={ss.voiceMic}>
-                  <Icon name="mic" size={32} color={palette.teal[40]} filled />
-                </View>
+              {/* 통역 전단계 — 카드 전체가 터치 영역(UX), 내부 버튼은 시각적 CTA */}
+              <Pressable onPress={() => router.push('/voice-interpret')} style={ss.voiceCard}>
+                <PulsingMic />
                 <Text style={ss.voiceTitle}>{t('voice.realtimeTitle')}</Text>
                 <Text style={ss.voiceSub}>{t('voice.realtimeSub')}</Text>
-                <Pressable onPress={() => router.push('/voice-interpret')} style={ss.voiceStart}>
+                <View style={ss.voiceStart}>
                   <Icon name="mic" size={18} color="#fff" filled />
                   <Text style={ss.voiceStartText}>{t('voice.start')}</Text>
-                </Pressable>
-              </View>
+                </View>
+              </Pressable>
             </View>
           )}
 
@@ -570,6 +612,13 @@ const ss = StyleSheet.create({
     borderColor: palette.zinc[200],
     backgroundColor: palette.zinc[50],
   },
+  voiceMicWrap: {
+    width: 72,
+    height: 72,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 2,
+  },
   voiceMic: {
     width: 72,
     height: 72,
@@ -577,7 +626,14 @@ const ss = StyleSheet.create({
     backgroundColor: palette.teal[95],
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 2,
+  },
+  voiceRipple: {
+    position: 'absolute',
+    width: 72,
+    height: 72,
+    borderRadius: 22,
+    borderWidth: 2,
+    borderColor: palette.teal[60],
   },
   voiceTitle: { fontSize: 17, fontWeight: '800', color: palette.zinc[900] },
   voiceSub: {
