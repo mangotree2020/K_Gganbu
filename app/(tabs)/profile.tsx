@@ -26,6 +26,7 @@ import { useUserCoupons } from '@/features/coupon/queries'
 import { useFavorites } from '@/features/favorites/queries'
 import { usePassport } from '@/features/passport/queries'
 import { useAuthStore } from '@/features/auth/store'
+import { useCruiseStore } from '@/features/cruise/prefs'
 import { useTabBarAutoHide } from '@/hooks/useTabBarAutoHide'
 import { APP_LANGS, useLocaleStore, useT, type AppLang } from '@/lib/i18n'
 import { palette, shadows } from '@/theme/tokens'
@@ -47,6 +48,7 @@ const ROWS: Row[] = [
   { id: 'phrasebook', label: 'Phrasebook', emoji: '🗣' },
   { id: 'allergy', label: 'Allergy card', emoji: '🥜' },
   { id: 'payment', label: 'Payment tips', emoji: '💳' },
+  { id: 'cruise', label: 'Cruise mode', emoji: '🚢' },
   { id: 'notifications', label: 'Notifications', emoji: '🔔' },
   { id: 'language', label: 'Language', emoji: '🌐' },
   { id: 'settings', label: 'Settings', emoji: '⚙️' },
@@ -63,6 +65,7 @@ const ROW_KEY: Record<string, string> = {
   phrasebook: 'profile.phrasebook',
   allergy: 'profile.allergy',
   payment: 'profile.payment',
+  cruise: 'cruise.title',
   notifications: 'profile.notifications',
   language: 'common.language',
   settings: 'common.settings',
@@ -86,6 +89,8 @@ export default function ProfileScreen() {
   const { data: savedCoupons } = useUserCoupons()
   const { data: passport } = usePassport()
   const pushEnabled = usePushStore((s) => s.enabled)
+  const isCruise = useCruiseStore((s) => s.isCruise)
+  const setCruise = useCruiseStore((s) => s.setCruise)
   const setPushEnabled = usePushStore((s) => s.setEnabled)
 
   // 알림 opt-in 토글 — 켤 때만 권한·토큰 등록(just-in-time)
@@ -111,11 +116,14 @@ export default function ProfileScreen() {
   const detailFor = (r: Row) => {
     if (r.id === 'language') return currentLang.label
     if (r.id === 'notifications') return pushEnabled ? t('common.on') : t('common.off')
+    if (r.id === 'cruise') return isCruise ? t('common.on') : t('common.off')
     return r.detail
   }
   const onRowPress = (r: Row) => {
     if (r.id === 'language') setLangOpen(true)
     else if (r.id === 'notifications') toggleNotifications()
+    else if (r.id === 'cruise')
+      setCruise(!isCruise) // 크루즈 고객 설정 — 홈 크루즈 타일 노출
     else if (r.id === 'itineraries') router.push('/itinerary' as never)
     else if (r.id === 'tickets') router.push('/(tabs)/coupons?seg=tickets' as never)
     else if (r.id === 'reviews') router.push('/reviews' as never)

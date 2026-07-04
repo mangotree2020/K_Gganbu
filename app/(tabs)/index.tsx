@@ -24,6 +24,7 @@ import { HeroBackdrop } from '@/components/HeroBackdrop'
 import { usePlaces, type Poi } from '@/features/map/queries'
 import { useGganbuGreeting } from '@/features/gganbu/useGganbuGreeting'
 import { ProfileAvatar } from '@/features/profile/Avatar'
+import { useCruiseStore } from '@/features/cruise/prefs'
 import { unreadCount, useInboxStore } from '@/features/notifications/inbox'
 import { stepsToPoints, useTodaySteps } from '@/features/points/pedometer'
 import { conditionIcon, conditionLabelKey, useWeather } from '@/features/weather/queries'
@@ -100,14 +101,6 @@ function distKm(lat0: number, lng0: number, lat: number, lng: number): number {
 // 퀵 타일 (BigTile) — 디자인 톤/아이콘/라우트
 const TILES = [
   {
-    id: 'translate',
-    icon: 'translate',
-    titleKey: 'translate.title',
-    subKey: 'home.tileTranslateSub',
-    tone: 'teal',
-    route: '/(tabs)/translate',
-  },
-  {
     id: 'coupons',
     icon: 'confirmation_number',
     titleKey: 'tab.coupons',
@@ -117,12 +110,20 @@ const TILES = [
     route: '/(tabs)/coupons',
   },
   {
-    id: 'cruise',
+    id: 'cruise', // 크루즈 고객 설정 시에만 노출(마이메뉴 토글 — useCruiseStore)
     icon: 'directions_boat',
     titleKey: 'cruise.title',
     subKey: 'home.tileCruiseSub',
     tone: 'cruise',
     route: '/cruise',
+  },
+  {
+    id: 'courses',
+    icon: 'route',
+    titleKey: 'home.courses',
+    subKey: 'home.tileCoursesSub',
+    tone: 'teal',
+    route: '/itinerary',
   },
   {
     id: 'allergy',
@@ -468,6 +469,7 @@ export default function HomeScreen() {
   const { coords } = useCurrentLocation()
   const { data: weather } = useWeather(coords)
   const { steps, walking } = useTodaySteps() // 만보기 — 측정 불가면 null(위젯 숨김)
+  const isCruise = useCruiseStore((s) => s.isCruise) // 크루즈 고객만 크루즈 타일 노출
   // 걷는 중 도보 아이콘 바운스 애니메이션 (걸음 감지 시에만 동작)
   const walkBounce = useState(() => new Animated.Value(0))[0]
   useEffect(() => {
@@ -633,7 +635,7 @@ export default function HomeScreen() {
           horizontal
           showsHorizontalScrollIndicator={false}
           contentContainerStyle={{ paddingHorizontal: 16, gap: 10, paddingTop: 16 }}>
-          {TILES.map((tile) => (
+          {TILES.filter((tile) => tile.id !== 'cruise' || isCruise).map((tile) => (
             <BigTile key={tile.id} tile={tile} t={t} />
           ))}
         </ScrollView>

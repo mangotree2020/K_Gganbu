@@ -1,8 +1,10 @@
+import { LinearGradient } from 'expo-linear-gradient'
+import { router } from 'expo-router'
 import { useState } from 'react'
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
+import { SafeAreaView } from 'react-native-safe-area-context'
 
 import { Icon } from '@/components/brand'
-import { SheetHeader } from '@/components/SheetHeader'
 import { useT } from '@/lib/i18n'
 import { palette } from '@/theme/tokens'
 
@@ -26,15 +28,23 @@ export default function AllergyScreen() {
 
   return (
     <View style={ss.container}>
-      <View style={{ paddingTop: 8 }}>
-        <SheetHeader
-          title={`🥜 ${t('profile.allergy')}`}
-          sub={t('allergy.sub')}
-          accent={palette.coral[50]}
-          accentBg={palette.coral[95]}
-          icon="medical_services"
-        />
-      </View>
+      {/* 긴급 화면과 동일한 상단 디자인 — 그라데이션이 상태바 영역까지 채워 겹침 없음 */}
+      <LinearGradient colors={['#FB7185', '#E11D48']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}>
+        <SafeAreaView edges={['top']}>
+          <View style={ss.gheader}>
+            <View style={ss.gheaderIcon}>
+              <Icon name="medical_services" size={20} color="#fff" filled />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={ss.gheaderTitle}>🥜 {t('profile.allergy')}</Text>
+              <Text style={ss.gheaderSub}>{t('allergy.sub')}</Text>
+            </View>
+            <Pressable onPress={() => router.back()} style={ss.gclose}>
+              <Icon name="close" size={18} color="#fff" />
+            </Pressable>
+          </View>
+        </SafeAreaView>
+      </LinearGradient>
       <ScrollView
         showsVerticalScrollIndicator={false}
         contentContainerStyle={{ paddingBottom: 24 }}>
@@ -101,6 +111,25 @@ export default function AllergyScreen() {
 }
 
 const ss = StyleSheet.create({
+  gheader: { flexDirection: 'row', alignItems: 'center', gap: 10, padding: 16, paddingBottom: 14 },
+  gheaderIcon: {
+    width: 38,
+    height: 38,
+    borderRadius: 12,
+    backgroundColor: 'rgba(255,255,255,.22)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  gheaderTitle: { color: '#fff', fontSize: 17, fontWeight: '800' },
+  gheaderSub: { color: 'rgba(255,255,255,.85)', fontSize: 11.5, marginTop: 2 },
+  gclose: {
+    width: 32,
+    height: 32,
+    borderRadius: 999,
+    backgroundColor: 'rgba(255,255,255,.2)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   container: { flex: 1, backgroundColor: '#fff' },
   card: {
     backgroundColor: '#fff',

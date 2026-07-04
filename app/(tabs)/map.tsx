@@ -386,6 +386,8 @@ export default function MapScreen() {
   }
 
   // 내 방향(나침반) 구독 — 위치 핀의 방향 빔을 두 지도에 동기 회전(8도 이상 변화 시만)
+  // + 방위 표시 FAB(나침반 바늘)도 같은 값으로 회전
+  const compassAnim = useState(() => new Animated.Value(0))[0]
   useEffect(() => {
     let sub: Location.LocationSubscription | undefined
     let last = -999
@@ -395,6 +397,11 @@ export default function MapScreen() {
       last = deg
       naverRef.current?.setHeading(deg)
       googleRef.current?.setHeading(deg)
+      Animated.timing(compassAnim, {
+        toValue: deg,
+        duration: 200,
+        useNativeDriver: true,
+      }).start()
     })
       .then((s) => {
         sub = s
@@ -893,8 +900,24 @@ export default function MapScreen() {
           </View>
         )}
 
-        {/* 우측 FAB — 내 위치(GPS) / 지도 유형 */}
+        {/* 우측 FAB — 방위(나침반) / 내 위치(GPS) / 지도 유형 */}
         <View style={ss.fabCol} pointerEvents="box-none">
+          {/* 방위 표시 — 바늘이 내가 향한 방향으로 회전(지도는 항상 북쪽 고정), 탭 시 내 위치로 */}
+          <Pressable style={ss.fab} onPress={goToMyLocation} hitSlop={6}>
+            <Animated.View
+              style={{
+                transform: [
+                  {
+                    rotate: compassAnim.interpolate({
+                      inputRange: [0, 360],
+                      outputRange: ['0deg', '360deg'],
+                    }),
+                  },
+                ],
+              }}>
+              <Icon name="navigation" size={20} color={palette.coral[50]} filled />
+            </Animated.View>
+          </Pressable>
           <Pressable style={ss.fab} onPress={goToMyLocation} hitSlop={6}>
             <Icon name="my_location" size={20} color={palette.blue[50]} />
           </Pressable>
