@@ -994,9 +994,14 @@ export default function HomeScreen() {
 
             {/* 검색 Input Box 삭제 — 텍스트 입력 최소화 방향(요청). 음성/탭 기반 탐색으로 대체 */}
           </SafeAreaView>
-          {/* 히어로 우측 하단 마이크 — 현재 질문·답변을 음성으로 다시 듣기 */}
-          <Pressable onPress={gganbuMsg.replay} hitSlop={8} style={ss.heroMic}>
-            <Icon name="mic" size={18} color="#fff" filled />
+          {/* 히어로 우측 하단 스피커 — 질문·답변 낭독 소리 켜기/끄기(설정 유지) */}
+          <Pressable onPress={gganbuMsg.toggleMute} hitSlop={8} style={ss.heroMic}>
+            <Icon
+              name={gganbuMsg.muted ? 'volume_off' : 'volume_up'}
+              size={18}
+              color="#fff"
+              filled
+            />
           </Pressable>
         </View>
 
@@ -1354,7 +1359,7 @@ const ss = StyleSheet.create({
   gganbuFabText: { color: '#fff', fontSize: 15, fontWeight: '800', letterSpacing: -0.2 },
 
   hero: { paddingHorizontal: 18, paddingBottom: 10, overflow: 'hidden' },
-  // 히어로 우측 하단 마이크 — 질문·답변 음성 다시 듣기(히어로 필들과 동일 톤)
+  // 히어로 우측 하단 스피커 — 질문·답변 낭독 소리 켜기/끄기(히어로 필들과 동일 톤)
   heroMic: {
     position: 'absolute',
     right: 16,
