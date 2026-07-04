@@ -345,8 +345,7 @@ function NearbyTrail({ km, idx, count }: { km: number | null; idx: number; count
       return
     }
     if (idx !== prev) {
-      playMeow()
-      setDesiredFacing(idx > prev ? 1 : -1)
+      setDesiredFacing(idx > prev ? 1 : -1) // 야옹은 플릭 제스처 단위로(스크롤뷰 쪽에서 재생)
     }
   }, [idx])
   // 상태 대사(reconcile) — 원샷이 아닐 때만 판단. 방향 불일치 → turn,
@@ -775,8 +774,9 @@ export default function HomeScreen() {
     return [...near, ...rest].map((x) => x.p)
   }, [pois, coords.latitude, coords.longitude])
 
-  // 주변 추천 — 현재 플릭 중앙 카드 인덱스(헤더 거리 표시용)
+  // 주변 추천 — 현재 플릭 중앙 카드 인덱스(헤더 거리 표시용) + 플릭 시작 인덱스(야옹 1회 판정)
   const [nearbyIdx, setNearbyIdx] = useState(0)
+  const nearbyDragFromRef = useRef(0)
 
   // hero 배경용 관광지 사진 — 이미지 있는 POI만(최대 6장 순환).
   // useMemo로 참조 고정: 매 렌더마다 새 배열이면 HeroBackdrop 인터벌이 리셋돼 10초 회전이 끊김.
@@ -1050,6 +1050,14 @@ export default function HomeScreen() {
             onScroll={(e) =>
               setNearbyIdx(Math.max(0, Math.round(e.nativeEvent.contentOffset.x / (156 + 12))))
             }
+            onScrollBeginDrag={() => {
+              nearbyDragFromRef.current = nearbyIdx
+            }}
+            onMomentumScrollEnd={(e) => {
+              // 야옹은 사용자 플릭 1회당 1번 — 제스처로 카드가 실제 바뀌었을 때만
+              const end = Math.max(0, Math.round(e.nativeEvent.contentOffset.x / (156 + 12)))
+              if (end !== nearbyDragFromRef.current) playMeow()
+            }}
             contentContainerStyle={{ paddingHorizontal: 16, gap: 12 }}>
             {nearbyPois.length > 0
               ? nearbyPois.map((p: Poi) => (
