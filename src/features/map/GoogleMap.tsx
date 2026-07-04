@@ -13,6 +13,7 @@ export type GoogleMarker = {
   color: string
   label?: string
   outline?: string // 마커 테두리색 — Blend 동시 표시 시 소스 구분용(기본 흰색)
+  glyph?: string // 카테고리 아이콘(이모지) — 검색 필터와 동일한 성격 구분
 }
 
 type Props = {
@@ -34,6 +35,7 @@ export type GoogleMapHandle = {
   clearRoute: () => void
   setMapType: (type: 'normal' | 'satellite' | 'hybrid') => void
   setMyLocation: (lat: number, lng: number, zoom?: number) => void
+  setHeading: (deg: number) => void // 내 방향(나침반) — 위치 핀의 방향 빔 회전
 }
 
 const API_KEY = process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY ?? ''
@@ -89,17 +91,28 @@ function buildHtml(lat: number, lng: number, markers: GoogleMarker[], lang: stri
       var m = { normal: 'roadmap', satellite: 'satellite', hybrid: 'hybrid' };
       map.setMapTypeId(m[type] || 'roadmap');
     }
-    // 내 위치 표시 — 파란 점 마커 갱신 + 이동
-    var myLoc = null;
+    // 내 위치 표시 — 아래가 뾰족한 파란 핀(다른 마커와 구분) + 방향 빔(나침반 회전).
+    // 빔은 위치점을 축으로 heading 각도만큼 회전한다. (NaverMap과 동일 규칙)
+    var myLocPin = null, myLocBeam = null, myHeading = 0;
     function setMyLocation(lat, lng, zoom){
       if(!map) return;
-      if(myLoc) myLoc.setMap(null);
-      myLoc = new google.maps.Marker({
-        position: { lat: lat, lng: lng }, map: map, zIndex: 1000,
-        icon: { path: google.maps.SymbolPath.CIRCLE, fillColor: '#2563EB', fillOpacity: 1, strokeColor: '#ffffff', strokeWeight: 3, scale: 7 },
+      if(myLocPin) myLocPin.setMap(null);
+      if(myLocBeam) myLocBeam.setMap(null);
+      var pos = { lat: lat, lng: lng };
+      myLocBeam = new google.maps.Marker({
+        position: pos, map: map, zIndex: 999, clickable: false,
+        icon: { path: 'M 0 0 L -11 -30 L 11 -30 Z', fillColor: '#2563EB', fillOpacity: 0.35, strokeWeight: 0, rotation: myHeading, anchor: new google.maps.Point(0, 0) },
       });
-      map.panTo({ lat: lat, lng: lng });
+      myLocPin = new google.maps.Marker({
+        position: pos, map: map, zIndex: 1000, clickable: false,
+        icon: { path: 'M 0 0 C -2 -8 -11 -11 -11 -20 A 11 11 0 1 1 11 -20 C 11 -11 2 -8 0 0 Z', fillColor: '#2563EB', fillOpacity: 1, strokeColor: '#ffffff', strokeWeight: 2.5, anchor: new google.maps.Point(0, 0) },
+      });
+      map.panTo(pos);
       map.setZoom(zoom || 16);
+    }
+    function setHeading(deg){
+      myHeading = deg;
+      if(myLocBeam){ var ic = myLocBeam.getIcon(); ic.rotation = deg; myLocBeam.setIcon(ic); }
     }
     function clearMarkers(){ markers.forEach(function(m){ m.setMap(null); }); markers = []; }
     // 마커 클러스터링 — 줌이 낮으면 지역별로 묶어 숫자 배지로 표시(가독성),
@@ -110,13 +123,14 @@ function buildHtml(lat: number, lng: number, markers: GoogleMarker[], lang: stri
       var mk = new google.maps.Marker({
         position: { lat: p.lat, lng: p.lng },
         map: map,
+        label: p.glyph ? { text: p.glyph, fontSize: '12px' } : undefined,
         icon: {
           path: google.maps.SymbolPath.CIRCLE,
           fillColor: p.color,
           fillOpacity: 1,
           strokeColor: p.outline || '#ffffff',
           strokeWeight: 3,
-          scale: 8,
+          scale: 11,
         },
       });
       mk.addListener('click', function(){ post({type:'marker', id:p.id}); });
@@ -223,6 +237,9 @@ export const GoogleMap = forwardRef<GoogleMapHandle, Props>(function GoogleMap(
       webRef.current?.injectJavaScript(
         `setMyLocation(${lat}, ${lng}, ${zoom ?? 'undefined'}); true;`,
       )
+    },
+    setHeading: (deg) => {
+      webRef.current?.injectJavaScript(`setHeading(${deg}); true;`)
     },
   }))
 

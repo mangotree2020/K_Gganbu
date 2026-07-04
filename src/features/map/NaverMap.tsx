@@ -12,6 +12,7 @@ export type NaverMarker = {
   color: string
   label?: string
   outline?: string // 마커 테두리색 — Blend 동시 표시 시 소스 구분용(기본 흰색)
+  glyph?: string // 카테고리 아이콘(이모지) — 검색 필터와 동일한 성격 구분
 }
 
 type Props = {
@@ -37,6 +38,7 @@ export type NaverMapHandle = {
   clearRoute: () => void
   setMapType: (type: MapType) => void
   setMyLocation: (lat: number, lng: number, zoom?: number) => void
+  setHeading: (deg: number) => void // 내 방향(나침반) — 위치 핀의 방향 빔 회전
   // Blend 레이어 투명도 — RN View opacity는 Android WebView에서 무시되므로
   // WebView 내부 CSS(#map opacity)로 제어한다
   setOpacity: (v: number) => void
@@ -104,16 +106,27 @@ function buildHtml(lat: number, lng: number, markers: NaverMarker[], lang: Naver
       var m = { normal: naver.maps.MapTypeId.NORMAL, satellite: naver.maps.MapTypeId.SATELLITE, hybrid: naver.maps.MapTypeId.HYBRID };
       map.setMapTypeId(m[type] || naver.maps.MapTypeId.NORMAL);
     }
-    // 내 위치 표시 — 파란 점 마커 갱신 + 해당 위치로 이동
-    var myLoc = null;
+    // 내 위치 표시 — 아래가 뾰족한 파란 핀(다른 마커와 구분) + 방향 빔(나침반 회전).
+    // 빔은 핀 끝(실제 위치점)을 축으로 heading 각도만큼 회전한다.
+    var myLoc = null, myHeading = 0;
+    function myLocContent(){
+      var beam = '<div style="position:absolute;left:50%;bottom:0;width:0;height:0;transform:translateX(-50%) rotate('+myHeading+'deg);transform-origin:50% 100%;border-left:11px solid transparent;border-right:11px solid transparent;border-bottom:30px solid rgba(37,99,235,.35)"></div>';
+      var tail = '<div style="position:absolute;left:50%;bottom:0;transform:translateX(-50%);width:0;height:0;border-left:7px solid transparent;border-right:7px solid transparent;border-top:14px solid #2563EB"></div>';
+      var head = '<div style="position:absolute;left:50%;bottom:12px;transform:translateX(-50%);width:22px;height:22px;border-radius:50%;background:#2563EB;border:3px solid #fff;box-shadow:0 2px 5px rgba(0,0,0,.4)"></div>';
+      return '<div style="position:relative;width:44px;height:58px">'+beam+tail+head+'</div>';
+    }
     function setMyLocation(lat, lng, zoom){
       if(!map) return;
       if(myLoc) myLoc.setMap(null);
       myLoc = new naver.maps.Marker({
         position: new naver.maps.LatLng(lat, lng), map: map, zIndex: 1000,
-        icon: { content: '<div style="width:18px;height:18px;border-radius:50%;background:#2563EB;border:3px solid #fff;box-shadow:0 0 0 3px rgba(37,99,235,.3),0 1px 4px rgba(0,0,0,.4)"></div>', anchor: new naver.maps.Point(9, 9) },
+        icon: { content: myLocContent(), anchor: new naver.maps.Point(22, 58) },
       });
       map.morph(new naver.maps.LatLng(lat, lng), zoom || 16);
+    }
+    function setHeading(deg){
+      myHeading = deg;
+      if(myLoc) myLoc.setIcon({ content: myLocContent(), anchor: new naver.maps.Point(22, 58) });
     }
     function clearMarkers(){ markers.forEach(function(m){ m.setMap(null); }); markers = []; }
     // 마커 클러스터링 — 줌이 낮으면 지역별로 묶어 숫자 배지로 표시(가독성),
@@ -130,8 +143,8 @@ function buildHtml(lat: number, lng: number, markers: NaverMarker[], lang: Naver
             position: new naver.maps.LatLng(p.lat, p.lng),
             map: map,
             icon: {
-              content: '<div style="width:22px;height:22px;border-radius:50%;background:'+p.color+';border:3px solid '+(p.outline||'#fff')+';box-shadow:0 1px 4px rgba(0,0,0,.4)"></div>',
-              anchor: new naver.maps.Point(11, 11),
+              content: '<div style="width:26px;height:26px;border-radius:50%;background:'+p.color+';border:3px solid '+(p.outline||'#fff')+';box-shadow:0 1px 4px rgba(0,0,0,.4);display:flex;align-items:center;justify-content:center;font-size:13px;line-height:1">'+(p.glyph||'')+'</div>',
+              anchor: new naver.maps.Point(13, 13),
             },
           });
           naver.maps.Event.addListener(mk, 'click', function(){ post({type:'marker', id:p.id}); });
@@ -155,8 +168,8 @@ function buildHtml(lat: number, lng: number, markers: NaverMarker[], lang: Naver
           var mk = new naver.maps.Marker({
             position: new naver.maps.LatLng(p.lat, p.lng), map: map,
             icon: {
-              content: '<div style="width:22px;height:22px;border-radius:50%;background:'+p.color+';border:3px solid '+(p.outline||'#fff')+';box-shadow:0 1px 4px rgba(0,0,0,.4)"></div>',
-              anchor: new naver.maps.Point(11, 11),
+              content: '<div style="width:26px;height:26px;border-radius:50%;background:'+p.color+';border:3px solid '+(p.outline||'#fff')+';box-shadow:0 1px 4px rgba(0,0,0,.4);display:flex;align-items:center;justify-content:center;font-size:13px;line-height:1">'+(p.glyph||'')+'</div>',
+              anchor: new naver.maps.Point(13, 13),
             },
           });
           naver.maps.Event.addListener(mk, 'click', function(){ post({type:'marker', id:p.id}); });
@@ -246,6 +259,9 @@ export const NaverMap = forwardRef<NaverMapHandle, Props>(function NaverMap(
       webRef.current?.injectJavaScript(
         `setMyLocation(${lat}, ${lng}, ${zoom ?? 'undefined'}); true;`,
       )
+    },
+    setHeading: (deg) => {
+      webRef.current?.injectJavaScript(`setHeading(${deg}); true;`)
     },
     setOpacity: (v) => {
       webRef.current?.injectJavaScript(`setLayerOpacity(${v}); true;`)

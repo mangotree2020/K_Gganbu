@@ -1,3 +1,4 @@
+import * as Location from 'expo-location'
 import { useLocalSearchParams } from 'expo-router'
 import Slider from '@react-native-community/slider'
 import { useEffect, useMemo, useRef, useState } from 'react'
@@ -44,8 +45,6 @@ import { useTabBarAutoHide } from '@/hooks/useTabBarAutoHide'
 import { appFlag, baseLang, flagFor } from '@/lib/flags'
 import { useLocaleStore, useT } from '@/lib/i18n'
 import { palette, shadows } from '@/theme/tokens'
-
-type ProviderId = 'naver' | 'blend' | 'google'
 
 // 도보 이동 기준 줌(거리 단위) — 검색/내 위치/장소 선택 시 공통 사용
 const WALK_ZOOM = 16
@@ -118,12 +117,6 @@ function distanceM(a: LatLng, b: { lat: number; lng: number }): number {
 }
 const fmtDistance = (m: number) => (m < 1000 ? `${Math.round(m)}m` : `${(m / 1000).toFixed(1)}km`)
 
-const PROVIDERS: { id: ProviderId; label: string; subKey: string; color: string }[] = [
-  { id: 'naver', label: 'Naver', subKey: 'map.subNaver', color: '#03C75A' },
-  { id: 'blend', label: 'Blend', subKey: 'map.subBlend', color: palette.blue[50] },
-  { id: 'google', label: 'Google', subKey: 'map.subGoogle', color: '#4285F4' },
-]
-
 // 카테고리 → 마커 색
 const CAT_COLOR: Record<string, string> = {
   food: palette.coral[50],
@@ -141,6 +134,23 @@ const CAT_COLOR: Record<string, string> = {
   beach: palette.blue[50],
 }
 const catColor = (cat: string) => CAT_COLOR[cat] ?? palette.blue[50]
+
+// 카테고리 → 마커 글리프(이모지) — 검색 필터 아이콘과 동일한 성격 구분을 지도 마커에도 반영
+const CAT_GLYPH: Record<string, string> = {
+  food: '🍴',
+  seafood: '🐟',
+  cafe: '☕',
+  sights: '📷',
+  culture: '🎭',
+  stay: '🛏',
+  shopping: '🛍',
+  leisure: '⚽',
+  festival: '🎉',
+  course: '🧭',
+  beach: '⛱',
+  village: '🏘',
+}
+const catGlyph = (cat: string) => CAT_GLYPH[cat] ?? '📍'
 
 // 개별 리뷰 행 — 리뷰 언어가 앱 언어와 다르면 출발 국기(예: 🇰🇷)를 표시하고,
 // 국기를 탭하면 앱 언어로 번역 + 국기를 앱 언어 국기로 교체. 미번역 외국어 리뷰의 국기는
@@ -254,9 +264,23 @@ export default function MapScreen() {
   // 시트 리뷰 영역 플릭 시에도 X식 하단 탭바 자동 숨김/표시
   const tabBarAutoHide = useTabBarAutoHide()
   const lang = useLocaleStore((s) => s.lang) // 지도 라벨·POI 언어
-  const [provider, setProvider] = useState<ProviderId>('blend')
-  // Blend 위치: 0 = Naver 완전 표시(좌) ~ 1 = Google 완전 표시(우) — 상단 토글 순서와 동일
+  // Blend 상시 — 슬라이더 0 = Naver 완전 표시(좌) ~ 1 = Google 완전 표시(우).
+  // 양끝 도달 시 해당 지도 버튼이 네온으로 깜빡여 현재 상태를 알린다(별도 선택바 없음).
   const [blendPos, setBlendPos] = useState(0.5)
+  // 슬라이더 양끝(완전 Naver/완전 Google) 도달 시 해당 버튼 네온 테두리 깜빡임
+  const neonPulse = useState(() => new Animated.Value(1))[0]
+  useEffect(() => {
+    const loop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(neonPulse, { toValue: 0.15, duration: 550, useNativeDriver: true }),
+        Animated.timing(neonPulse, { toValue: 1, duration: 550, useNativeDriver: true }),
+      ]),
+    )
+    loop.start()
+    return () => loop.stop()
+  }, [neonPulse])
+  const naverFull = blendPos <= 0.03
+  const googleFull = blendPos >= 0.97
   // Blend 마커 레이어 토글 — 슬라이더 바의 Naver/Google 버튼으로 각 지도 마커 표시 제어
   const [naverMarkersOn, setNaverMarkersOn] = useState(true)
   const [googleMarkersOn, setGoogleMarkersOn] = useState(true)
@@ -362,6 +386,24 @@ export default function MapScreen() {
     setSelected(null)
   }
 
+  // 내 방향(나침반) 구독 — 위치 핀의 방향 빔을 두 지도에 동기 회전(8도 이상 변화 시만)
+  useEffect(() => {
+    let sub: Location.LocationSubscription | undefined
+    let last = -999
+    Location.watchHeadingAsync((h) => {
+      const deg = h.trueHeading >= 0 ? h.trueHeading : h.magHeading
+      if (Math.abs(deg - last) < 8) return
+      last = deg
+      naverRef.current?.setHeading(deg)
+      googleRef.current?.setHeading(deg)
+    })
+      .then((s) => {
+        sub = s
+      })
+      .catch(() => {})
+    return () => sub?.remove()
+  }, [])
+
   // 내 위치로 이동 + 파란 점 표시
   const goToMyLocation = () => {
     naverRef.current?.setMyLocation(coords.latitude, coords.longitude, WALK_ZOOM)
@@ -444,6 +486,7 @@ export default function MapScreen() {
           lat: p.lat!,
           lng: p.lng!,
           color: catColor(p.cat),
+          glyph: catGlyph(p.cat),
           label: p.name,
         })),
     [sortedPlaces],
@@ -576,9 +619,9 @@ export default function MapScreen() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [focus.fId, focus.fName, focus.fLat, focus.fLng, focus.nav])
 
-  const showGoogle = provider === 'google' || provider === 'blend'
-  const showNaver = provider === 'naver' || provider === 'blend'
-  const isBlend = provider === 'blend'
+  const showGoogle = true
+  const showNaver = true
+  const isBlend = true
 
   // Blend 레이어 투명도 — Android WebView는 RN View opacity를 무시하므로
   // NaverMap 내부 CSS opacity(setOpacity 핸들)로 제어한다
@@ -784,38 +827,6 @@ export default function MapScreen() {
             </View>
           )}
 
-          <View style={ss.toggle}>
-            {PROVIDERS.map((o) => {
-              const on = o.id === provider
-              return (
-                <Pressable
-                  key={o.id}
-                  onPress={() => {
-                    setProvider(o.id)
-                    setMapError(null) // 전환 시 이전 지도 오류 초기화 (각 지도가 재마운트되며 다시 보고)
-                  }}
-                  style={[ss.toggleBtn, on && { backgroundColor: o.color }]}>
-                  <Text style={[ss.toggleLabel, { color: on ? '#fff' : palette.zinc[700] }]}>
-                    {o.label}
-                  </Text>
-                  <Text
-                    style={[
-                      ss.toggleSub,
-                      on
-                        ? {
-                            color: '#fff',
-                            backgroundColor: 'rgba(255,255,255,.18)',
-                            paddingHorizontal: 5,
-                          }
-                        : { color: palette.zinc[500] },
-                    ]}>
-                    {t(o.subKey)}
-                  </Text>
-                </Pressable>
-              )
-            })}
-          </View>
-
           {/* 지도 인증 오류 안내 (Naver/Google 공용) */}
           {mapError && (
             <View style={ss.naverErr}>
@@ -833,16 +844,24 @@ export default function MapScreen() {
         {isBlend && (
           <View style={ss.blendSlider} pointerEvents="box-none">
             <View style={ss.blendSliderInner}>
-              <Pressable
-                onPress={() => setNaverMarkersOn((v) => !v)}
-                hitSlop={6}
-                style={[
-                  ss.blendChip,
-                  { backgroundColor: '#03C75A' },
-                  !naverMarkersOn && ss.blendChipOff,
-                ]}>
-                <Text style={ss.blendChipText}>Naver</Text>
-              </Pressable>
+              <View>
+                <Pressable
+                  onPress={() => setNaverMarkersOn((v) => !v)}
+                  hitSlop={6}
+                  style={[
+                    ss.blendChip,
+                    { backgroundColor: '#03C75A' },
+                    !naverMarkersOn && ss.blendChipOff,
+                  ]}>
+                  <Text style={ss.blendChipText}>Naver</Text>
+                </Pressable>
+                {naverFull && (
+                  <Animated.View
+                    pointerEvents="none"
+                    style={[ss.neonRing, { borderColor: '#4ADE80', opacity: neonPulse }]}
+                  />
+                )}
+              </View>
               <Slider
                 style={{ flex: 1, height: 36 }}
                 minimumValue={0}
@@ -853,16 +872,24 @@ export default function MapScreen() {
                 maximumTrackTintColor="#4285F4"
                 thumbTintColor={palette.zinc[900]}
               />
-              <Pressable
-                onPress={() => setGoogleMarkersOn((v) => !v)}
-                hitSlop={6}
-                style={[
-                  ss.blendChip,
-                  { backgroundColor: '#4285F4' },
-                  !googleMarkersOn && ss.blendChipOff,
-                ]}>
-                <Text style={ss.blendChipText}>Google</Text>
-              </Pressable>
+              <View>
+                <Pressable
+                  onPress={() => setGoogleMarkersOn((v) => !v)}
+                  hitSlop={6}
+                  style={[
+                    ss.blendChip,
+                    { backgroundColor: '#4285F4' },
+                    !googleMarkersOn && ss.blendChipOff,
+                  ]}>
+                  <Text style={ss.blendChipText}>Google</Text>
+                </Pressable>
+                {googleFull && (
+                  <Animated.View
+                    pointerEvents="none"
+                    style={[ss.neonRing, { borderColor: '#93C5FD', opacity: neonPulse }]}
+                  />
+                )}
+              </View>
             </View>
           </View>
         )}
@@ -1236,6 +1263,16 @@ const ss = StyleSheet.create({
   },
   filterChipText: { fontSize: 11, fontWeight: '700', color: palette.zinc[700] },
 
+  // 완전 Naver/Google 상태 알림용 네온 테두리(깜빡임)
+  neonRing: {
+    position: 'absolute',
+    top: -4,
+    bottom: -4,
+    left: -4,
+    right: -4,
+    borderRadius: 999,
+    borderWidth: 2.5,
+  },
   blendSlider: { position: 'absolute', left: 16, right: 72, bottom: 14 },
   blendSliderInner: {
     flexDirection: 'row',
