@@ -488,22 +488,42 @@ function BigTile({ tile, t }: { tile: (typeof TILES)[number]; t: (k: string) => 
   )
 }
 
-// 추천 장소 ↔ 오늘의 딜(쿠폰) 매칭 — 이름 토큰 겹침으로 판정.
-// MD 관점: 추천으로 생긴 방문 의사가 그 자리에서 할인으로 이어지도록 연결(BM §5 S-7).
+// 추천 장소 ↔ 오늘의 딜(쿠폰·티켓) 매칭 — LBS 근접성 우선(BM §5 S-7).
+// 1순위: 딜의 매장 좌표(파트너 등록 시 주소 지오코딩, partners.lat/lng)와 장소 좌표의
+//        거리 ≤ DEAL_NEAR_M이면 같은 장소로 판정 — 가장 가까운 딜 선택.
+// 2순위: 좌표가 없는 딜(지오코딩 실패분)만 이름 토큰 겹침 폴백.
+const DEAL_NEAR_M = 150 // 동일 부지 판정 반경(m) — 몰 내 점포·부속 시설 오차 흡수
 const normTokens = (s: string) =>
   s
     .toLowerCase()
     .replace(/[^a-z0-9가-힣\s]/g, ' ')
     .split(/\s+/)
     .filter((w) => w.length >= 3)
-function matchDeal<T extends { name: string }>(poiName: string, coupons: T[]): T | null {
-  const pt = normTokens(poiName)
+type DealPoint = { name: string; lat?: number | null; lng?: number | null }
+function matchDeal<T extends DealPoint>(poi: DealPoint, deals: T[]): T | null {
+  // 1) 좌표 근접 — 반경 내 최근접 딜
+  if (poi.lat != null && poi.lng != null) {
+    let best: T | null = null
+    let bestM = DEAL_NEAR_M
+    for (const d of deals) {
+      if (d.lat == null || d.lng == null) continue
+      const m = distKm(poi.lat, poi.lng, d.lat, d.lng) * 1000
+      if (m <= bestM) {
+        best = d
+        bestM = m
+      }
+    }
+    if (best) return best
+  }
+  // 2) 이름 토큰 폴백 — 좌표 있는 딜은 위에서 이미 판정됐으므로 제외
+  const pt = normTokens(poi.name)
   if (!pt.length) return null
-  for (const c of coupons) {
+  for (const c of deals) {
+    if (c.lat != null && c.lng != null) continue
     const ct = normTokens(c.name)
     if (!ct.length) continue
     const overlap = ct.filter((w) => pt.some((p) => p.includes(w) || w.includes(p))).length
-    // 쿠폰명 토큰 2개 이상 겹치거나, 단일 토큰 쿠폰명이 그대로 포함되면 동일 장소로 판정
+    // 딜명 토큰 2개 이상 겹치거나, 단일 토큰 딜명이 그대로 포함되면 동일 장소로 판정
     if (overlap >= 2 || (overlap >= 1 && ct.length === 1)) return c
   }
   return null
@@ -660,6 +680,18 @@ export default function HomeScreen() {
       alive = false
     }
   }, [])
+  // LBS 매칭 풀 — 티켓은 title→name 매핑해 쿠폰과 동일 계약(matchDeal)으로 매칭
+  const ticketDeals = useMemo(
+    () => dealTickets.map((x) => ({ ...x, name: x.title })),
+    [dealTickets],
+  )
+  // 추천 카드 할인 배지 라벨 — 쿠폰 우선(할인율), 없으면 티켓(가격)
+  const dealBadgeFor = (p: { name: string; lat?: number | null; lng?: number | null }) => {
+    const c = matchDeal(p, dealCoupons ?? [])
+    if (c) return c.disc
+    const tk = matchDeal(p, ticketDeals)
+    return tk ? `₩${tk.price.toLocaleString()}` : undefined
+  }
   const deals = useMemo(() => {
     type Deal = {
       kind: 'coupon' | 'ticket'
@@ -1049,8 +1081,9 @@ export default function HomeScreen() {
               }
               contentContainerStyle={{ paddingHorizontal: 16, gap: 10 }}>
               {todaysPicks.map((p, i) => {
-                // 이 장소의 오늘의 딜 — 있으면 우상단 쿠폰 배지(탭 → QR 발급 직행)
-                const deal = matchDeal(p.name, dealCoupons ?? [])
+                // 이 장소의 오늘의 딜 — LBS 근접 매칭. 쿠폰 우선(QR 직행), 없으면 티켓(아웃링크)
+                const deal = matchDeal(p, dealCoupons ?? [])
+                const ticket = deal ? null : matchDeal(p, ticketDeals)
                 return (
                   <Pressable
                     key={p.id}
@@ -1099,6 +1132,19 @@ export default function HomeScreen() {
                         }
                         style={ss.pickDealBadge}>
                         <Text style={ss.pickDealText}>🎟 {deal.disc}</Text>
+                      </Pressable>
+                    )}
+                    {ticket && (
+                      <Pressable
+                        onPress={() => {
+                          track('ticket_outlink', {
+                            ticket_id: String(ticket.id),
+                            category: ticket.category,
+                          })
+                          Linking.openURL(ticket.outlinkUrl).catch(() => {})
+                        }}
+                        style={ss.pickDealBadge}>
+                        <Text style={ss.pickDealText}>🎫 ₩{ticket.price.toLocaleString()}</Text>
                       </Pressable>
                     )}
                     <View style={ss.pickScrim} />
@@ -1245,8 +1291,8 @@ export default function HomeScreen() {
                     extId={p.id}
                     lat={p.lat}
                     lng={p.lng}
-                    // 이 장소의 오늘의 딜이 있으면 할인 배지 노출(추천→쿠폰 연결, S-7)
-                    badge={matchDeal(p.name, dealCoupons ?? [])?.disc}
+                    // 이 장소의 오늘의 딜이 있으면 할인 배지 노출(추천→딜 연결, S-7 — LBS 매칭)
+                    badge={dealBadgeFor(p)}
                   />
                 ))
               : PLACES.map((p) => (

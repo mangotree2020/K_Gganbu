@@ -15,6 +15,9 @@ export type CouponCard = {
   disc: string
   note: string
   filter: string
+  // 매장 좌표(파트너 등록 시 주소 지오코딩) — 홈 추천 LBS 딜 매칭용. mock에는 없을 수 있음
+  lat?: number | null
+  lng?: number | null
 }
 
 const CAT_ICON: Record<string, string> = {
@@ -37,7 +40,7 @@ type Row = {
   discount_value: number | null
   usage_condition_i18n: Record<string, string> | null
   category: string | null
-  partners: { name: string } | null
+  partners: { name: string; lat: number | null; lng: number | null } | null
 }
 
 // 내가 발급받은 쿠폰 (coupon_issues, BACKLOG #23 My탭) — 본인 데이터만(RLS)
@@ -104,7 +107,7 @@ export function useCoupons() {
       const { data, error } = await supabase
         .from('coupons')
         .select(
-          'id, title_i18n, discount_type, discount_value, usage_condition_i18n, category, partners(name)',
+          'id, title_i18n, discount_type, discount_value, usage_condition_i18n, category, partners(name, lat, lng)',
         )
         .eq('status', 'active')
         .order('created_at', { ascending: true })
@@ -123,6 +126,8 @@ export function useCoupons() {
           disc: discountLabel(c.discount_type, c.discount_value),
           note,
           filter: cat,
+          lat: c.partners?.lat ?? null,
+          lng: c.partners?.lng ?? null,
         }
       })
     },

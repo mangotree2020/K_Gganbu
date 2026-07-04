@@ -14,6 +14,9 @@ export type Ticket = {
   currency: 'KRW'
   thumb: string // PlaceThumb 카테고리
   outlinkUrl: string // 초기 외부 예매 링크
+  // 이용 장소 좌표 — 홈 추천 LBS 딜 매칭용(Google Find Place 지오코딩 값)
+  lat?: number | null
+  lng?: number | null
 }
 
 // 부산 1차 큐레이션 (MVP). 외국인 대상 인기 티켓.
@@ -27,6 +30,8 @@ const MOCK: Ticket[] = [
     currency: 'KRW',
     thumb: 'cable',
     outlinkUrl: 'https://www.klook.com/',
+    lat: 35.0763876,
+    lng: 129.0236199,
   },
   {
     id: 'xthe-sky',
@@ -37,6 +42,8 @@ const MOCK: Ticket[] = [
     currency: 'KRW',
     thumb: 'sights',
     outlinkUrl: 'https://www.kkday.com/',
+    lat: 35.1594845,
+    lng: 129.1701682,
   },
   {
     id: 'cruise-night',
@@ -47,6 +54,8 @@ const MOCK: Ticket[] = [
     currency: 'KRW',
     thumb: 'cruise',
     outlinkUrl: 'https://www.trip.com/',
+    lat: 35.147551,
+    lng: 129.1302088,
   },
   {
     id: 'haeundae-train',
@@ -57,6 +66,8 @@ const MOCK: Ticket[] = [
     currency: 'KRW',
     thumb: 'beach',
     outlinkUrl: 'https://www.klook.com/',
+    lat: 35.158284,
+    lng: 129.1727672,
   },
   {
     id: 'spa-land',
@@ -67,6 +78,8 @@ const MOCK: Ticket[] = [
     currency: 'KRW',
     thumb: 'spa',
     outlinkUrl: 'https://www.kkday.com/',
+    lat: 35.1682338,
+    lng: 129.1295279,
   },
   {
     id: 'nanta-show',

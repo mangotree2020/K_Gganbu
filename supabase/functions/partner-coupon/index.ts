@@ -20,11 +20,33 @@ function json(body: unknown, status = 200) {
   })
 }
 
+// 매장 주소(또는 상호) → 좌표 지오코딩 (Google Find Place, place-lookup과 동일 키).
+// LBS 딜 매칭의 기반 — 실패 시 null(등록은 계속 진행, 좌표만 비움).
+async function geocode(q: string): Promise<{ lat: number; lng: number; address: string } | null> {
+  const key = Deno.env.get('GOOGLE_PLACES_API_KEY') ?? Deno.env.get('GOOGLE_MAPS_API_KEY')
+  if (!key) return null
+  try {
+    const url =
+      `https://maps.googleapis.com/maps/api/place/findplacefromtext/json` +
+      `?input=${encodeURIComponent(q)}&inputtype=textquery` +
+      `&fields=geometry/location,formatted_address&key=${key}`
+    const res = await fetch(url)
+    const data = await res.json()
+    const c = data?.candidates?.[0]
+    const loc = c?.geometry?.location
+    if (typeof loc?.lat !== 'number' || typeof loc?.lng !== 'number') return null
+    return { lat: loc.lat, lng: loc.lng, address: c?.formatted_address ?? q }
+  } catch {
+    return null
+  }
+}
+
 type RegisterBody = {
   action: 'register' | 'list' | 'partners' | 'partner_create' | 'stats'
   partner_id?: string
   name?: string
   contact?: string
+  address?: string // 매장 주소 — 등록 시 지오코딩해 lat/lng 저장(LBS 딜 매칭)
   title_i18n?: Record<string, string>
   discount_type?: 'percentage' | 'fixed' | 'freebie'
   discount_value?: number | null
@@ -53,22 +75,31 @@ Deno.serve(async (req) => {
     if (action === 'partners') {
       const { data, error } = await admin
         .from('partners')
-        .select('id, name, contact, status')
+        .select('id, name, contact, status, address, lat, lng')
         .order('name')
       if (error) return json({ error: error.message }, 500)
       return json({ partners: data ?? [] })
     }
 
     // ── 파트너 등록 (partner_id 불필요) ──
+    // 주소(없으면 상호+Busan)를 지오코딩해 매장 좌표를 함께 저장 → 홈 추천 LBS 딜 매칭에 사용
     if (action === 'partner_create') {
       if (!body.name) return json({ error: 'name은 필수입니다' }, 400)
+      const geo = await geocode(body.address ?? `${body.name} Busan`)
       const { data, error } = await admin
         .from('partners')
-        .insert({ name: body.name, contact: body.contact ?? null, status: 'active' })
+        .insert({
+          name: body.name,
+          contact: body.contact ?? null,
+          status: 'active',
+          address: geo?.address ?? body.address ?? null,
+          lat: geo?.lat ?? null,
+          lng: geo?.lng ?? null,
+        })
         .select('id')
         .single()
       if (error) return json({ error: error.message }, 500)
-      return json({ id: data.id }, 201)
+      return json({ id: data.id, lat: geo?.lat ?? null, lng: geo?.lng ?? null }, 201)
     }
 
     if (!partner_id) return json({ error: 'partner_id는 필수입니다' }, 400)
