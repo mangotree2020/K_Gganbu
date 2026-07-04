@@ -23,6 +23,7 @@ type Props = {
   selectedId?: string
   onMarkerPress?: (id: string) => void
   onPoiPress?: (q: { placeId: string; lat: number; lng: number }) => void // 베이스맵 POI 아이콘 탭
+  onMapPress?: (q: { lat: number; lng: number }) => void // 시설 없는 빈 지면 탭(placeId 없음) — 몰입 모드 토글용
   onAuthError?: (msg: string) => void
   onReady?: () => void // 지도 init 완료 시(내 위치 마커 초기 표시용)
   onViewChange?: (v: { lat: number; lng: number; zoom: number }) => void // 이동/줌 종료(idle) 시
@@ -74,6 +75,9 @@ function buildHtml(lat: number, lng: number, markers: GoogleMarker[], lang: stri
         if (e.placeId) {
           e.stop();
           post({type:'poi', placeId: e.placeId, lat: e.latLng.lat(), lng: e.latLng.lng()});
+        } else {
+          // 시설 없는 빈 지면 탭 — RN이 몰입 모드 토글에 사용
+          post({type:'mapclick', lat: e.latLng.lat(), lng: e.latLng.lng()});
         }
       });
       // 이동/줌 종료 시 현재 뷰 통지 — RN이 다른 지도와 중심·축척을 동기화(Blend 정합)
@@ -219,6 +223,7 @@ export const GoogleMap = forwardRef<GoogleMapHandle, Props>(function GoogleMap(
     markers,
     onMarkerPress,
     onPoiPress,
+    onMapPress,
     onAuthError,
     onReady,
     onViewChange,
@@ -264,6 +269,7 @@ export const GoogleMap = forwardRef<GoogleMapHandle, Props>(function GoogleMap(
       if (msg.type === 'marker' && msg.id) onMarkerPress?.(msg.id)
       else if (msg.type === 'poi' && msg.placeId)
         onPoiPress?.({ placeId: msg.placeId, lat: msg.lat, lng: msg.lng })
+      else if (msg.type === 'mapclick') onMapPress?.({ lat: msg.lat, lng: msg.lng })
       else if (msg.type === 'ready') onReady?.()
       else if (msg.type === 'view') onViewChange?.({ lat: msg.lat, lng: msg.lng, zoom: msg.zoom })
       else if (msg.type === 'auth_error') onAuthError?.(msg.message ?? 'Google auth error')

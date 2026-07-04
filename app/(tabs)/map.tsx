@@ -1,5 +1,5 @@
 import * as Location from 'expo-location'
-import { useLocalSearchParams } from 'expo-router'
+import { useIsFocused, useLocalSearchParams } from 'expo-router'
 import Slider from '@react-native-community/slider'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import {
@@ -41,7 +41,7 @@ import { usePlaceReviews, type PlaceReview } from '@/features/review/queries'
 import { useReviewInsights } from '@/features/review/insights'
 import { translateText } from '@/features/translate/services'
 import { useCurrentLocation } from '@/hooks/useCurrentLocation'
-import { useTabBarAutoHide } from '@/hooks/useTabBarAutoHide'
+import { useTabBarAutoHide, useTabBarStore } from '@/hooks/useTabBarAutoHide'
 import { appFlag, baseLang, flagFor } from '@/lib/flags'
 import { useLocaleStore, useT } from '@/lib/i18n'
 import { palette, shadows } from '@/theme/tokens'
@@ -281,6 +281,40 @@ export default function MapScreen() {
   }, [neonPulse])
   const naverFull = blendPos <= 0.03
   const googleFull = blendPos >= 0.97
+  // 지도 첫 진입 시 Blend 1회 자동 시연 — Naver(0)→Google(1) 스윕 후 기본값(0.5) 정착.
+  // Blend는 바만 봐서는 발견이 어려운 고유 기능이라 로딩 직후 투명도 변화를 직접 보여준다.
+  // 사용자가 슬라이더를 잡으면(onSlidingStart) 즉시 중단.
+  const demoDoneRef = useRef(false)
+  const demoTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const cancelBlendDemo = () => {
+    if (demoTimerRef.current) {
+      clearInterval(demoTimerRef.current)
+      demoTimerRef.current = null
+    }
+  }
+  const startBlendDemo = () => {
+    if (demoDoneRef.current) return
+    demoDoneRef.current = true
+    const ease = (p: number) => (p < 0.5 ? 2 * p * p : 1 - (-2 * p + 2) ** 2 / 2)
+    const t0 = Date.now()
+    setBlendPos(0)
+    demoTimerRef.current = setInterval(() => {
+      const el = Date.now() - t0
+      if (el < 600)
+        setBlendPos(0) // 완전 Naver 잠시 유지
+      else if (el < 2400)
+        setBlendPos(ease((el - 600) / 1800)) // Naver→Google 스윕
+      else if (el < 3000)
+        setBlendPos(1) // 완전 Google 잠시 유지
+      else if (el < 3800)
+        setBlendPos(1 - ease((el - 3000) / 800) * 0.5) // 기본값 0.5로 복귀
+      else {
+        setBlendPos(0.5)
+        cancelBlendDemo()
+      }
+    }, 40)
+  }
+  useEffect(() => cancelBlendDemo, [])
   // Blend 마커 레이어 토글 — 슬라이더 바의 Naver/Google 버튼으로 각 지도 마커 표시 제어
   const [naverMarkersOn, setNaverMarkersOn] = useState(true)
   const [googleMarkersOn, setGoogleMarkersOn] = useState(true)
@@ -310,6 +344,29 @@ export default function MapScreen() {
   // 하단 시트 높이 — 초기 HALF(카드 절반 보임). sheetBaseRef는 현재 스냅 추적.
   const sheetH = useState(() => new Animated.Value(SHEET_HALF))[0]
   const sheetBaseRef = useRef(SHEET_HALF)
+
+  // 몰입(전체 화면) 모드 — 시설 없는 빈 지면 탭으로 켜고, 몰입 중 아무 지점 탭으로 즉시 복귀.
+  // 켜지면 검색바·Blend 바·FAB·하단 시트·탭바를 모두 숨겨 지도만 보인다.
+  const [immersive, setImmersive] = useState(false)
+  const immersiveRef = useRef(false)
+  const setTabHidden = useTabBarStore((s) => s.setHidden)
+  const setImmersiveMode = (on: boolean) => {
+    if (immersiveRef.current === on) return
+    immersiveRef.current = on
+    setImmersive(on)
+    setTabHidden(on)
+    Animated.timing(sheetH, {
+      toValue: on ? 0 : sheetBaseRef.current,
+      duration: 220,
+      useNativeDriver: false,
+    }).start()
+  }
+  // 지도 탭을 벗어나면 몰입 해제(탭바가 숨은 채 다른 화면으로 가지 않도록)
+  const focused = useIsFocused()
+  useEffect(() => {
+    if (!focused && immersiveRef.current) setImmersiveMode(false)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [focused])
 
   const { coords, loading: locLoading } = useCurrentLocation()
   // 카테고리 선택 시 해당 contentTypeId로 재조회(필터가 마커·리스트에 실제 반영)
@@ -386,19 +443,28 @@ export default function MapScreen() {
   }
 
   // 내 방향(나침반) 구독 — 위치 핀의 방향 빔을 두 지도에 동기 회전(8도 이상 변화 시만)
-  // + 방위 표시 FAB(나침반 바늘)도 같은 값으로 회전
+  // + 방위 표시 FAB(나침반 바늘)도 같은 값으로 회전.
+  // 0°/360° 경계에서 긴 쪽으로 역회전하지 않도록 최단 경로 delta를 누적한 연속 각도로 애니메이션.
   const compassAnim = useState(() => new Animated.Value(0))[0]
   useEffect(() => {
     let sub: Location.LocationSubscription | undefined
     let last = -999
+    let accum = 0 // 누적 회전 각(경계 없는 연속값)
     Location.watchHeadingAsync((h) => {
       const deg = h.trueHeading >= 0 ? h.trueHeading : h.magHeading
-      if (Math.abs(deg - last) < 8) return
-      last = deg
+      if (last < 0) {
+        last = deg
+        accum = deg
+      } else {
+        const delta = ((deg - last + 540) % 360) - 180 // 최단 경로 차이(-180~180)
+        if (Math.abs(delta) < 8) return
+        last = deg
+        accum += delta
+      }
       naverRef.current?.setHeading(deg)
       googleRef.current?.setHeading(deg)
       Animated.timing(compassAnim, {
-        toValue: deg,
+        toValue: accum,
         duration: 200,
         useNativeDriver: true,
       }).start()
@@ -408,7 +474,7 @@ export default function MapScreen() {
       })
       .catch(() => {})
     return () => sub?.remove()
-  }, [])
+  }, [compassAnim])
 
   // 내 위치로 이동 + 파란 점 표시
   const goToMyLocation = () => {
@@ -544,16 +610,28 @@ export default function MapScreen() {
   }
 
   // 베이스맵 POI/지도 탭 → 장소 정보 시트 (Google: placeId, Naver: 좌표 최근접)
-  // 연속 탭 시 마지막 요청만 반영(seq 가드). 빈 지도 탭(60m 내 시설 없음)은 조용히 무시.
+  // 연속 탭 시 마지막 요청만 반영(seq 가드). 빈 지도 탭(60m 내 시설 없음)은 몰입 모드 진입.
   const lookupSeqRef = useRef(0)
   const onMapPoiTap = async (q: { placeId?: string; lat?: number; lng?: number }) => {
+    // 몰입 중에는 어떤 탭이든 즉시 원상 복귀(조회 생략 — 지연 없이)
+    if (immersiveRef.current) {
+      setImmersiveMode(false)
+      return
+    }
     const seq = ++lookupSeqRef.current
     const res = await lookupPlace(q, lang)
-    if (!res || seq !== lookupSeqRef.current) return
+    if (seq !== lookupSeqRef.current) return
+    if (!res) {
+      // 조회 실패/시설 없음 — 빈 지면 탭으로 간주해 몰입 모드 진입
+      setImmersiveMode(true)
+      return
+    }
     if (!q.placeId && q.lat != null && q.lng != null && res.lat != null && res.lng != null) {
-      // Naver 좌표 탭 게이트 — 최근접 시설이 탭 지점에서 60m 초과면 빈 지도 탭으로 간주
-      if (distanceM({ latitude: q.lat, longitude: q.lng }, { lat: res.lat, lng: res.lng }) > 60)
+      // Naver 좌표 탭 게이트 — 최근접 시설이 탭 지점에서 60m 초과면 빈 지면 탭 → 몰입 모드
+      if (distanceM({ latitude: q.lat, longitude: q.lng }, { lat: res.lat, lng: res.lng }) > 60) {
+        setImmersiveMode(true)
         return
+      }
     }
     setTapped(res)
     setSelected(res.id)
@@ -696,6 +774,8 @@ export default function MapScreen() {
               if (p) selectPlace(p)
             }}
             onPoiPress={onMapPoiTap}
+            // Google 빈 지면 탭(placeId 없음) — 조회 없이 즉시 몰입 모드 토글
+            onMapPress={() => setImmersiveMode(!immersiveRef.current)}
             onReady={() => {
               googleRef.current?.setMyLocation(coords.latitude, coords.longitude, WALK_ZOOM)
               // 재마운트 시 마지막 뷰 복원(다른 지도와 위치·축척 일치)
@@ -735,6 +815,8 @@ export default function MapScreen() {
                 naverRef.current?.setOpacity(naverOpacityRef.current)
                 // 지도 전환으로 재마운트돼도 진행 중 경로 유지
                 if (routePathRef.current) naverRef.current?.drawRoute(routePathRef.current)
+                // 첫 로딩 완료 후 Blend 1회 자동 시연(마운트당 1회 — 내부 가드)
+                setTimeout(startBlendDemo, 900)
               }}
               onViewChange={onViewChange('naver')}
               onAuthError={(m) => setMapError(m)}
@@ -749,105 +831,107 @@ export default function MapScreen() {
           </View>
         )}
 
-        {/* 상단: 검색 + 토글 */}
-        <SafeAreaView edges={['top']} style={ss.topControls} pointerEvents="box-none">
-          <View style={ss.searchBar}>
-            <Icon name="search" size={18} color={palette.zinc[500]} />
-            <TextInput
-              placeholder={t('map.search')}
-              placeholderTextColor={palette.zinc[500]}
-              style={ss.searchInput}
-              value={searchQuery}
-              onChangeText={setSearchQuery}
-              onSubmitEditing={onSearchSubmit}
-              returnKeyType="search"
-            />
-            {searchQuery.length > 0 && (
-              <Pressable
-                onPress={() => {
-                  setSearchQuery('')
-                  setSubmittedQuery('')
-                }}
-                hitSlop={8}>
-                <Icon name="close" size={16} color={palette.zinc[400]} />
-              </Pressable>
-            )}
-            <Pressable onPress={() => setShowFilter((v) => !v)} hitSlop={8}>
-              <Icon
-                name="tune"
-                size={18}
-                color={showFilter || catFilter.length ? palette.blue[50] : palette.zinc[500]}
+        {/* 상단: 검색 + 토글 — 몰입 모드에서는 숨김(지도 전체 화면) */}
+        {!immersive && (
+          <SafeAreaView edges={['top']} style={ss.topControls} pointerEvents="box-none">
+            <View style={ss.searchBar}>
+              <Icon name="search" size={18} color={palette.zinc[500]} />
+              <TextInput
+                placeholder={t('map.search')}
+                placeholderTextColor={palette.zinc[500]}
+                style={ss.searchInput}
+                value={searchQuery}
+                onChangeText={setSearchQuery}
+                onSubmitEditing={onSearchSubmit}
+                returnKeyType="search"
               />
-            </Pressable>
-          </View>
-
-          {/* 검색 결과 드롭다운 */}
-          {submittedQuery.length > 0 && (
-            <View style={ss.searchResults}>
-              {searching ? (
-                <View style={ss.searchRow}>
-                  <ActivityIndicator size="small" color={palette.blue[50]} />
-                </View>
-              ) : searchResults && searchResults.length > 0 ? (
-                searchResults.map((r) => (
-                  <Pressable key={r.id} style={ss.searchRow} onPress={() => goToSearchResult(r)}>
-                    <Icon name="location_on" size={15} color={palette.coral[50]} filled />
-                    <View style={{ flex: 1 }}>
-                      <Text style={ss.searchName} numberOfLines={1}>
-                        {r.name}
-                      </Text>
-                      <Text style={ss.searchAddr} numberOfLines={1}>
-                        {r.address}
-                      </Text>
-                    </View>
-                  </Pressable>
-                ))
-              ) : (
-                <View style={ss.searchRow}>
-                  <Text style={ss.searchAddr}>{t('map.noResults')}</Text>
-                </View>
+              {searchQuery.length > 0 && (
+                <Pressable
+                  onPress={() => {
+                    setSearchQuery('')
+                    setSubmittedQuery('')
+                  }}
+                  hitSlop={8}>
+                  <Icon name="close" size={16} color={palette.zinc[400]} />
+                </Pressable>
               )}
+              <Pressable onPress={() => setShowFilter((v) => !v)} hitSlop={8}>
+                <Icon
+                  name="tune"
+                  size={18}
+                  color={showFilter || catFilter.length ? palette.blue[50] : palette.zinc[500]}
+                />
+              </Pressable>
             </View>
-          )}
 
-          {/* 카테고리 필터 칩 */}
-          {showFilter && (
-            <View style={ss.filterRow}>
-              {CATS.map((c) => {
-                const on = catFilter.includes(c.key)
-                return (
-                  <Pressable
-                    key={c.key}
-                    onPress={() => toggleCat(c.key)}
-                    style={[
-                      ss.filterChip,
-                      on && { backgroundColor: c.color, borderColor: c.color },
-                    ]}>
-                    <Icon name={c.icon} size={12} color={on ? '#fff' : c.color} filled={on} />
-                    <Text style={[ss.filterChipText, on && { color: '#fff' }]}>
-                      {t(c.labelKey)}
-                    </Text>
-                  </Pressable>
-                )
-              })}
-            </View>
-          )}
+            {/* 검색 결과 드롭다운 */}
+            {submittedQuery.length > 0 && (
+              <View style={ss.searchResults}>
+                {searching ? (
+                  <View style={ss.searchRow}>
+                    <ActivityIndicator size="small" color={palette.blue[50]} />
+                  </View>
+                ) : searchResults && searchResults.length > 0 ? (
+                  searchResults.map((r) => (
+                    <Pressable key={r.id} style={ss.searchRow} onPress={() => goToSearchResult(r)}>
+                      <Icon name="location_on" size={15} color={palette.coral[50]} filled />
+                      <View style={{ flex: 1 }}>
+                        <Text style={ss.searchName} numberOfLines={1}>
+                          {r.name}
+                        </Text>
+                        <Text style={ss.searchAddr} numberOfLines={1}>
+                          {r.address}
+                        </Text>
+                      </View>
+                    </Pressable>
+                  ))
+                ) : (
+                  <View style={ss.searchRow}>
+                    <Text style={ss.searchAddr}>{t('map.noResults')}</Text>
+                  </View>
+                )}
+              </View>
+            )}
 
-          {/* 지도 인증 오류 안내 (Naver/Google 공용) */}
-          {mapError && (
-            <View style={ss.naverErr}>
-              <Icon name="info" size={13} color={palette.error[50]} />
-              <Text style={ss.naverErrText}>{mapError}</Text>
-            </View>
-          )}
+            {/* 카테고리 필터 칩 */}
+            {showFilter && (
+              <View style={ss.filterRow}>
+                {CATS.map((c) => {
+                  const on = catFilter.includes(c.key)
+                  return (
+                    <Pressable
+                      key={c.key}
+                      onPress={() => toggleCat(c.key)}
+                      style={[
+                        ss.filterChip,
+                        on && { backgroundColor: c.color, borderColor: c.color },
+                      ]}>
+                      <Icon name={c.icon} size={12} color={on ? '#fff' : c.color} filled={on} />
+                      <Text style={[ss.filterChipText, on && { color: '#fff' }]}>
+                        {t(c.labelKey)}
+                      </Text>
+                    </Pressable>
+                  )
+                })}
+              </View>
+            )}
 
-          {/* POI 마커가 샘플 데이터일 때 */}
-          {poisMock && <FallbackBadge label="Sample places" />}
-        </SafeAreaView>
+            {/* 지도 인증 오류 안내 (Naver/Google 공용) */}
+            {mapError && (
+              <View style={ss.naverErr}>
+                <Icon name="info" size={13} color={palette.error[50]} />
+                <Text style={ss.naverErrText}>{mapError}</Text>
+              </View>
+            )}
+
+            {/* POI 마커가 샘플 데이터일 때 */}
+            {poisMock && <FallbackBadge label="Sample places" />}
+          </SafeAreaView>
+        )}
 
         {/* Blend 투명도 슬라이더 — Naver(좌) ↔ Google(우), 상단 토글 순서와 동일.
             양끝 Naver/Google 버튼 = 해당 지도 마커 표시 토글(끄면 흐려짐) */}
-        {isBlend && (
+        {isBlend && !immersive && (
           <View style={ss.blendSlider} pointerEvents="box-none">
             <View style={ss.blendSliderInner}>
               <View>
@@ -873,6 +957,7 @@ export default function MapScreen() {
                 minimumValue={0}
                 maximumValue={1}
                 value={blendPos}
+                onSlidingStart={cancelBlendDemo}
                 onValueChange={setBlendPos}
                 minimumTrackTintColor="#03C75A"
                 maximumTrackTintColor="#4285F4"
@@ -900,37 +985,40 @@ export default function MapScreen() {
           </View>
         )}
 
-        {/* 우측 FAB — 방위(나침반) / 내 위치(GPS) / 지도 유형 */}
-        <View style={ss.fabCol} pointerEvents="box-none">
-          {/* 방위 표시 — 바늘이 내가 향한 방향으로 회전(지도는 항상 북쪽 고정), 탭 시 내 위치로 */}
-          <Pressable style={ss.fab} onPress={goToMyLocation} hitSlop={6}>
-            <Animated.View
-              style={{
-                transform: [
-                  {
-                    rotate: compassAnim.interpolate({
-                      inputRange: [0, 360],
-                      outputRange: ['0deg', '360deg'],
-                    }),
-                  },
-                ],
-              }}>
-              <Icon name="navigation" size={20} color={palette.coral[50]} filled />
-            </Animated.View>
-          </Pressable>
-          <Pressable style={ss.fab} onPress={goToMyLocation} hitSlop={6}>
-            <Icon name="my_location" size={20} color={palette.blue[50]} />
-          </Pressable>
-          <Pressable style={ss.fab} onPress={cycleMapType} hitSlop={6}>
-            <Icon
-              name={MAP_TYPE_ICON[mapType]}
-              size={20}
-              color={mapType === 'normal' ? palette.zinc[700] : palette.blue[50]}
-              filled={mapType !== 'normal'}
-            />
-            <Text style={ss.fabLabel}>{t(`map.type.${mapType}`)}</Text>
-          </Pressable>
-        </View>
+        {/* 우측 FAB — 방위(나침반) / 내 위치(GPS) / 지도 유형. 몰입 모드에서는 숨김 */}
+        {!immersive && (
+          <View style={ss.fabCol} pointerEvents="box-none">
+            {/* 방위 표시 — 바늘이 내가 향한 방향으로 회전(지도는 항상 북쪽 고정), 탭 시 내 위치로.
+              글리프는 정북 화살표(navigation_2) — lucide navigation은 북동 45°라 방위가 틀어진다 */}
+            <Pressable style={ss.fab} onPress={goToMyLocation} hitSlop={6}>
+              <Animated.View
+                style={{
+                  transform: [
+                    {
+                      rotate: compassAnim.interpolate({
+                        inputRange: [0, 360],
+                        outputRange: ['0deg', '360deg'],
+                      }),
+                    },
+                  ],
+                }}>
+                <Icon name="navigation_2" size={20} color={palette.coral[50]} filled />
+              </Animated.View>
+            </Pressable>
+            <Pressable style={ss.fab} onPress={goToMyLocation} hitSlop={6}>
+              <Icon name="my_location" size={20} color={palette.blue[50]} />
+            </Pressable>
+            <Pressable style={ss.fab} onPress={cycleMapType} hitSlop={6}>
+              <Icon
+                name={MAP_TYPE_ICON[mapType]}
+                size={20}
+                color={mapType === 'normal' ? palette.zinc[700] : palette.blue[50]}
+                filled={mapType !== 'normal'}
+              />
+              <Text style={ss.fabLabel}>{t(`map.type.${mapType}`)}</Text>
+            </Pressable>
+          </View>
+        )}
       </View>
 
       {/* 하단 시트 — 선택 장소 (드래그로 접기/펼치기) */}

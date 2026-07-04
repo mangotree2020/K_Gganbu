@@ -46,6 +46,7 @@ import {
   Map as MapIcon,
   Crosshair,
   Navigation,
+  Navigation2,
   Moon,
   Bell,
   TreePine,
@@ -169,6 +170,8 @@ const MAP: Record<string, LucideIcon> = {
   location_on: MapPin,
   near_me: Navigation,
   navigation: Navigation,
+  // 정북 화살표 — 방위(나침반) 표시용. lucide navigation은 북동 45° 글리프라 방위에 쓰면 틀어진다.
+  navigation_2: Navigation2,
   map: MapIcon,
   my_location: Crosshair,
   nightlife: Moon,
