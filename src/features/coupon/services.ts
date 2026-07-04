@@ -11,6 +11,21 @@ export type CouponIssue = {
 
 const KEY = (couponId: string) => `coupon_issue:${couponId}`
 
+// 마지막 발급분(로컬 캐시) — 만료 전이면 QR 즉시 표시(Edge Function 왕복·콜드스타트 지연 제거).
+// one-time 토큰은 사용/만료 전까지 유효하므로 재발급 없이 그대로 재사용해도 안전.
+export function getCachedIssue(couponId: string): CouponIssue | null {
+  const raw = storage.getString(KEY(couponId))
+  if (!raw) return null
+  try {
+    const issue = JSON.parse(raw) as CouponIssue
+    // 남은 시간이 10초 미만이면 새로 발급(표시 직후 만료 방지)
+    if (new Date(issue.expires_at).getTime() - Date.now() > 10_000) return issue
+    return null
+  } catch {
+    return null
+  }
+}
+
 // 발급: Edge Function 호출 → 실패 시 로컬 캐시(오프라인 QR) 폴백
 export async function issueCoupon(couponId: string): Promise<CouponIssue> {
   try {

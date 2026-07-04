@@ -666,7 +666,14 @@ export default function HomeScreen() {
         requireAccount('auth.gateCoupon', () =>
           router.push({
             pathname: '/coupon-qr',
-            params: { id: String(c.id), name: c.name, disc: c.disc },
+            // 매장 정보 카드(썸네일·거리) 표시용 부가 파라미터 포함
+            params: {
+              id: String(c.id),
+              name: c.name,
+              disc: c.disc,
+              detail: c.detail,
+              dist: c.dist,
+            },
           }),
         )
       },
@@ -1249,7 +1256,7 @@ export default function HomeScreen() {
           style={ss.gganbuFab}>
           {/* 외곽선 로봇(눈·안테나 보이도록) — filled면 눈 구멍이 메워져 가독성 저하 */}
           <Icon name="smart_toy" size={23} color="#fff" strokeWidth={2.2} />
-          <Text style={ss.gganbuFabText}>AI Gganbu</Text>
+          <Text style={ss.gganbuFabText}>Gganbu</Text>
         </Pressable>
       </View>
     </View>

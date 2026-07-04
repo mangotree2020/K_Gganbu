@@ -8,7 +8,8 @@ import { storage } from '@/lib/mmkv'
 export type AnalyticsEventName =
   | 'coupon_list_view' // 쿠폰 목록 노출 {seg, filter, count, is_mock}
   | 'coupon_tap' // 쿠폰 카드 탭(저장 의도) {coupon_id, name, cat, is_mock}
-  | 'coupon_qr_issued' // QR 발급 성공 {coupon_id, issue_id, offline, reissue}
+  | 'coupon_qr_issued' // QR 발급 성공 {coupon_id, issue_id, offline, reissue, cached}
+  | 'coupon_directions' // QR 화면 → 매장 길찾기 {coupon_id}
   | 'ticket_outlink' // 티켓 아웃링크 이동 {ticket_id, category}
   | 'ai_ask' // AI 깐부 질문 {mode: text|quick|voice, length}
   | 'ai_reply' // AI 응답 수신 {provider: claude|mock, has_card}

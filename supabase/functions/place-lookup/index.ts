@@ -106,6 +106,19 @@ Deno.serve(async (req) => {
       return json({ url: loc ?? null })
     }
 
+    // ⓪′ 텍스트 검색 (쿠폰 매장 등 이름 → 좌표·주소·평점) — Find Place
+    const query: string | undefined = body.query
+    if (query) {
+      const url =
+        `https://maps.googleapis.com/maps/api/place/findplacefromtext/json` +
+        `?input=${encodeURIComponent(query)}&inputtype=textquery` +
+        `&fields=place_id,name,geometry/location,formatted_address,types,rating` +
+        `&language=${lang}&key=${key}`
+      const data = await fetch(url).then((r) => r.json())
+      const out = toOut(data.candidates?.[0])
+      return json(out ?? { error: 'not_found' }, out ? 200 : 404)
+    }
+
     // ① placeId 직접 조회 (Google POI 탭)
     if (placeId) {
       const url =

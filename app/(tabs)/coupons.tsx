@@ -170,7 +170,8 @@ export default function CouTixScreen() {
     requireAccount('auth.gateCoupon', () =>
       router.push({
         pathname: '/coupon-qr',
-        params: { id: String(c.id), name: c.name, disc: c.disc },
+        // 매장 정보 카드(썸네일·거리) 표시용 부가 파라미터 포함
+        params: { id: String(c.id), name: c.name, disc: c.disc, detail: c.detail, dist: c.dist },
       }),
     )
   }
