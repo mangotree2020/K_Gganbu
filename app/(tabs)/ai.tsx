@@ -417,22 +417,23 @@ export default function AiMateScreen() {
 
   return (
     <View style={ss.container}>
-      {/* 헤더 */}
-      <View style={ss.header}>
+      {/* 헤더 — AI 깐부 색(Sky Blue) 그라데이션이 상태바 영역까지(퀵 타일 상세와 동일 스타일) */}
+      <LinearGradient
+        colors={['#7DD3FC', '#0EA5E9', '#0369A1']}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}>
         <SafeAreaView edges={['top']}>
           <View style={ss.headerRow}>
-            <LinearGradient
-              colors={['#38BDF8', '#0EA5E9', '#0D9488']}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 1 }}
-              style={ss.avatar}>
+            <View style={[ss.avatar, { backgroundColor: 'rgba(255,255,255,.22)' }]}>
               <Icon name="auto_awesome" size={22} color="#fff" filled />
-            </LinearGradient>
+            </View>
             <View style={{ flex: 1 }}>
-              <Text style={ss.headerTitle}>AI Gganbu</Text>
+              <Text style={[ss.headerTitle, { color: '#fff' }]}>AI Gganbu</Text>
               <View style={ss.statusRow}>
-                <Icon name="circle" size={6} color={palette.success[50]} filled />
-                <Text style={ss.statusText}>{t('ai.online')} · Claude Sonnet 4</Text>
+                <Icon name="circle" size={6} color="#BBF7D0" filled />
+                <Text style={[ss.statusText, { color: 'rgba(255,255,255,.9)' }]}>
+                  {t('ai.online')} · Gemini Flash
+                </Text>
               </View>
             </View>
             {/* 사투리 토글 — 한국어 전용(기본 ON). 외국어면 비활성 + 탭 시 음성 안내 */}
@@ -453,13 +454,8 @@ export default function AiMateScreen() {
               style={[ss.satooriBtn, satoori && ss.satooriBtnOn, !koOnly && { opacity: 0.45 }]}
               accessibilityRole="button"
               accessibilityState={{ selected: satoori, disabled: !koOnly }}>
-              <Icon
-                name="megaphone"
-                size={13}
-                color={satoori ? '#fff' : palette.zinc[600]}
-                filled={satoori}
-              />
-              <Text style={[ss.satooriText, { color: satoori ? '#fff' : palette.zinc[700] }]}>
+              <Icon name="megaphone" size={13} color="#fff" filled={satoori} />
+              <Text style={[ss.satooriText, { color: '#fff' }]}>
                 {satoori ? dialect.label : t('ai.dialect')}
               </Text>
             </Pressable>
@@ -467,18 +463,18 @@ export default function AiMateScreen() {
               onPress={openHistory}
               style={({ pressed }) => [ss.historyBtn, { opacity: pressed ? 0.7 : 1 }]}
               accessibilityRole="button">
-              <Icon name="history" size={18} color={palette.zinc[900]} />
+              <Icon name="history" size={18} color="#fff" />
             </Pressable>
             {/* X(닫기) — 대화 이력 저장(로컬+서버) 후 새 대화 */}
             <Pressable
               onPress={closeChat}
               style={({ pressed }) => [ss.historyBtn, { opacity: pressed ? 0.7 : 1 }]}
               accessibilityRole="button">
-              <Icon name="close" size={18} color={palette.zinc[900]} />
+              <Icon name="close" size={18} color="#fff" />
             </Pressable>
           </View>
         </SafeAreaView>
-      </View>
+      </LinearGradient>
 
       {/* 질문 입력 바 — 상단 배치(키보드가 가리지 않아 입력 텍스트가 항상 보임) */}
       <View style={ss.inputBar}>

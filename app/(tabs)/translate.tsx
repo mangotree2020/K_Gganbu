@@ -188,21 +188,27 @@ export default function TranslateScreen() {
 
   return (
     <View style={ss.container}>
-      <SafeAreaView edges={['top']} style={{ flex: 1 }}>
-        {/* 헤더 */}
-        <View style={ss.header}>
-          <View style={ss.headerIcon}>
-            <Icon name="translate" size={20} color={palette.teal[40]} filled />
+      {/* 헤더 — 통역 전용색(Teal) 그라데이션이 상태바 영역까지(퀵 타일 상세와 동일 스타일) */}
+      <LinearGradient
+        colors={['#5EEAD4', '#14B8A6', '#0F766E']}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}>
+        <SafeAreaView edges={['top']}>
+          <View style={ss.gheader}>
+            <View style={ss.gheaderIcon}>
+              <Icon name="translate" size={20} color="#fff" filled />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={ss.gheaderTitle}>{t('translate.title')}</Text>
+              <Text style={ss.gheaderSub}>{t('translate.subtitle')}</Text>
+            </View>
+            <Pressable onPress={() => router.back()} style={ss.gclose}>
+              <Icon name="close" size={18} color="#fff" />
+            </Pressable>
           </View>
-          <View style={{ flex: 1 }}>
-            <Text style={ss.headerTitle}>{t('translate.title')}</Text>
-            <Text style={ss.headerSub}>{t('translate.subtitle')}</Text>
-          </View>
-          <Pressable onPress={() => router.back()} style={ss.closeBtn}>
-            <Icon name="close" size={18} color={palette.zinc[700]} />
-          </Pressable>
-        </View>
-
+        </SafeAreaView>
+      </LinearGradient>
+      <View style={{ flex: 1 }}>
         <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
           {/* 모드 선택 */}
           <View style={ss.modeRow}>
@@ -425,12 +431,31 @@ export default function TranslateScreen() {
             </View>
           </Pressable>
         </Modal>
-      </SafeAreaView>
+      </View>
     </View>
   )
 }
 
 const ss = StyleSheet.create({
+  gheader: { flexDirection: 'row', alignItems: 'center', gap: 10, padding: 16, paddingBottom: 14 },
+  gheaderIcon: {
+    width: 38,
+    height: 38,
+    borderRadius: 12,
+    backgroundColor: 'rgba(255,255,255,.22)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  gheaderTitle: { color: '#fff', fontSize: 17, fontWeight: '800' },
+  gheaderSub: { color: 'rgba(255,255,255,.85)', fontSize: 11.5, marginTop: 2 },
+  gclose: {
+    width: 32,
+    height: 32,
+    borderRadius: 999,
+    backgroundColor: 'rgba(255,255,255,.2)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   langPick: { flexDirection: 'row', alignItems: 'center', gap: 2 },
   modalBg: { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'flex-end' },
   sheet: {
