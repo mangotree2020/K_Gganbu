@@ -11,13 +11,12 @@ export type CatVariant = 'walk' | 'run' | 'turn' | 'jump'
 // 각 시트는 셀 여백(가로 16·세로 8px)을 포함 — 표시 높이는 고양이 실크기 기준으로 보정됨.
 const SHEETS = {
   walk: {
-    // cat_walk + cat_walk2 두 시트를 위상 교차한 8프레임 사이클 — 더 자연스러운 보행
+    // cat_walk2 단독 4프레임 사이클(사용자 확정)
     src: require('../../assets/cats/cat_walk.png') as number,
     frameW: 490,
     frameH: 307, // 여백 포함(꼬리 클리핑 방지)
     height: 27,
-    interval: 150,
-    frames: 8,
+    interval: 200,
     loop: true,
   },
   run: {
@@ -41,7 +40,7 @@ const SHEETS = {
     src: require('../../assets/cats/cat_jump.png') as number,
     frameW: 545,
     frameH: 389, // 여백 포함
-    height: 34, // 5% 축소(사용자 피드백)
+    height: 35, // 2% 확대(사용자 피드백)
     interval: 230, // 점프가 눈에 보이도록 감속(총 ~0.9s)
     loop: false,
   },
