@@ -29,7 +29,10 @@ export default function AllergyScreen() {
   return (
     <View style={ss.container}>
       {/* 긴급 화면과 동일한 상단 디자인 — 그라데이션이 상태바 영역까지 채워 겹침 없음 */}
-      <LinearGradient colors={['#FB7185', '#E11D48']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}>
+      <LinearGradient
+        colors={['#FDA4AF', '#F43F5E', '#BE123C']}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}>
         <SafeAreaView edges={['top']}>
           <View style={ss.gheader}>
             <View style={ss.gheaderIcon}>

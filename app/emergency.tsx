@@ -72,7 +72,10 @@ export default function EmergencyScreen() {
 
   return (
     <View style={ss.container}>
-      <LinearGradient colors={['#EF4444', '#DC2626']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}>
+      <LinearGradient
+        colors={['#FB7185', '#EF4444', '#B91C1C']}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}>
         <SafeAreaView edges={['top']}>
           <View style={ss.header}>
             <View style={ss.headerIcon}>

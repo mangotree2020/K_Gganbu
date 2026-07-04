@@ -7,6 +7,7 @@ import {
   Animated,
   Dimensions,
   Image,
+  Linking,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -24,7 +25,11 @@ import { HeroBackdrop } from '@/components/HeroBackdrop'
 import { usePlaces, type Poi } from '@/features/map/queries'
 import { useGganbuGreeting } from '@/features/gganbu/useGganbuGreeting'
 import { ProfileAvatar } from '@/features/profile/Avatar'
+import { track } from '@/features/analytics/service'
+import { useRequireAccount } from '@/features/auth/loginPrompt'
+import { useCoupons } from '@/features/coupon/queries'
 import { useCruiseStore } from '@/features/cruise/prefs'
+import { getTickets, type Ticket } from '@/features/ticket/services'
 import { unreadCount, useInboxStore } from '@/features/notifications/inbox'
 import { stepsToPoints, useTodaySteps } from '@/features/points/pedometer'
 import { conditionIcon, conditionLabelKey, useWeather } from '@/features/weather/queries'
@@ -126,6 +131,14 @@ const TILES = [
     route: '/itinerary',
   },
   {
+    id: 'reviews',
+    icon: 'star',
+    titleKey: 'home.travelers',
+    subKey: 'home.tileReviewsSub',
+    tone: 'amber',
+    route: '/reviews',
+  },
+  {
     id: 'allergy',
     icon: 'medical_services',
     titleKey: 'profile.allergy',
@@ -153,6 +166,7 @@ const TILES = [
 
 const TILE_TONES: Record<string, { from: string; to: string }> = {
   teal: { from: '#5EEAD4', to: '#0D9488' },
+  amber: { from: '#FCD34D', to: '#D97706' },
   coral: { from: '#FDBA74', to: '#F97316' },
   blue: { from: '#7DD3FC', to: '#0284C7' },
   cruise: { from: '#60A5FA', to: '#1D4ED8' },
@@ -290,7 +304,8 @@ function SectionHeader({
 }) {
   return (
     <View style={ss.sectionHead}>
-      <View>
+      {/* 부제는 타이틀 옆에 나란히(같은 행) */}
+      <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 6, flex: 1 }}>
         {!!title && <Text style={ss.sectionTitle}>{title}</Text>}
         {!!sub && <Text style={ss.sectionSub}>{sub}</Text>}
       </View>
@@ -470,6 +485,71 @@ export default function HomeScreen() {
   const { data: weather } = useWeather(coords)
   const { steps, walking } = useTodaySteps() // 만보기 — 측정 불가면 null(위젯 숨김)
   const isCruise = useCruiseStore((s) => s.isCruise) // 크루즈 고객만 크루즈 타일 노출
+  const requireAccount = useRequireAccount()
+
+  // 오늘의 딜 — 쿠폰·티켓을 번갈아 섞은 슬라이드(썸네일+할인). 탭 시 해당 상세로 즉시 이동.
+  const { data: dealCoupons } = useCoupons()
+  const [dealTickets, setDealTickets] = useState<Ticket[]>([])
+  useEffect(() => {
+    let alive = true
+    getTickets().then((ts) => alive && setDealTickets(ts))
+    return () => {
+      alive = false
+    }
+  }, [])
+  const deals = useMemo(() => {
+    type Deal = {
+      kind: 'coupon' | 'ticket'
+      id: string
+      title: string
+      sub: string
+      disc: string
+      thumb: string
+      onPress: () => void
+    }
+    const cs: Deal[] = (dealCoupons ?? []).slice(0, 3).map((c) => ({
+      kind: 'coupon',
+      id: String(c.id),
+      title: c.name,
+      sub: `${c.detail} · ${c.dist}`,
+      disc: c.disc,
+      thumb: c.cat,
+      onPress: () => {
+        track('coupon_tap', {
+          coupon_id: String(c.id),
+          name: c.name,
+          cat: c.filter,
+          is_mock: false,
+        })
+        requireAccount('auth.gateCoupon', () =>
+          router.push({
+            pathname: '/coupon-qr',
+            params: { id: String(c.id), name: c.name, disc: c.disc },
+          }),
+        )
+      },
+    }))
+    const ts: Deal[] = dealTickets.slice(0, 3).map((x) => ({
+      kind: 'ticket',
+      id: x.id,
+      title: x.title,
+      sub: x.provider,
+      disc: `₩${x.price.toLocaleString()}`,
+      thumb: x.thumb,
+      onPress: () => {
+        track('ticket_outlink', { ticket_id: String(x.id), category: x.category })
+        Linking.openURL(x.outlinkUrl).catch(() => {})
+      },
+    }))
+    // 쿠폰·티켓 교차 배치
+    const out: Deal[] = []
+    for (let i = 0; i < Math.max(cs.length, ts.length); i++) {
+      if (cs[i]) out.push(cs[i])
+      if (ts[i]) out.push(ts[i])
+    }
+    return out
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dealCoupons, dealTickets])
   // 걷는 중 도보 아이콘 바운스 애니메이션 (걸음 감지 시에만 동작)
   const walkBounce = useState(() => new Animated.Value(0))[0]
   useEffect(() => {
@@ -721,7 +801,6 @@ export default function HomeScreen() {
               </View>
             </View>
           )}
-          {todaysPicks.length > 1 && <Text style={ss.pickHint}>{t('home.aiPickHint')}</Text>}
         </View>
 
         {/* ── Nearby now (실 POI + 폴백) ── */}
@@ -776,24 +855,38 @@ export default function HomeScreen() {
             action={t('home.seeAll')}
             onAction={() => router.push('/(tabs)/coupons' as never)}
           />
-          <Pressable onPress={() => router.push('/(tabs)/coupons' as never)} style={ss.dealsBanner}>
-            <LinearGradient
-              colors={gradients.coupon}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 1 }}
-              style={ss.dealsInner}>
-              <View style={ss.dealsIcon}>
-                <Icon name="local_activity" size={26} color="#fff" filled />
-              </View>
-              <View style={{ flex: 1 }}>
-                <Text style={ss.dealsTitle}>Mipojeong 10% · ends in 5h</Text>
-                <Text style={ss.dealsSub}>+23 more coupons within 1km — nearest 380m</Text>
-              </View>
-              <Icon name="chevron_right" size={20} color="#fff" />
-            </LinearGradient>
-            <View style={ss.notchLeft} />
-            <View style={ss.notchRight} />
-          </Pressable>
+          {/* 쿠폰·티켓 교차 슬라이드 — 수평 플릭, 탭 시 해당 상세로 즉시 이동 */}
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            snapToInterval={SCREEN_W - 72}
+            decelerationRate="fast"
+            contentContainerStyle={{ gap: 10, paddingRight: 16 }}>
+            {deals.map((d) => (
+              <Pressable
+                key={`${d.kind}-${d.id}`}
+                onPress={d.onPress}
+                style={[ss.dealCard, { width: SCREEN_W - 82 }]}>
+                <View style={{ width: 64, borderRadius: 14, overflow: 'hidden' }}>
+                  <PlaceThumb category={d.thumb} height={64} />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                    <Pill tone={d.kind === 'coupon' ? 'coral' : 'blue'} size="sm">
+                      {d.kind === 'coupon' ? t('tab.coupons') : t('ticket.title')}
+                    </Pill>
+                  </View>
+                  <Text style={ss.dealName} numberOfLines={1}>
+                    {d.title}
+                  </Text>
+                  <Text style={ss.dealSub} numberOfLines={1}>
+                    {d.sub}
+                  </Text>
+                </View>
+                <Text style={ss.dealDisc}>{d.disc}</Text>
+              </Pressable>
+            ))}
+          </ScrollView>
         </View>
 
         {/* ── Recommended courses ── */}
@@ -1150,6 +1243,21 @@ const ss = StyleSheet.create({
     ...shadows.blue,
     shadowColor: palette.coral[50],
   },
+  // 오늘의 딜 슬라이드 카드
+  dealCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    backgroundColor: '#fff',
+    borderRadius: 18,
+    padding: 10,
+    borderWidth: 0.5,
+    borderColor: '#F1F5F9',
+    ...shadows.card,
+  },
+  dealName: { fontSize: 14, fontWeight: '800', color: palette.zinc[900], marginTop: 4 },
+  dealSub: { fontSize: 11.5, color: palette.zinc[500], marginTop: 1 },
+  dealDisc: { fontSize: 14, fontWeight: '900', color: palette.coral[50] },
   dealsInner: {
     flexDirection: 'row',
     alignItems: 'center',

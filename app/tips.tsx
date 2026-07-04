@@ -32,7 +32,10 @@ export default function TipsScreen() {
   return (
     <View style={ss.container}>
       {/* 긴급 화면과 동일한 상단 디자인 — 그라데이션이 상태바 영역까지 채워 겹침 없음 */}
-      <LinearGradient colors={['#38BDF8', '#0284C7']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}>
+      <LinearGradient
+        colors={['#7DD3FC', '#0EA5E9', '#075985']}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}>
         <SafeAreaView edges={['top']}>
           <View style={ss.gheader}>
             <View style={ss.gheaderIcon}>
