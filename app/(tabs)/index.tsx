@@ -292,6 +292,56 @@ function PlaceThumb({ category, height = 92 }: { category: string; height?: numb
   )
 }
 
+// 주변 추천 헤더 장식 — 구불구불 움직이는 선(지렁이) 위를 고양이가 달려가는 느낌.
+// 선은 사인파 SVG를 위상 이동으로 흔들고, 고양이는 잰걸음 바운스. 오른쪽 끝에
+// 현재 플릭 중앙 카드까지의 거리를 표시한다.
+function NearbyTrail({ distText }: { distText: string | null }) {
+  const [w, setW] = useState(0)
+  const [phase, setPhase] = useState(0)
+  useEffect(() => {
+    const id = setInterval(() => setPhase((p) => (p + 0.8) % (Math.PI * 2)), 110)
+    return () => clearInterval(id)
+  }, [])
+  const catBounce = useState(() => new Animated.Value(0))[0]
+  useEffect(() => {
+    const loop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(catBounce, { toValue: -2.5, duration: 160, useNativeDriver: true }),
+        Animated.timing(catBounce, { toValue: 0, duration: 160, useNativeDriver: true }),
+      ]),
+    )
+    loop.start()
+    return () => loop.stop()
+  }, [catBounce])
+  // 사인파 경로 — 6px 간격 세그먼트, 진폭 3px
+  let d = ''
+  for (let x = 0; x <= w; x += 6) {
+    const y = 8 + 3 * Math.sin(x / 9 + phase)
+    d += (x === 0 ? 'M' : 'L') + x.toFixed(1) + ' ' + y.toFixed(1)
+  }
+  return (
+    <View
+      style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: 4, marginLeft: 8 }}
+      onLayout={(e) => setW(Math.max(0, e.nativeEvent.layout.width - 64))}>
+      <View style={{ flex: 1, height: 16, overflow: 'hidden' }}>
+        {w > 12 && (
+          <Svg width={w} height={16}>
+            <Path d={d} stroke={palette.blue[50]} strokeWidth={1.8} fill="none" />
+          </Svg>
+        )}
+      </View>
+      <Animated.Text style={{ fontSize: 13, transform: [{ translateY: catBounce }] }}>
+        {'\uD83D\uDC08'}
+      </Animated.Text>
+      {distText && (
+        <Text style={{ color: palette.blue[50], fontSize: 12, fontWeight: '800', marginRight: 8 }}>
+          {distText}
+        </Text>
+      )}
+    </View>
+  )
+}
+
 function SectionHeader({
   title,
   sub,
@@ -651,6 +701,9 @@ export default function HomeScreen() {
     return [...near, ...rest].map((x) => x.p)
   }, [pois, coords.latitude, coords.longitude])
 
+  // 주변 추천 — 현재 플릭 중앙 카드 인덱스(헤더 거리 표시용)
+  const [nearbyIdx, setNearbyIdx] = useState(0)
+
   // hero 배경용 관광지 사진 — 이미지 있는 POI만(최대 6장 순환).
   // useMemo로 참조 고정: 매 렌더마다 새 배열이면 HeroBackdrop 인터벌이 리셋돼 10초 회전이 끊김.
   const heroPhotos = useMemo(
@@ -885,11 +938,24 @@ export default function HomeScreen() {
         {/* ── Nearby now (실 POI + 폴백) ── */}
         <View style={{ paddingTop: 22 }}>
           <View style={{ paddingHorizontal: 16 }}>
-            <SectionHeader
-              title={t('home.nearby')}
-              action={t('home.seeAll')}
-              onAction={() => router.push('/(tabs)/map' as never)}
-            />
+            <View style={ss.sectionHead}>
+              <Text style={ss.sectionTitle}>{t('home.nearby')}</Text>
+              {/* 지렁이 선 + 고양이 + 현재 카드 거리 */}
+              <NearbyTrail
+                distText={
+                  nearbyPois[nearbyIdx]?.lat != null && nearbyPois[nearbyIdx]?.lng != null
+                    ? `${distKm(coords.latitude, coords.longitude, nearbyPois[nearbyIdx].lat!, nearbyPois[nearbyIdx].lng!).toFixed(1)}km`
+                    : null
+                }
+              />
+              <Pressable
+                onPress={() => router.push('/(tabs)/map' as never)}
+                style={ss.sectionAction}
+                hitSlop={6}>
+                <Text style={ss.sectionActionText}>{t('home.seeAll')}</Text>
+                <Icon name="chevron_right" size={14} color={palette.blue[50]} />
+              </Pressable>
+            </View>
           </View>
           {poisMock && (
             <View style={{ paddingHorizontal: 16, marginTop: -4, marginBottom: 6 }}>
@@ -899,6 +965,10 @@ export default function HomeScreen() {
           <ScrollView
             horizontal
             showsHorizontalScrollIndicator={false}
+            scrollEventThrottle={32}
+            onScroll={(e) =>
+              setNearbyIdx(Math.max(0, Math.round(e.nativeEvent.contentOffset.x / (156 + 12))))
+            }
             contentContainerStyle={{ paddingHorizontal: 16, gap: 12 }}>
             {nearbyPois.length > 0
               ? nearbyPois.map((p: Poi) => (
