@@ -85,6 +85,12 @@
 > ✅ R1 잔여 마감(07-03 저녁, release 빌드 실기기 검증) — ① AI 이벤트 적재 확인 + analytics flush 경합 유실 버그 수정(REQ-AI-3 ✅) ② **일일 사용량 상한 서버 강제**(REQ-TR-3 ✅): `usage_counters`+`bump_usage` RPC(원자적·KST), gganbu(게스트 20/로그인 200회)·gemini-live-token(5/30세션), 429→앱 언어 안내, 미식별 호출 401. 스트리밍 XHR이 anon key 대신 세션 토큰 전송하도록 수정.
 > 🔶 잔여 외부 설정: 정적 호스팅+`LANDING_URL`/`ADMIN_WEB_URL` · `ADMIN_API_KEY` · `FCM_SERVICE_ACCOUNT` (SETUP_EXTERNAL).
 >
+> **📌 07-06 진행(R2 착수 — 포인트 경제 v1)**:
+> ✅ **포인트 원장(REQ-PT-1·2)** — `points_ledger` 로트(FIFO) 회계·멱등키·RPC 4종(service role 전용)·`points_balance` 뷰, 일 상한 KST 서버 강제(steps 100/stamp 150/challenge·game 공유 30), pg_cron 소멸 배치(매일 KST 00:10). 실 DB 시나리오 검증 완료(클램프·멱등·FIFO·원복·소멸).
+> ✅ `points` Edge Function 배포 — summary(잔액·소멸 예정·내역) + earn_steps(하루 1회 멱등, 게스트 403). 401/403/200 실호출 검증.
+> 🟡 **포인트 홈(REQ-PT-4)** — CouTix 3번째 세그먼트(잔액·내역·소멸 예정, 게스트 로그인 유도) + 홈 걸음 배지 탭→적립(REQ-PD-2 서버 경로) 연결, i18n 5개 언어. 실기기 검증 잔여.
+> ✅ **콘텐츠 이미지 미표시 수정** — TourAPI `firstimage` http→https 승격(places 함수 v20 배포 + 클라이언트 MMKV 캐시 정규화). release 빌드 cleartext 차단이 원인.
+>
 > **🔜 프로덕션 준비 TODO(비차단, 나중에 처리)**:
 > ① Apple provider 설정(D-U-N-S 발급 후) ② Twilio 실 SMS 운영(업그레이드 완료, 발신 정책 점검) ③ **Auth 커스텀 SMTP** — 회사 Google Workspace(유료 구글메일) 보유 → SMTP relay로 이메일 가입/재설정 메일 전달률·상한 확보(내장 2/h는 dev용). 상세: `docs/SETUP_EXTERNAL.md` #9 "Auth 이메일 발송". ④ OTP 봇 남용 관측 시 CAPTCHA(OTP 전용 게이트웨이). ⑤ 노출 시크릿 로테이션(Twilio Auth Token·LINE Channel Secret).
 
