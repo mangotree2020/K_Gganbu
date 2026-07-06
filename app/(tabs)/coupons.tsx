@@ -11,12 +11,18 @@ import { FallbackBadge } from '@/components/FallbackBadge'
 import { PlaceThumb } from '@/components/PlaceThumb'
 import { track } from '@/features/analytics/service'
 import { useCoupons, type CouponCard } from '@/features/coupon/queries'
+import {
+  getGifticonCatalog,
+  pointUsableFor,
+  productName,
+  type GifticonProduct,
+} from '@/features/gifticon/services'
 import { usePointsSummary, type PointsEntry } from '@/features/points/queries'
 import { getTickets, type Ticket } from '@/features/ticket/services'
 import { useAuthStore } from '@/features/auth/store'
 import { useLoginPrompt, useRequireAccount } from '@/features/auth/loginPrompt'
 import { useTabBarAutoHide } from '@/hooks/useTabBarAutoHide'
-import { useT } from '@/lib/i18n'
+import { useLocaleStore, useT } from '@/lib/i18n'
 import { USE_MOCK } from '@/lib/config'
 import { palette, shadows } from '@/theme/tokens'
 
@@ -345,10 +351,16 @@ const KIND_KEY: Record<PointsEntry['kind'], string> = {
 
 function PointsSection() {
   const t = useT()
+  const lang = useLocaleStore((s) => s.lang)
   const user = useAuthStore((s) => s.user)
   const showLogin = useLoginPrompt((s) => s.show)
   const isGuest = !user || user.isGuest
   const { data } = usePointsSummary()
+  // 기프트샵 카탈로그 (REQ-GS-1 mock-first) — 기프티쇼 계약 후 실 카탈로그로 교체
+  const { data: catalog } = useQuery({
+    queryKey: ['gifticon-catalog'],
+    queryFn: getGifticonCatalog,
+  })
 
   // 게스트 — 포인트가 핵심 가입 트리거 (REQ-PT-4)
   if (isGuest) {
@@ -388,6 +400,39 @@ function PointsSection() {
           </View>
         )}
       </LinearGradient>
+
+      {/* 기프트샵 (REQ-GS-1·2 골격) — 계약 전이라 구매 비활성(오픈 예정), 혼합 결제 30% 안내 */}
+      {(catalog?.products?.length ?? 0) > 0 && (
+        <View style={[ps.giftBox, shadows.card]}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+            <Text style={ps.giftTitle}>{t('points.giftShop')}</Text>
+            <Pill tone="amber" size="xs">
+              {t('points.comingSoon')}
+            </Pill>
+          </View>
+          <Text style={ps.giftSub}>{t('points.giftShopSub')}</Text>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={{ gap: 8, marginTop: 10 }}>
+            {(catalog?.products ?? []).map((g: GifticonProduct) => (
+              <View key={g.id} style={ps.giftCard}>
+                <Text style={{ fontSize: 26 }}>{g.emoji}</Text>
+                <Text style={ps.giftBrand} numberOfLines={1}>
+                  {g.brand}
+                </Text>
+                <Text style={ps.giftName} numberOfLines={1}>
+                  {productName(g, lang)}
+                </Text>
+                <Text style={ps.giftPrice}>₩{g.price.toLocaleString()}</Text>
+                <Text style={ps.giftUsable}>
+                  {t('points.usable').replace('{n}', pointUsableFor(g.price).toLocaleString())}
+                </Text>
+              </View>
+            ))}
+          </ScrollView>
+        </View>
+      )}
 
       {/* 적립·사용 내역 */}
       {history.length === 0 ? (
@@ -487,6 +532,29 @@ const ps = StyleSheet.create({
   entryTitle: { fontSize: 13, fontWeight: '700', color: palette.zinc[900] },
   entryDate: { fontSize: 11, color: palette.zinc[400], marginTop: 2 },
   entryAmount: { fontSize: 15, fontWeight: '800', letterSpacing: -0.2 },
+  giftBox: {
+    backgroundColor: '#fff',
+    borderRadius: 16,
+    padding: 14,
+    borderWidth: 0.5,
+    borderColor: palette.zinc[200],
+  },
+  giftTitle: { fontSize: 14, fontWeight: '800', color: palette.zinc[900], letterSpacing: -0.2 },
+  giftSub: { fontSize: 11, color: palette.zinc[500], marginTop: 2 },
+  giftCard: {
+    width: 116,
+    backgroundColor: palette.zinc[50],
+    borderRadius: 14,
+    padding: 10,
+    gap: 2,
+    borderWidth: 0.5,
+    borderColor: palette.zinc[200],
+    opacity: 0.9,
+  },
+  giftBrand: { fontSize: 10, fontWeight: '700', color: palette.zinc[400], marginTop: 4 },
+  giftName: { fontSize: 12, fontWeight: '700', color: palette.zinc[900] },
+  giftPrice: { fontSize: 13, fontWeight: '800', color: palette.zinc[900], marginTop: 2 },
+  giftUsable: { fontSize: 10, fontWeight: '700', color: palette.amber[50] },
 })
 
 const ss = StyleSheet.create({
