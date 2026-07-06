@@ -1179,10 +1179,10 @@ export default function MapScreen() {
               contentContainerStyle={{ paddingBottom: 28 }}
               keyboardShouldPersistTaps="handled"
               {...tabBarAutoHide}>
-              {/* 경로 요약 (Naver Directions) */}
+              {/* 경로 요약 — 도보 기준 (Google 도보 경로 우선, PLANNING §17) */}
               {routeInfo && (
                 <View style={ss.routeBar}>
-                  <Icon name="route" size={15} color={palette.blue[40]} />
+                  <Icon name="directions_walk" size={15} color={palette.blue[40]} filled />
                   <Text style={ss.routeText}>
                     {routeInfo.distance > 0
                       ? `${(routeInfo.distance / 1000).toFixed(1)}km · ${t('map.approx')} ${Math.max(1, Math.round(routeInfo.duration / 60000))}${t('map.min')}`

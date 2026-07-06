@@ -261,13 +261,15 @@ export function useMapPoisMulti(lang = 'en', rows = 20, contentTypeIds: string[]
   })
 }
 
-// Naver 길찾기 (PLANNING §17) — 현재위치 → 목적지 경로
+// 길찾기 (PLANNING §17) — 현재위치 → 목적지, **도보 기준**
+// 서버(naver-directions)가 Google 도보 경로 우선 → Naver 자동차 경로 폴백(시간은 도보 재계산) → mock
 export type LatLng = { latitude: number; longitude: number }
 export type RouteResult = {
   path: LatLng[]
   distance: number // meters
-  duration: number // ms
-  provider: 'naver' | 'mock'
+  duration: number // ms (도보 기준)
+  provider: 'google' | 'naver' | 'mock'
+  mode: 'walk' | 'walk-estimated' // walk-estimated = 자동차 경로에 도보 속도 적용
 }
 
 export async function fetchRoute(start: LatLng, goal: LatLng): Promise<RouteResult> {
@@ -282,12 +284,13 @@ export async function fetchRoute(start: LatLng, goal: LatLng): Promise<RouteResu
         distance: data.distance ?? 0,
         duration: data.duration ?? 0,
         provider: data.provider ?? 'naver',
+        mode: data.mode ?? 'walk',
       }
     }
     throw new Error('no_path')
   } catch {
     // 폴백: 직선 경로
-    return { path: [start, goal], distance: 0, duration: 0, provider: 'mock' }
+    return { path: [start, goal], distance: 0, duration: 0, provider: 'mock', mode: 'walk' }
   }
 }
 

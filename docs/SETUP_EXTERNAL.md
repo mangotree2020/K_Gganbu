@@ -127,6 +127,13 @@ SMS 실비(~160원/건) 방어. **Auth → Rate Limits**로 총량 상한:
 
 **검증**: 지도 탭 검색 → POI 마커 → 길찾기 → Google Map 위 Polyline 오버레이. 마지막 조회 지역 24h 캐시.
 
+### 도보 경로 (2026-07-06 — 길안내 도보 기준 전환)
+
+길찾기는 **도보 우선**: `naver-directions` 함수가 ① Google Routes API(travelMode=WALK) → ② Naver 자동차 경로 폴백(시간은 도보 4.5km/h 재계산, `mode: walk-estimated`) → ③ mock 순으로 처리한다. Naver Cloud에는 보행자 경로 API가 없다.
+
+- **잔여 설정**: [Google Cloud Console](https://console.cloud.google.com/apis/library/routes.googleapis.com)에서 서버 키(`GOOGLE_PLACES_API_KEY`) 프로젝트에 **Routes API 활성화**. 활성화 즉시 실제 보행자 경로(`provider: google, mode: walk`)로 자동 전환 — 코드 변경·재배포 불필요.
+- 현재 상태: Routes API 미활성 → Naver 폴백 동작 확인(5.9km → 도보 78분 반환 검증).
+
 ## #22 AI 깐부 (Claude + RAG)
 
 **필요**: `ANTHROPIC_API_KEY` + `TOUR_API_KEY` (코드: `supabase/functions/gganbu`). 모델 `claude-opus-4-8`.
