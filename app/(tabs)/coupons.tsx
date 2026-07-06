@@ -11,19 +11,28 @@ import { FallbackBadge } from '@/components/FallbackBadge'
 import { PlaceThumb } from '@/components/PlaceThumb'
 import { track } from '@/features/analytics/service'
 import { useCoupons, type CouponCard } from '@/features/coupon/queries'
+import { usePointsSummary, type PointsEntry } from '@/features/points/queries'
 import { getTickets, type Ticket } from '@/features/ticket/services'
-import { useRequireAccount } from '@/features/auth/loginPrompt'
+import { useAuthStore } from '@/features/auth/store'
+import { useLoginPrompt, useRequireAccount } from '@/features/auth/loginPrompt'
 import { useTabBarAutoHide } from '@/hooks/useTabBarAutoHide'
 import { useT } from '@/lib/i18n'
 import { USE_MOCK } from '@/lib/config'
 import { palette, shadows } from '@/theme/tokens'
 
-type Seg = 'coupons' | 'tickets'
+type Seg = 'coupons' | 'tickets' | 'points'
 
-// 세그먼트별 헤더 그라데이션 — 쿠폰(coral)/티켓(blue·teal)
+// 세그먼트별 헤더 그라데이션 — 쿠폰(coral)/티켓(blue·teal)/포인트(amber)
 const HEADER_GRAD: Record<Seg, [string, string, string]> = {
   coupons: ['#FB923C', '#F97316', '#EA580C'],
   tickets: ['#0EA5E9', '#0284C7', '#0D9488'],
+  points: ['#FBBF24', '#F59E0B', '#D97706'],
+}
+
+const SEG_KEY: Record<Seg, string> = {
+  coupons: 'coupon.segCoupons',
+  tickets: 'coupon.segTickets',
+  points: 'coupon.segPoints',
 }
 
 // ===== 쿠폰 =====
@@ -129,7 +138,9 @@ export default function CouTixScreen() {
   const t = useT()
   const requireAccount = useRequireAccount()
   const params = useLocalSearchParams<{ seg?: string }>()
-  const [seg, setSeg] = useState<Seg>(params.seg === 'tickets' ? 'tickets' : 'coupons')
+  const [seg, setSeg] = useState<Seg>(
+    params.seg === 'tickets' || params.seg === 'points' ? params.seg : 'coupons',
+  )
   const [couponFilter, setCouponFilter] = useState('all')
   const [ticketFilter, setTicketFilter] = useState('all')
 
@@ -150,6 +161,7 @@ export default function CouTixScreen() {
 
   // 퍼널 계측(REQ-CP-4): 목록 노출 — 로드 완료 후 세그먼트 단위 1회 (is_mock 정확도)
   useEffect(() => {
+    if (seg === 'points') return // 포인트 홈은 실데이터 전용 — 쿠폰 퍼널 계측 제외
     if (seg === 'coupons' && couponsLoading) return
     track('coupon_list_view', {
       seg,
@@ -181,11 +193,12 @@ export default function CouTixScreen() {
   }
   const ticketPrice = (x: Ticket) => `₩${x.price.toLocaleString()}`
 
-  const isMock = seg === 'coupons' ? couponIsMock : USE_MOCK
-  const filters = seg === 'coupons' ? COUPON_FILTERS : TICKET_FILTERS
+  const isMock = seg === 'coupons' ? couponIsMock : seg === 'tickets' ? USE_MOCK : false
+  const filters = seg === 'coupons' ? COUPON_FILTERS : seg === 'tickets' ? TICKET_FILTERS : []
   const activeFilter = seg === 'coupons' ? couponFilter : ticketFilter
   const setActiveFilter = seg === 'coupons' ? setCouponFilter : setTicketFilter
-  const accent = seg === 'coupons' ? palette.coral[50] : palette.blue[50]
+  const accent =
+    seg === 'coupons' ? palette.coral[50] : seg === 'tickets' ? palette.blue[50] : palette.amber[50]
 
   return (
     <View style={ss.container}>
@@ -219,21 +232,19 @@ export default function CouTixScreen() {
             </Pressable>
           </View>
 
-          {/* 세그먼트 토글 — 쿠폰 / 티켓 */}
+          {/* 세그먼트 토글 — 쿠폰 / 티켓 / 포인트 */}
           <View style={ss.segWrap}>
-            {(['coupons', 'tickets'] as Seg[]).map((s) => {
+            {(['coupons', 'tickets', 'points'] as Seg[]).map((s) => {
               const on = s === seg
               return (
                 <Pressable key={s} onPress={() => setSeg(s)} style={[ss.segBtn, on && ss.segBtnOn]}>
-                  <Text style={[ss.segText, { color: on ? accent : '#fff' }]}>
-                    {t(s === 'coupons' ? 'coupon.segCoupons' : 'coupon.segTickets')}
-                  </Text>
+                  <Text style={[ss.segText, { color: on ? accent : '#fff' }]}>{t(SEG_KEY[s])}</Text>
                 </Pressable>
               )
             })}
           </View>
 
-          {/* 필터 칩 */}
+          {/* 필터 칩 (포인트 세그먼트는 필터 없음) */}
           <ScrollView
             horizontal
             showsHorizontalScrollIndicator={false}
@@ -267,6 +278,7 @@ export default function CouTixScreen() {
         showsVerticalScrollIndicator={false}
         contentContainerStyle={{ padding: 16, paddingBottom: 24, gap: 10 }}
         {...tabBarAutoHide}>
+        {seg === 'points' && <PointsSection />}
         {seg === 'coupons'
           ? couponShown.map((c) => (
               <Pressable
@@ -292,34 +304,190 @@ export default function CouTixScreen() {
                 </View>
               </Pressable>
             ))
-          : ticketShown.map((x) => (
-              <View key={x.id} style={[ss.card, shadows.card]}>
-                <View style={ss.cardThumbLg}>
-                  <PlaceThumb category={x.thumb} height={64} />
-                </View>
-                <View style={{ flex: 1 }}>
-                  <Text style={ss.cardName}>{x.title}</Text>
-                  <View style={{ flexDirection: 'row', gap: 6, marginTop: 5 }}>
-                    <Pill tone="blue" size="xs">
-                      {t(TICKET_CAT_KEY[x.category])}
-                    </Pill>
-                    <Pill tone="neutral" size="xs">
-                      {x.provider}
-                    </Pill>
+          : seg === 'tickets'
+            ? ticketShown.map((x) => (
+                <View key={x.id} style={[ss.card, shadows.card]}>
+                  <View style={ss.cardThumbLg}>
+                    <PlaceThumb category={x.thumb} height={64} />
                   </View>
-                  <Text style={ss.ticketPrice}>{ticketPrice(x)}</Text>
+                  <View style={{ flex: 1 }}>
+                    <Text style={ss.cardName}>{x.title}</Text>
+                    <View style={{ flexDirection: 'row', gap: 6, marginTop: 5 }}>
+                      <Pill tone="blue" size="xs">
+                        {t(TICKET_CAT_KEY[x.category])}
+                      </Pill>
+                      <Pill tone="neutral" size="xs">
+                        {x.provider}
+                      </Pill>
+                    </View>
+                    <Text style={ss.ticketPrice}>{ticketPrice(x)}</Text>
+                  </View>
+                  <Pressable onPress={() => bookTicket(x)} style={ss.bookBtn}>
+                    <Icon name="open_in_new" size={14} color="#fff" filled />
+                    <Text style={ss.bookText}>{t('ticket.book')}</Text>
+                  </Pressable>
                 </View>
-                <Pressable onPress={() => bookTicket(x)} style={ss.bookBtn}>
-                  <Icon name="open_in_new" size={14} color="#fff" filled />
-                  <Text style={ss.bookText}>{t('ticket.book')}</Text>
-                </Pressable>
-              </View>
-            ))}
+              ))
+            : null}
         {seg === 'tickets' && <Text style={ss.outlinkNote}>{t('ticket.outlink')}</Text>}
       </ScrollView>
     </View>
   )
 }
+
+// ===== 포인트 홈 (REQ-PT-4) — 잔액·소멸 예정·최근 내역. 게스트는 적립 불가 → 로그인 유도 =====
+const KIND_KEY: Record<PointsEntry['kind'], string> = {
+  earn: 'points.kind.earn',
+  spend: 'points.kind.spend',
+  expire: 'points.kind.expire',
+  revert: 'points.kind.revert',
+}
+
+function PointsSection() {
+  const t = useT()
+  const user = useAuthStore((s) => s.user)
+  const showLogin = useLoginPrompt((s) => s.show)
+  const isGuest = !user || user.isGuest
+  const { data } = usePointsSummary()
+
+  // 게스트 — 포인트가 핵심 가입 트리거 (REQ-PT-4)
+  if (isGuest) {
+    return (
+      <Pressable onPress={() => showLogin('auth.gatePoints')} style={[ps.guestCard, shadows.card]}>
+        <Text style={{ fontSize: 36 }}>🪙</Text>
+        <Text style={ps.guestTitle}>{t('points.guestCta')}</Text>
+        <Text style={ps.guestSub}>{t('points.emptySub')}</Text>
+        <View style={ps.guestBtn}>
+          <Text style={ps.guestBtnText}>{t('auth.gateTitle')}</Text>
+          <Icon name="chevron_right" size={15} color="#fff" />
+        </View>
+      </Pressable>
+    )
+  }
+
+  const balance = data?.balance ?? 0
+  const expiring = data?.expiring_30d ?? 0
+  const history = data?.history ?? []
+
+  return (
+    <View style={{ gap: 10 }}>
+      {/* 잔액 카드 */}
+      <LinearGradient
+        colors={['#FBBF24', '#F59E0B', '#D97706']}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+        style={[ps.balanceCard, shadows.card]}>
+        <Text style={ps.balanceLabel}>{t('points.balance')}</Text>
+        <Text style={ps.balanceValue}>{balance.toLocaleString()}P</Text>
+        {expiring > 0 && (
+          <View style={ps.expiringPill}>
+            <Icon name="schedule" size={12} color="#92400E" />
+            <Text style={ps.expiringText}>
+              {t('points.expiring30d').replace('{n}', expiring.toLocaleString())}
+            </Text>
+          </View>
+        )}
+      </LinearGradient>
+
+      {/* 적립·사용 내역 */}
+      {history.length === 0 ? (
+        <View style={[ps.emptyBox, shadows.card]}>
+          <Text style={{ fontSize: 30 }}>👣</Text>
+          <Text style={ps.emptyTitle}>{t('points.empty')}</Text>
+          <Text style={ps.guestSub}>{t('points.emptySub')}</Text>
+        </View>
+      ) : (
+        history.map((e) => (
+          <View key={e.id} style={[ps.entryRow, shadows.card]}>
+            <View style={{ flex: 1 }}>
+              <Text style={ps.entryTitle}>
+                {t(KIND_KEY[e.kind])} · {t(`points.source.${e.source}`)}
+              </Text>
+              <Text style={ps.entryDate}>{e.created_at.slice(0, 10)}</Text>
+            </View>
+            <Text
+              style={[
+                ps.entryAmount,
+                { color: e.amount > 0 ? palette.amber[50] : palette.zinc[500] },
+              ]}>
+              {e.amount > 0 ? '+' : ''}
+              {e.amount.toLocaleString()}P
+            </Text>
+          </View>
+        ))
+      )}
+    </View>
+  )
+}
+
+const ps = StyleSheet.create({
+  guestCard: {
+    backgroundColor: '#fff',
+    borderRadius: 20,
+    padding: 24,
+    alignItems: 'center',
+    gap: 8,
+    borderWidth: 0.5,
+    borderColor: palette.zinc[200],
+  },
+  guestTitle: {
+    fontSize: 16,
+    fontWeight: '800',
+    color: palette.zinc[900],
+    textAlign: 'center',
+    letterSpacing: -0.2,
+  },
+  guestSub: { fontSize: 12, color: palette.zinc[500], textAlign: 'center' },
+  guestBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 2,
+    backgroundColor: palette.amber[50],
+    borderRadius: 999,
+    paddingVertical: 10,
+    paddingHorizontal: 18,
+    marginTop: 6,
+  },
+  guestBtnText: { color: '#fff', fontWeight: '800', fontSize: 13 },
+  balanceCard: { borderRadius: 20, padding: 20, gap: 4 },
+  balanceLabel: { fontSize: 12, fontWeight: '700', color: 'rgba(255,255,255,.9)' },
+  balanceValue: { fontSize: 34, fontWeight: '800', color: '#fff', letterSpacing: -0.6 },
+  expiringPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    alignSelf: 'flex-start',
+    backgroundColor: palette.amber[90],
+    borderRadius: 999,
+    paddingVertical: 4,
+    paddingHorizontal: 10,
+    marginTop: 6,
+  },
+  expiringText: { fontSize: 11, fontWeight: '700', color: '#92400E' },
+  emptyBox: {
+    backgroundColor: '#fff',
+    borderRadius: 16,
+    padding: 24,
+    alignItems: 'center',
+    gap: 6,
+    borderWidth: 0.5,
+    borderColor: palette.zinc[200],
+  },
+  emptyTitle: { fontSize: 14, fontWeight: '800', color: palette.zinc[900] },
+  entryRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    backgroundColor: '#fff',
+    borderRadius: 16,
+    padding: 14,
+    borderWidth: 0.5,
+    borderColor: palette.zinc[200],
+  },
+  entryTitle: { fontSize: 13, fontWeight: '700', color: palette.zinc[900] },
+  entryDate: { fontSize: 11, color: palette.zinc[400], marginTop: 2 },
+  entryAmount: { fontSize: 15, fontWeight: '800', letterSpacing: -0.2 },
+})
 
 const ss = StyleSheet.create({
   container: { flex: 1, backgroundColor: palette.zinc[50] },

@@ -34,6 +34,7 @@ import { useCruiseStore } from '@/features/cruise/prefs'
 import { getTickets, type Ticket } from '@/features/ticket/services'
 import { unreadCount, useInboxStore } from '@/features/notifications/inbox'
 import { stepsToPoints, useTodaySteps } from '@/features/points/pedometer'
+import { useEarnSteps } from '@/features/points/queries'
 import { conditionIcon, conditionLabelKey, useWeather } from '@/features/weather/queries'
 import { useCityLabel } from '@/features/weather/useCityLabel'
 import { useCurrentLocation } from '@/hooks/useCurrentLocation'
@@ -635,6 +636,28 @@ export default function HomeScreen() {
   const isCruise = useCruiseStore((s) => s.isCruise) // 크루즈 고객만 크루즈 타일 노출
   const requireAccount = useRequireAccount()
 
+  // 걸음 포인트 적립(REQ-PD-2·PT-4) — 배지 탭 → 서버 적립(하루 1회 멱등), 게스트는 로그인 유도
+  const earnSteps = useEarnSteps()
+  const [stepsMsg, setStepsMsg] = useState<string | null>(null)
+  const claimSteps = () => {
+    if (!steps || earnSteps.isPending || stepsMsg) return
+    requireAccount('auth.gatePoints', async () => {
+      try {
+        const r = await earnSteps.mutateAsync(steps)
+        const msg = r.duplicate
+          ? t('points.claimedToday')
+          : r.granted && r.granted > 0
+            ? t('points.claimed').replace('{n}', String(r.granted))
+            : t('points.claimedToday') // 상한 도달·1000보 미만도 동일 안내
+        setStepsMsg(msg)
+      } catch {
+        setStepsMsg(null)
+        return
+      }
+      setTimeout(() => setStepsMsg(null), 2500)
+    })
+  }
+
   // 오늘의 딜 — 쿠폰·티켓을 번갈아 섞은 슬라이드(썸네일+할인). 탭 시 해당 상세로 즉시 이동.
   const { data: dealCoupons } = useCoupons()
   const [dealTickets, setDealTickets] = useState<Ticket[]>([])
@@ -948,15 +971,22 @@ export default function HomeScreen() {
                 <Icon name="expand_more" size={14} color="#fff" />
               </Pressable>
               <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}>
-                {/* 만보기 배지(REQ-PD-3) — 알림·프로필 옆 상시 노출, 걷는 중이면 아이콘 바운스 */}
+                {/* 만보기 배지(REQ-PD-3) — 알림·프로필 옆 상시 노출, 걷는 중이면 아이콘 바운스.
+                    탭하면 걸음 포인트 적립(하루 1회, 게스트는 로그인 유도) */}
                 {steps != null && (
-                  <View style={ss.stepsPill}>
+                  <Pressable onPress={claimSteps} style={ss.stepsPill} hitSlop={6}>
                     <Animated.View style={{ transform: [{ translateY: walkBounce }] }}>
                       <Icon name="directions_walk" size={14} color="#fff" filled />
                     </Animated.View>
-                    <Text style={ss.stepsPillText}>{steps.toLocaleString()}</Text>
-                    <Text style={ss.stepsPillPts}>+{stepsToPoints(steps)}P</Text>
-                  </View>
+                    {stepsMsg ? (
+                      <Text style={ss.stepsPillPts}>{stepsMsg}</Text>
+                    ) : (
+                      <>
+                        <Text style={ss.stepsPillText}>{steps.toLocaleString()}</Text>
+                        <Text style={ss.stepsPillPts}>+{stepsToPoints(steps)}P</Text>
+                      </>
+                    )}
+                  </Pressable>
                 )}
                 <Pressable
                   style={ss.iconBtn}
