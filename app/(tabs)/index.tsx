@@ -373,6 +373,8 @@ function NearbyTrail({ km, idx, count }: { km: number | null; idx: number; count
   const flip = facing
   const catW = catWidth(anim)
   return (
+    // 행 높이는 라벨에 맞춰 압축(28) — 고양이는 행 위로 넘겨(bottom: 12) 위 섹션(오늘의 딜)
+    // 하단에 살짝 겹치는 레이어로 보이게 한다. RN 기본 overflow visible + 뒤 형제가 위에 그려짐.
     <View
       style={{
         flex: 1,
@@ -380,17 +382,17 @@ function NearbyTrail({ km, idx, count }: { km: number | null; idx: number; count
         alignItems: 'flex-end',
         gap: 4,
         marginLeft: 8,
-        height: 46,
+        height: 28,
       }}>
       <View
-        style={{ flex: 1, height: 46, justifyContent: 'flex-end' }}
+        style={{ flex: 1, height: 28, justifyContent: 'flex-end' }}
         onLayout={(e) => setTrackW(e.nativeEvent.layout.width)}>
         {trackW > 60 && (
           <Animated.View
             style={{
               position: 'absolute',
               left: 0,
-              bottom: 2,
+              bottom: 12,
               transform: [
                 {
                   translateX: pos.interpolate({
@@ -1220,7 +1222,8 @@ export default function HomeScreen() {
         </View>
 
         {/* ── Nearby now (실 POI + 폴백) ── */}
-        <View style={{ paddingTop: 16 }}>
+        {/* 상단 여백을 더 줄여(8) 고양이가 딜 카드 하단에 겹쳐 보이게 */}
+        <View style={{ paddingTop: 8 }}>
           <View style={{ paddingHorizontal: 16 }}>
             <View style={ss.sectionHead}>
               <Text style={ss.sectionTitle}>{t('home.nearby')}</Text>
