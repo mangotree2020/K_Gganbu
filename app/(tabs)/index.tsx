@@ -658,7 +658,7 @@ export default function HomeScreen() {
   // 추천 코스 섹션 — 크루즈 고객은 딜·주변보다 위에 배치(S-7 3순위:
   // 기항 체류 시간 내 동선 계획이 우선 가치), 일반 고객은 기존 위치 유지
   const coursesSection = (
-    <View style={{ paddingHorizontal: 16, paddingTop: 22 }}>
+    <View style={{ paddingHorizontal: 16, paddingTop: 16 }}>
       <SectionHeader
         title={t('home.courses')}
         action={t('home.seeAll')}
@@ -1022,14 +1022,14 @@ export default function HomeScreen() {
         <ScrollView
           horizontal
           showsHorizontalScrollIndicator={false}
-          contentContainerStyle={{ paddingHorizontal: 16, gap: 10, paddingTop: 16 }}>
+          contentContainerStyle={{ paddingHorizontal: 16, gap: 10, paddingTop: 12 }}>
           {TILES.filter((tile) => tile.id !== 'cruise' || isCruise).map((tile) => (
             <BigTile key={tile.id} tile={tile} t={t} />
           ))}
         </ScrollView>
 
         {/* ── Today's pick — AI 동적 추천(날씨·위치·시간), 1시간마다 변경, 좌우 스와이프 내역 ── */}
-        <View style={{ paddingTop: 22 }}>
+        <View style={{ paddingTop: 16 }}>
           <View style={{ paddingHorizontal: 16 }}>
             <View style={ss.sectionHead}>
               <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 6, flex: 1 }}>
@@ -1083,7 +1083,7 @@ export default function HomeScreen() {
                     style={[ss.pickCard, { width: SCREEN_W - 72 }, shadows.card]}>
                     <Image
                       source={{ uri: p.imageUrl as string }}
-                      style={{ width: '100%', height: 180 }}
+                      style={{ width: '100%', height: 148 }}
                       resizeMode="cover"
                     />
                     <View style={ss.pickTrending}>
@@ -1157,7 +1157,7 @@ export default function HomeScreen() {
           ) : (
             <View style={{ paddingHorizontal: 16 }}>
               <View style={[ss.pickCard, shadows.card]}>
-                <PlaceThumb category="village" height={180} />
+                <PlaceThumb category="village" height={148} />
                 <View style={ss.pickScrim} />
                 <View style={ss.pickOverlay}>
                   <Text style={ss.pickName}>Gamcheon Culture Village</Text>
@@ -1171,7 +1171,7 @@ export default function HomeScreen() {
         {isCruise && coursesSection}
 
         {/* ── Today's deals ── */}
-        <View style={{ paddingHorizontal: 16, paddingTop: 22 }}>
+        <View style={{ paddingHorizontal: 16, paddingTop: 16 }}>
           <SectionHeader
             title={t('home.deals')}
             action={t('home.seeAll')}
@@ -1220,7 +1220,7 @@ export default function HomeScreen() {
         </View>
 
         {/* ── Nearby now (실 POI + 폴백) ── */}
-        <View style={{ paddingTop: 22 }}>
+        <View style={{ paddingTop: 16 }}>
           <View style={{ paddingHorizontal: 16 }}>
             <View style={ss.sectionHead}>
               <Text style={ss.sectionTitle}>{t('home.nearby')}</Text>
@@ -1295,7 +1295,7 @@ export default function HomeScreen() {
         {!isCruise && coursesSection}
 
         {/* ── From travelers ── */}
-        <View style={{ paddingHorizontal: 16, paddingTop: 22, paddingBottom: 28 }}>
+        <View style={{ paddingHorizontal: 16, paddingTop: 16, paddingBottom: 28 }}>
           <SectionHeader
             title={t('home.travelers')}
             action={t('home.seeAll')}
@@ -1375,7 +1375,7 @@ const ss = StyleSheet.create({
   },
   gganbuFabText: { color: '#fff', fontSize: 15, fontWeight: '800', letterSpacing: -0.2 },
 
-  hero: { paddingHorizontal: 18, paddingBottom: 10, overflow: 'hidden' },
+  hero: { paddingHorizontal: 18, paddingBottom: 6, overflow: 'hidden' },
   // 히어로 우측 하단 스피커 — 질문·답변 낭독 소리 켜기/끄기(히어로 필들과 동일 톤)
   heroMic: {
     position: 'absolute',
