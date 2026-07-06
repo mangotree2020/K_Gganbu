@@ -110,6 +110,12 @@ export async function lookupPlace(
   }
 }
 
+// TourAPI 이미지는 http:// 로 내려온 이력이 있음 — RN release 빌드는 cleartext 차단이라 https 승격.
+// 서버(places 함수)에서도 승격하지만, MMKV에 이미 캐시된 구 URL 을 위해 클라이언트에서도 정규화.
+const toHttps = (u: string | null) => (u ? u.replace(/^http:\/\//, 'https://') : null)
+const normalizePois = (pois: Poi[]): Poi[] =>
+  pois.map((p) => ({ ...p, imageUrl: toHttps(p.imageUrl) }))
+
 // mock 폴백이 24h 캐시에 고착되는 것 방지 — mock이면 30초마다 재시도, 실데이터 오면 중단.
 // (일시적 네트워크 실패로 홈/지도가 하루 종일 샘플 데이터에 묶이는 버그의 근본 수정)
 const retryWhileMock = (q: { state: { data?: PoiResult } }) =>
@@ -126,7 +132,7 @@ export function usePlaces(lang = 'en', rows = 12) {
         const raw = storage.getString(`home:pois:${lang}`)
         if (raw) {
           try {
-            return { pois: JSON.parse(raw) as Poi[], provider: 'tourapi' }
+            return { pois: normalizePois(JSON.parse(raw) as Poi[]), provider: 'tourapi' }
           } catch {
             // 캐시 손상 — mock으로
           }
@@ -148,7 +154,7 @@ export function usePlaces(lang = 'en', rows = 12) {
             address: p.address ?? null,
             lat: p.lat ? Number(p.lat) : null,
             lng: p.lng ? Number(p.lng) : null,
-            imageUrl: p.imageUrl ?? null,
+            imageUrl: toHttps(p.imageUrl ?? null),
             tel: p.tel ?? null,
             cat: toCat(p.contentTypeId),
           }))
@@ -177,7 +183,7 @@ async function fetchMapPois(
       const raw = storage.getString(POI_CACHE_KEY(lang, contentTypeId))
       if (raw) {
         try {
-          return { pois: JSON.parse(raw) as Poi[], provider: 'tourapi' }
+          return { pois: normalizePois(JSON.parse(raw) as Poi[]), provider: 'tourapi' }
         } catch {
           // 캐시 손상 — mock으로
         }
@@ -197,7 +203,7 @@ async function fetchMapPois(
           address: p.address ?? null,
           lat: p.lat ? Number(p.lat) : null,
           lng: p.lng ? Number(p.lng) : null,
-          imageUrl: p.imageUrl ?? null,
+          imageUrl: toHttps(p.imageUrl ?? null),
           tel: p.tel ?? null,
           cat: toCat(p.contentTypeId),
         }))

@@ -66,7 +66,8 @@ Deno.serve(async (req) => {
       address: it.addr1,
       lat: Number(it.mapy) || null,
       lng: Number(it.mapx) || null,
-      imageUrl: it.firstimage || null,
+      // TourAPI firstimage 는 http:// 로 내려옴 — RN 은 cleartext 차단(iOS ATS·Android 9+ release)이라 https 승격
+      imageUrl: it.firstimage ? it.firstimage.replace(/^http:\/\//, 'https://') : null,
       tel: it.tel || null,
       contentTypeId: it.contenttypeid,
     }))
