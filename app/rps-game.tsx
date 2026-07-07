@@ -1,9 +1,10 @@
 // 가위바위보 (My → Game) — AI 깐부와 3판 선승, 승리 시 게임존 입장(+포인트)
-// 모드 2종: ① 탭 선택 ② 카메라 인식(전면 카메라 셀피 → rps-vision Gemini 판독).
+// 모드 2종: ① 탭 선택 ② 카메라 AR 대결 — 셀피(전면) 라이브 프리뷰 위에서 3·2·1
+// 카운트다운(AI 손이 흔들리다 '보!'에 공개) → 그 순간 프레임 캡처 → rps-vision 판독.
 // 전통놀이 게임존(REQ-GM)은 후속 — 승리 화면이 그 입구가 된다. 승리 적립은
 // points Edge Function earn_game(승리 10P, 일 상한 30P 서버 강제 — challenge·game 공유).
-import * as ImagePicker from 'expo-image-picker'
-import { useState } from 'react'
+import { CameraView, useCameraPermissions } from 'expo-camera'
+import { useEffect, useRef, useState } from 'react'
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 
@@ -35,7 +36,6 @@ export default function RpsGameScreen() {
   const [myScore, setMyScore] = useState(0)
   const [aiScore, setAiScore] = useState(0)
   const [round, setRound] = useState<{ me: Hand; ai: Hand; result: number } | null>(null)
-  const [busy, setBusy] = useState(false)
   const [unknownHand, setUnknownHand] = useState(false)
   const [earned, setEarned] = useState<number | null>(null)
 
@@ -63,23 +63,61 @@ export default function RpsGameScreen() {
     }
   }
 
-  // 카메라 인식 — 전면 카메라 셀피 → rps-vision 판독
-  const playByCamera = async () => {
-    if (busy || finished) return
+  // ── 카메라 AR 대결 — 셀피 프리뷰 위 카운트다운 → '보!' 순간 캡처 → Gemini 판독 ──
+  const camRef = useRef<CameraView>(null)
+  const [perm, requestPerm] = useCameraPermissions()
+  const [camPhase, setCamPhase] = useState<'idle' | 'count' | 'reading'>('idle')
+  const [count, setCount] = useState(3)
+  const [aiShake, setAiShake] = useState('✊') // 카운트다운 중 AI 손 흔들기(빠른 순환)
+  const timersRef = useRef<ReturnType<typeof setInterval>[]>([])
+
+  useEffect(
+    () => () => {
+      timersRef.current.forEach(clearInterval)
+    },
+    [],
+  )
+
+  const startDuel = () => {
+    if (camPhase !== 'idle' || finished) return
     setUnknownHand(false)
+    setRound(null)
+    setCamPhase('count')
+    setCount(3)
+    // AI 손 흔들기 — 150ms 순환 (실제 상대가 '가위~바위~' 흔드는 연출)
+    const shake = setInterval(
+      () => setAiShake(randomHand() === 'rock' ? '✊' : randomHand() === 'paper' ? '✋' : '✌️'),
+      150,
+    )
+    timersRef.current.push(shake)
+    let c = 3
+    const tick = setInterval(() => {
+      c -= 1
+      if (c > 0) {
+        setCount(c)
+        return
+      }
+      clearInterval(tick)
+      clearInterval(shake)
+      void captureAndJudge()
+    }, 800)
+    timersRef.current.push(tick)
+  }
+
+  const captureAndJudge = async () => {
+    setCamPhase('reading')
     try {
-      const perm = await ImagePicker.requestCameraPermissionsAsync()
-      if (!perm.granted) return
-      const res = await ImagePicker.launchCameraAsync({
-        cameraType: ImagePicker.CameraType.front,
+      const pic = await camRef.current?.takePictureAsync({
         base64: true,
-        quality: 0.4,
-        allowsEditing: false,
+        quality: 0.25,
+        skipProcessing: true,
       })
-      if (res.canceled || !res.assets?.[0]?.base64) return
-      setBusy(true)
+      if (!pic?.base64) {
+        setUnknownHand(true)
+        return
+      }
       const { data } = await supabase.functions.invoke('rps-vision', {
-        body: { imageBase64: res.assets[0].base64 },
+        body: { imageBase64: pic.base64 },
       })
       const hand = data?.hand as Hand | 'unknown'
       if (hand === 'unknown' || !HANDS.includes(hand as Hand)) {
@@ -87,8 +125,10 @@ export default function RpsGameScreen() {
         return
       }
       await playRound(hand as Hand)
+    } catch {
+      setUnknownHand(true)
     } finally {
-      setBusy(false)
+      setCamPhase('idle')
     }
   }
 
@@ -185,17 +225,39 @@ export default function RpsGameScreen() {
               </Pressable>
             ))}
           </View>
-        ) : (
-          <Pressable onPress={playByCamera} style={[ss.cameraBtn, shadows.blue]} disabled={busy}>
-            {busy ? (
-              <ActivityIndicator color="#fff" />
-            ) : (
-              <>
-                <Icon name="photo_camera" size={20} color="#fff" filled />
-                <Text style={ss.cameraBtnText}>{t('game.showHand')}</Text>
-              </>
-            )}
+        ) : !perm?.granted ? (
+          <Pressable onPress={() => requestPerm()} style={[ss.cameraBtn, shadows.blue]}>
+            <Icon name="photo_camera" size={20} color="#fff" filled />
+            <Text style={ss.cameraBtnText}>{t('game.grantCamera')}</Text>
           </Pressable>
+        ) : (
+          <View style={ss.camWrap}>
+            {/* 셀피 라이브 프리뷰 — 실제 마주보고 내는 느낌 (front 고정) */}
+            <CameraView ref={camRef} facing="front" style={ss.camView} />
+            {/* AR 오버레이 — 상단 AI 손(흔들기→공개), 중앙 카운트다운, 하단 손 가이드 */}
+            <View style={ss.camOverlay} pointerEvents="box-none">
+              <View style={ss.aiHandBox}>
+                <Text style={ss.aiHandLabel}>AI Gganbu</Text>
+                <Text style={ss.aiHandEmoji}>
+                  {camPhase === 'count' ? aiShake : round ? EMOJI[round.ai] : '🤖'}
+                </Text>
+              </View>
+              {camPhase === 'count' && <Text style={ss.countText}>{count}</Text>}
+              {camPhase === 'reading' && (
+                <View style={ss.readingBox}>
+                  <ActivityIndicator color="#fff" />
+                </View>
+              )}
+              <View style={ss.handGuide}>
+                <Text style={ss.handGuideText}>✊ ✋ ✌️</Text>
+              </View>
+              {camPhase === 'idle' && (
+                <Pressable onPress={startDuel} style={[ss.duelBtn, shadows.blue]}>
+                  <Text style={ss.duelBtnText}>{t('game.showHand')}</Text>
+                </Pressable>
+              )}
+            </View>
+          </View>
         )}
       </ScrollView>
     </SafeAreaView>
@@ -253,6 +315,50 @@ const ss = StyleSheet.create({
     paddingVertical: 14,
   },
   cameraBtnText: { color: '#fff', fontWeight: '800', fontSize: 15 },
+  camWrap: { borderRadius: 24, overflow: 'hidden', height: 430, backgroundColor: '#000' },
+  camView: { flex: 1 },
+  camOverlay: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, alignItems: 'center' },
+  aiHandBox: {
+    marginTop: 12,
+    alignItems: 'center',
+    backgroundColor: 'rgba(0,0,0,.45)',
+    borderRadius: 18,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+  },
+  aiHandLabel: { color: '#fff', fontSize: 10.5, fontWeight: '800' },
+  aiHandEmoji: { fontSize: 44, marginTop: 2 },
+  countText: {
+    marginTop: 40,
+    fontSize: 84,
+    fontWeight: '800',
+    color: '#fff',
+    textShadowColor: 'rgba(0,0,0,.6)',
+    textShadowRadius: 12,
+  },
+  readingBox: { marginTop: 70 },
+  handGuide: {
+    position: 'absolute',
+    bottom: 78,
+    borderWidth: 2,
+    borderStyle: 'dashed',
+    borderColor: 'rgba(255,255,255,.75)',
+    borderRadius: 999,
+    width: 150,
+    height: 150,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  handGuideText: { fontSize: 22, opacity: 0.85 },
+  duelBtn: {
+    position: 'absolute',
+    bottom: 14,
+    backgroundColor: palette.blue[50],
+    borderRadius: 999,
+    paddingVertical: 11,
+    paddingHorizontal: 26,
+  },
+  duelBtnText: { color: '#fff', fontWeight: '800', fontSize: 14 },
   finish: {
     alignItems: 'center',
     gap: 8,
