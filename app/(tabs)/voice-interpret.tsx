@@ -252,6 +252,19 @@ async function ensureMicPermission(): Promise<boolean> {
   }
 }
 
+// "깐부" 웨이크워드 — 통역 중 이름을 부르면 그 발화를 깐부 질문으로 처리 (다국어 표기·오인식 변형 포함)
+const WAKE_RE = /(깐부|깐뿌|간부|깜부|gganbu|ganbu|kanbu|kambu|カンブ|かんぶ|嘎恩布|甘布)/i
+
+// 발화 앞부분에서 웨이크워드를 찾으면 이름을 제거한 질문 텍스트 반환, 없으면 null
+function extractWakeQuestion(orig: string): string | null {
+  const m = orig.slice(0, 18).match(WAKE_RE)
+  if (!m || m.index === undefined) return null
+  return orig
+    .slice(m.index + m[0].length)
+    .replace(/^[야아님씨야~,.!?\s]+/, '')
+    .trim()
+}
+
 export default function VoiceInterpretScreen() {
   const t = useT()
   const appLang: AppLang = useLocaleStore((s) => s.lang)
@@ -379,6 +392,28 @@ export default function VoiceInterpretScreen() {
       return next
     })
   }
+
+  // 웨이크워드 질문 응답 — "깐부, ~?" 발화를 질문으로 깐부에게 전달(자문 토글과 무관, 상시)
+  const answerWake = useCallback(async (turnId: number, question: string, lang: string) => {
+    if (adviceBusyRef.current) return
+    adviceBusyRef.current = true
+    try {
+      const context = turnsRef.current
+        .slice(-6)
+        .map((x) => `[${x.lang}] ${x.original}`)
+        .join('\n')
+      const prompt =
+        `During a live interpreted conversation, the traveler called you by name and asked: "${question || '(just called your name)'}"\n` +
+        `Recent conversation:\n${context}\n\n` +
+        `Answer briefly (2-3 sentences) as their local Busan friend, in language "${lang}".`
+      const { reply } = await askGganbu([{ role: 'user', text: prompt }], { language: lang })
+      if (reply) setAdvices((a) => [...a, { id: Date.now(), afterTurnId: turnId, text: reply }])
+    } catch {
+      // 응답 실패는 조용히 — 통역 흐름 무영향
+    } finally {
+      adviceBusyRef.current = false
+    }
+  }, [])
 
   // 새 턴 누적 감지 — 자문 모드 중 4턴마다 자동 조언
   useEffect(() => {
@@ -570,6 +605,9 @@ export default function VoiceInterpretScreen() {
                 if (detected) lastLangRef.current = detected
                 const lang = detected || lastLangRef.current || myLang
                 if (turn.audio) audioStoreRef.current.set(idRef.current, turn.audio)
+                // "깐부 ..." 로 시작하면 질문으로 처리 — 답변은 조언 카드로(질문 언어로 응답)
+                const wakeQ = extractWakeQuestion(orig)
+                if (wakeQ !== null) void answerWake(idRef.current, wakeQ, lang)
                 setTurns((prev) =>
                   [
                     ...prev,
@@ -894,6 +932,8 @@ export default function VoiceInterpretScreen() {
                 <Text style={ss.gganbuJoinedText}>{t('voice.gganbuJoined')}</Text>
               </View>
             )}
+            {/* 웨이크워드 안내 — "깐부, ..." 로 부르면 상시 응답 */}
+            {advices.length === 0 && <Text style={ss.callHint}>{t('voice.callHint')}</Text>}
             <ScrollView
               ref={scrollRef}
               style={{ flex: 1, marginTop: 12 }}
@@ -1245,6 +1285,12 @@ const ss = StyleSheet.create({
     marginTop: 10,
   },
   gganbuJoinedText: { fontSize: 11.5, fontWeight: '700', color: palette.blue[40] },
+  callHint: {
+    textAlign: 'center',
+    fontSize: 11,
+    color: palette.zinc[400],
+    marginTop: 8,
+  },
   adviceCard: {
     alignSelf: 'center',
     maxWidth: '88%',
