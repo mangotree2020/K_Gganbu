@@ -45,6 +45,7 @@ const ROWS: Row[] = [
   { id: 'phrasebook', label: 'Phrasebook', emoji: '🗣' },
   { id: 'allergy', label: 'Allergy card', emoji: '🥜' },
   { id: 'payment', label: 'Payment tips', emoji: '💳' },
+  { id: 'game', label: 'Game', emoji: '🎮' },
   { id: 'settings', label: 'Settings', emoji: '⚙️' },
 ]
 
@@ -53,6 +54,7 @@ const ROW_KEY: Record<string, string> = {
   points: 'coupon.segPoints',
   itineraries: 'profile.itineraries',
   wallet: 'wallet.title',
+  game: 'game.title',
   'saved-places': 'profile.savedPlaces',
   reviews: 'profile.reviews',
   phrasebook: 'profile.phrasebook',
@@ -124,6 +126,7 @@ export default function ProfileScreen() {
     else if (r.id === 'phrasebook') router.push('/phrases')
     else if (r.id === 'points') router.push('/(tabs)/coupons?seg=points' as never)
     else if (r.id === 'payment') router.push('/tips' as never)
+    else if (r.id === 'game') router.push('/rps-game' as never)
     else if (r.id === 'settings') router.push('/settings' as never)
   }
 

@@ -109,6 +109,32 @@ Deno.serve(async (req) => {
       return json(data)
     }
 
+    // ── 게임 승리 적립 (REQ-GM-2) — 승리당 10P, 일 상한 30P(challenge·game 공유)는 서버 강제 ──
+    if (action === 'earn_game') {
+      if (user.is_anonymous) {
+        return json(
+          { error: 'guest_not_allowed', message: '포인트 적립은 로그인이 필요합니다' },
+          403,
+        )
+      }
+      const admin = createClient(SUPABASE_URL, SERVICE_ROLE)
+      const { data: appUser } = await admin
+        .from('users')
+        .select('id')
+        .eq('auth_id', user.id)
+        .single()
+      if (!appUser) return json({ error: 'no_profile' }, 404)
+      const { data, error } = await admin.rpc('earn_points', {
+        p_user: appUser.id,
+        p_source: 'game',
+        p_amount: 10,
+        p_idem: `game:${appUser.id}:${Date.now()}`, // 승리 건별 — 상한은 earn_points가 캡
+        p_meta: { game: 'rps' },
+      })
+      if (error) return json({ error: error.message }, 500)
+      return json(data)
+    }
+
     return json({ error: 'unknown_action' }, 400)
   } catch (e) {
     return json({ error: e instanceof Error ? e.message : 'internal_error' }, 500)
