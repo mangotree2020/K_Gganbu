@@ -4,6 +4,7 @@
 // 전통놀이 게임존(REQ-GM)은 후속 — 승리 화면이 그 입구가 된다. 승리 적립은
 // points Edge Function earn_game(승리 10P, 일 상한 30P 서버 강제 — challenge·game 공유).
 import { CameraView, useCameraPermissions } from 'expo-camera'
+import { router } from 'expo-router'
 import { useEffect, useRef, useState } from 'react'
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
@@ -211,7 +212,13 @@ export default function RpsGameScreen() {
             <Text style={{ fontSize: 44 }}>{won ? '🏆' : '😅'}</Text>
             <Text style={ss.finishTitle}>{won ? t('game.win') : t('game.lose')}</Text>
             {won && earned != null && <Text style={ss.earned}>+{earned}P</Text>}
-            {won && <Text style={ss.finishSub}>{t('game.zoneSoon')}</Text>}
+            {won && (
+              <Pressable
+                onPress={() => router.push('/tetris' as never)}
+                style={[ss.retryBtn, { backgroundColor: palette.amber[50] }]}>
+                <Text style={ss.retryText}>🐱 {t('game.enterTetris')}</Text>
+              </Pressable>
+            )}
             <Pressable onPress={reset} style={ss.retryBtn}>
               <Icon name="refresh" size={15} color="#fff" />
               <Text style={ss.retryText}>{t('game.retry')}</Text>

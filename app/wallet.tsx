@@ -5,12 +5,13 @@
 import { useQuery } from '@tanstack/react-query'
 import { router, useLocalSearchParams } from 'expo-router'
 import { useMemo, useState } from 'react'
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
+import { Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 
 import { Icon, Pill } from '@/components/brand'
 import { PlaceThumb } from '@/components/PlaceThumb'
 import { SheetHeader } from '@/components/SheetHeader'
+import { useCouponPhotos } from '@/features/coupon/photos'
 import { useCoupons, useUserCoupons } from '@/features/coupon/queries'
 import { getMyTickets } from '@/features/ticket/services'
 import { useT } from '@/lib/i18n'
@@ -52,6 +53,7 @@ export default function WalletScreen() {
     return [...map.values()]
   }, [coupons])
   const infoFor = (couponId: string) => catalog?.find((k) => String(k.id) === couponId)
+  const photos = useCouponPhotos(grouped.map(({ rep }) => rep.name))
 
   return (
     <View style={ss.container}>
@@ -118,7 +120,14 @@ export default function WalletScreen() {
                     android_ripple={{ color: 'rgba(0,0,0,0.06)' }}
                     style={[ss.card]}>
                     <View style={ss.thumb}>
-                      <PlaceThumb category={info?.icon ?? c.category} height={52} />
+                      {photos[c.name] ? (
+                        <Image
+                          source={{ uri: photos[c.name] as string }}
+                          style={{ width: 52, height: 52 }}
+                        />
+                      ) : (
+                        <PlaceThumb category={info?.icon ?? c.category} height={52} />
+                      )}
                     </View>
                     <View style={{ flex: 1 }}>
                       <Text style={ss.name} numberOfLines={1}>

@@ -3,13 +3,14 @@ import { useQuery } from '@tanstack/react-query'
 import { LinearGradient } from 'expo-linear-gradient'
 import { router, useLocalSearchParams } from 'expo-router'
 import { useEffect, useMemo, useState } from 'react'
-import { Alert, Linking, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
+import { Alert, Image, Linking, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 
 import { Icon, Pill } from '@/components/brand'
 import { FallbackBadge } from '@/components/FallbackBadge'
 import { PlaceThumb } from '@/components/PlaceThumb'
 import { track } from '@/features/analytics/service'
+import { useCouponPhotos } from '@/features/coupon/photos'
 import { useCoupons, type CouponCard } from '@/features/coupon/queries'
 import {
   getGifticonCatalog,
@@ -169,6 +170,8 @@ export default function CouTixScreen() {
   const couponIsMock = !dbCoupons?.length
   const couponShown =
     couponFilter === 'all' ? couponSource : couponSource.filter((i) => i.filter === couponFilter)
+  // 쿠폰 실사진 썸네일 — 홈 딜과 동일 캐시(dealphoto:) 공유
+  const couponPhotos = useCouponPhotos(couponSource.map((c) => c.name))
 
   // ----- 티켓 데이터 -----
   const ticketShown = useMemo(() => {
@@ -344,7 +347,14 @@ export default function CouTixScreen() {
                 onPress={() => openCoupon(c)}
                 style={({ pressed }) => [ss.card, shadows.card, { opacity: pressed ? 0.9 : 1 }]}>
                 <View style={ss.cardThumb}>
-                  <PlaceThumb category={c.icon} height={56} />
+                  {couponPhotos[c.name] ? (
+                    <Image
+                      source={{ uri: couponPhotos[c.name] as string }}
+                      style={{ width: 56, height: 56 }}
+                    />
+                  ) : (
+                    <PlaceThumb category={c.icon} height={56} />
+                  )}
                 </View>
                 <View style={{ flex: 1 }}>
                   <Text style={ss.cardName}>{c.name}</Text>
