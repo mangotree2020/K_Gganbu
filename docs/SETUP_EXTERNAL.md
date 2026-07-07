@@ -31,6 +31,7 @@
 
 1. **Google**: [Google Cloud Console](https://console.cloud.google.com) → OAuth 2.0 클라이언트 ID(웹) 생성 → Supabase **Authentication → Providers → Google**에 Client ID/Secret 입력.
 2. **Apple**: [Apple Developer](https://developer.apple.com) → Service ID + Sign in with Apple Key 생성 → Supabase **Providers → Apple**에 입력. (App Store 심사 필수 — PLANNING §23)
+   - **D-U-N-S 발급 완료(2026-07-08): `688995055`** → 남은 절차: ① [developer.apple.com/enroll](https://developer.apple.com/enroll)에서 **조직(Organization)** 으로 가입(법인 Apple ID + D-U-N-S 입력, 연 $99) → Apple 검증 1~3일 ② 승인 후 Certificates, Identifiers & Profiles에서 App ID(`com.mangonw.gganbu`)·**Services ID**·**Sign in with Apple Key(.p8)** 생성 ③ Supabase Providers → Apple에 Services ID·Team ID·Key ID·.p8 입력 ④ 안드로이드 웹 OAuth로 로그인 검증(BACKLOG #8)
 3. **Redirect URL**: Supabase가 제공하는 콜백 URL을 각 provider에 등록. 앱 콜백은 `auth-callback` (expo-linking `createURL`).
 4. **Guest 승계(중요)**: **Authentication → Providers**에서 _Allow manual linking_ (또는 Anonymous→permanent linking) 활성화. 미활성 시 `linkIdentity`가 실패하여 Guest 데이터(즐겨찾기·쿠폰) 승계 불가 (#7 연동).
 

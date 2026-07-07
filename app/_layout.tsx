@@ -88,6 +88,7 @@ function RootLayoutNav() {
         <Stack.Screen name="settings" options={{ presentation: 'modal' }} />
         <Stack.Screen name="rps-game" options={{ presentation: 'modal' }} />
         <Stack.Screen name="tetris" options={{ presentation: 'modal' }} />
+        <Stack.Screen name="stamp-scan" options={{ presentation: 'modal' }} />
         <Stack.Screen name="favorites" options={{ presentation: 'modal' }} />
         <Stack.Screen name="wallet" options={{ presentation: 'modal' }} />
         <Stack.Screen name="itinerary" options={{ presentation: 'modal' }} />

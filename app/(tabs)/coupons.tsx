@@ -506,6 +506,18 @@ function PointsSection() {
         </View>
       )}
 
+      {/* 스탬프 투어 (REQ-ST-1) — 매장 QR 스캔 적립 진입 */}
+      <Pressable
+        onPress={() => router.push('/stamp-scan' as never)}
+        style={[ps.stampBtn, shadows.card]}>
+        <Text style={{ fontSize: 22 }}>🔖</Text>
+        <View style={{ flex: 1 }}>
+          <Text style={ps.stampTitle}>{t('stamp.title')}</Text>
+          <Text style={ps.giftSub}>{t('stamp.scanCta')}</Text>
+        </View>
+        <Icon name="chevron_right" size={18} color={palette.zinc[400]} />
+      </Pressable>
+
       {/* 걷기 랭킹 (REQ-LOC-4) — 길찾기 이동거리 순위, 만보기·포인트 경제와 연동되는 리텐션 장치 */}
       <View style={[ps.giftBox, shadows.card]}>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
@@ -663,6 +675,17 @@ const ps = StyleSheet.create({
   giftName: { fontSize: 12, fontWeight: '700', color: palette.zinc[900] },
   giftPrice: { fontSize: 13, fontWeight: '800', color: palette.zinc[900], marginTop: 2 },
   giftUsable: { fontSize: 10, fontWeight: '700', color: palette.amber[50] },
+  stampBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    backgroundColor: '#fff',
+    borderRadius: 16,
+    padding: 14,
+    borderWidth: 0.5,
+    borderColor: palette.zinc[200],
+  },
+  stampTitle: { fontSize: 14, fontWeight: '800', color: palette.zinc[900], letterSpacing: -0.2 },
   rankRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   rankNum: { width: 20, fontSize: 13, fontWeight: '800', color: palette.zinc[400] },
   rankName: { flex: 1, fontSize: 13, fontWeight: '700', color: palette.zinc[900] },
