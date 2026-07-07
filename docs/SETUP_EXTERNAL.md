@@ -127,12 +127,18 @@ SMS 실비(~160원/건) 방어. **Auth → Rate Limits**로 총량 상한:
 
 **검증**: 지도 탭 검색 → POI 마커 → 길찾기 → Google Map 위 Polyline 오버레이. 마지막 조회 지역 24h 캐시.
 
-### 도보 경로 (2026-07-06 — 길안내 도보 기준 전환)
+### 도보 경로 (2026-07-06 도보 기준 전환 → 07-07 Tmap 채택)
 
-길찾기는 **도보 우선**: `naver-directions` 함수가 ① Google Routes API(travelMode=WALK) → ② Naver 자동차 경로 폴백(시간은 도보 4.5km/h 재계산, `mode: walk-estimated`) → ③ mock 순으로 처리한다. Naver Cloud에는 보행자 경로 API가 없다.
+길찾기는 **도보 우선**: `naver-directions` 함수가 ① **Tmap 보행자 경로**(`TMAP_APP_KEY`) → ② Google Routes API WALK(해외 좌표 전용) → ③ Naver 자동차 경로 폴백(시간은 도보 4.5km/h 재계산, `mode: walk-estimated`) → ④ mock 순으로 처리한다.
 
-- **잔여 설정**: [Google Cloud Console](https://console.cloud.google.com/apis/library/routes.googleapis.com)에서 서버 키(`GOOGLE_PLACES_API_KEY`) 프로젝트에 **Routes API 활성화**. 활성화 즉시 실제 보행자 경로(`provider: google, mode: walk`)로 자동 전환 — 코드 변경·재배포 불필요.
-- 현재 상태: Routes API 미활성 → Naver 폴백 동작 확인(5.9km → 도보 78분 반환 검증).
+> 확인된 사실(2026-07-07): **Google Routes API는 한국에서 WALK를 제공하지 않는다**(지도데이터 반출 규제 — 키·프로젝트 설정을 다 해도 빈 응답 `{}`. TRANSIT만 동작). Routes API 키 설정 삽질 로그: 키가 사는 프로젝트는 `k-gganbu-499503`(번호 257744476364, 서버 키 = "Open_API 키"), API를 프로젝트에 켜는 것과 **키의 [API 제한사항] 목록 추가**는 별개 — 둘 다 해야 `API_KEY_SERVICE_BLOCKED`가 풀린다. Naver Cloud에는 보행자 경로 API가 없다.
+
+- **잔여 설정 (실 보행자 경로 활성화)**: [SK오픈API](https://openapi.sk.com) 가입 → 앱 생성 → Tmap "보행자 경로안내" 사용 신청(무료 쿼터) → appKey 발급:
+  ```bash
+  npx supabase secrets set TMAP_APP_KEY=<appKey>
+  ```
+  설정 즉시 `provider: tmap, mode: walk`(인도·횡단보도 기준 실 보행자 경로)로 자동 전환 — 코드 변경·재배포 불필요.
+- 현재 상태: TMAP 키 미설정 → Naver 폴백 동작 확인(5.9km → 도보 78분).
 
 ## #22 AI 깐부 (Claude + RAG)
 

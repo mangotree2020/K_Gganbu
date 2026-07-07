@@ -262,13 +262,14 @@ export function useMapPoisMulti(lang = 'en', rows = 20, contentTypeIds: string[]
 }
 
 // 길찾기 (PLANNING §17) — 현재위치 → 목적지, **도보 기준**
-// 서버(naver-directions)가 Google 도보 경로 우선 → Naver 자동차 경로 폴백(시간은 도보 재계산) → mock
+// 서버(naver-directions)가 Tmap 보행자 경로 우선(국내) → Google WALK(해외) →
+// Naver 자동차 경로 폴백(시간은 도보 재계산) → mock. Google WALK 는 한국 미제공(규제).
 export type LatLng = { latitude: number; longitude: number }
 export type RouteResult = {
   path: LatLng[]
   distance: number // meters
   duration: number // ms (도보 기준)
-  provider: 'google' | 'naver' | 'mock'
+  provider: 'tmap' | 'google' | 'naver' | 'mock'
   mode: 'walk' | 'walk-estimated' // walk-estimated = 자동차 경로에 도보 속도 적용
 }
 

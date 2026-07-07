@@ -1,9 +1,10 @@
 // naver-directions — 길찾기 Edge Function (PLANNING §17, §13)
 // 여행자 이동은 도보가 기본 — **도보 경로 우선** 정책:
-//   1순위 Google Routes API(travelMode=WALK) — 한국 도보 경로 지원, 키는 places 와 공용
-//   2순위 Naver Cloud Directions 5(자동차 경로) 폴백 — 시간은 도보 속도로 재계산
-//   3순위 직선 보간 mock
-// Naver Cloud 에는 보행자 경로 API 가 없어 도보는 Google 을 사용한다.
+//   1순위 Tmap 보행자 경로(SK오픈API, TMAP_APP_KEY) — 국내 유일한 실 보행자 라우팅
+//   2순위 Google Routes API(WALK) — 해외 좌표 전용. **한국은 규제로 WALK 미제공(빈 응답) 확인(2026-07-07)**
+//   3순위 Naver Cloud Directions 5(자동차 경로) 폴백 — 시간은 도보 속도로 재계산
+//   4순위 직선 보간 mock
+// Naver Cloud 에는 보행자 경로 API 가 없다.
 // 경로 좌표 정규화와 요약(거리 m/시간 ms)을 서버에서 처리, 응답 mode 로 산출 방식 표기.
 import 'jsr:@supabase/functions-js/edge-runtime.d.ts'
 
@@ -79,7 +80,56 @@ function mockRoute(start: LatLng, goal: LatLng) {
   return { path, distance, duration: Math.round(distance / WALK_SPEED_M_PER_MS), mode: 'walk' }
 }
 
-// 1순위 — Google Routes API 도보 경로
+// 한국 좌표 여부 — Google WALK 는 한국에서 항상 빈 응답이므로 국내에선 호출 자체를 생략
+function inKorea(p: LatLng): boolean {
+  return p.latitude >= 33 && p.latitude <= 39 && p.longitude >= 124 && p.longitude <= 132
+}
+
+// 1순위 — Tmap 보행자 경로 (SK오픈API)
+async function tmapWalkRoute(start: LatLng, goal: LatLng, appKey: string) {
+  const res = await fetch('https://apis.openapi.sk.com/tmap/routes/pedestrian?version=1', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', appKey },
+    body: JSON.stringify({
+      startX: String(start.longitude),
+      startY: String(start.latitude),
+      endX: String(goal.longitude),
+      endY: String(goal.latitude),
+      reqCoordType: 'WGS84GEO',
+      resCoordType: 'WGS84GEO',
+      startName: encodeURIComponent('출발'),
+      endName: encodeURIComponent('도착'),
+    }),
+  })
+  const data = await res.json()
+  const features = data?.features
+  if (!res.ok || !Array.isArray(features) || !features.length) {
+    throw new Error(data?.error?.message ?? 'tmap_no_route')
+  }
+  const path: LatLng[] = []
+  let distance = 0
+  let durationSec = 0
+  for (const f of features) {
+    if (f.geometry?.type === 'LineString') {
+      for (const c of f.geometry.coordinates as number[][]) {
+        path.push({ latitude: c[1], longitude: c[0] })
+      }
+    }
+    // 총 거리·시간은 첫 Point feature 의 properties 에 실려 온다
+    if (f.properties?.totalDistance) distance = f.properties.totalDistance
+    if (f.properties?.totalTime) durationSec = f.properties.totalTime
+  }
+  if (!path.length) throw new Error('tmap_empty_path')
+  return {
+    path,
+    distance,
+    duration: durationSec > 0 ? durationSec * 1000 : Math.round(distance / WALK_SPEED_M_PER_MS),
+    provider: 'tmap',
+    mode: 'walk',
+  }
+}
+
+// 2순위 — Google Routes API 도보 경로 (해외 좌표 전용)
 async function googleWalkRoute(start: LatLng, goal: LatLng, key: string) {
   const res = await fetch('https://routes.googleapis.com/directions/v2:computeRoutes', {
     method: 'POST',
@@ -108,7 +158,7 @@ async function googleWalkRoute(start: LatLng, goal: LatLng, key: string) {
   return { path, distance, duration, provider: 'google', mode: 'walk' }
 }
 
-// 2순위 — Naver 자동차 경로 폴백 (도로를 따르는 경로 확보, 시간은 도보 속도로 재계산)
+// 3순위 — Naver 자동차 경로 폴백 (도로를 따르는 경로 확보, 시간은 도보 속도로 재계산)
 async function naverDriveRoute(start: LatLng, goal: LatLng, id: string, secret: string) {
   const qs = `start=${start.longitude},${start.latitude}&goal=${goal.longitude},${goal.latitude}&option=trafast`
   let lastDetail: unknown = null
@@ -152,6 +202,7 @@ Deno.serve(async (req) => {
     const goal: LatLng = body.goal
     if (!start || !goal) return json({ error: 'start/goal 필요' }, 400)
 
+    const tmapKey = Deno.env.get('TMAP_APP_KEY')
     const googleKey = Deno.env.get('GOOGLE_PLACES_API_KEY') ?? Deno.env.get('GOOGLE_MAPS_API_KEY')
     // NCP 자격증명: MAPS 전용 이름 우선, 없으면 정식 NAVER_CLIENT_* 로 폴백
     const naverId = Deno.env.get('NAVER_MAPS_CLIENT_ID') ?? Deno.env.get('NAVER_CLIENT_ID')
@@ -159,11 +210,19 @@ Deno.serve(async (req) => {
       Deno.env.get('NAVER_MAPS_CLIENT_SECRET') ?? Deno.env.get('NAVER_CLIENT_SECRET')
 
     let walkDetail: unknown = null
-    if (googleKey) {
+    if (tmapKey) {
+      try {
+        return json(await tmapWalkRoute(start, goal, tmapKey))
+      } catch (e) {
+        walkDetail = String(e)
+      }
+    }
+    // Google WALK 는 한국 좌표에서 항상 빈 응답(규제) — 해외 좌표에서만 시도
+    if (googleKey && !(inKorea(start) && inKorea(goal))) {
       try {
         return json(await googleWalkRoute(start, goal, googleKey))
       } catch (e) {
-        walkDetail = String(e)
+        walkDetail = `${walkDetail ?? ''} / ${String(e)}`
       }
     }
     if (naverId && naverSecret) {
