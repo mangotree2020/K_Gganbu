@@ -317,6 +317,48 @@ function playMeow() {
   }
 }
 
+// 도킹형 플로팅 버튼 — 탭바 노출 중엔 우측으로 밀어 아이콘만 보이고,
+// 탭바가 숨으면(스크롤 다운) 슬라이드로 전체 노출. 도킹 상태에서도 탭 가능.
+const FAB_PEEK_W = 44 // 도킹 시 화면에 남기는 폭 — 좌측 패딩 16 + 아이콘까지만(라벨 숨김)
+
+function DockedFab({
+  docked,
+  onPress,
+  style,
+  children,
+}: {
+  docked: boolean
+  onPress: () => void
+  style?: object | object[]
+  children: React.ReactNode
+}) {
+  const [w, setW] = useState(0)
+  const anim = useState(() => new Animated.Value(docked ? 1 : 0))[0]
+  useEffect(() => {
+    Animated.timing(anim, {
+      toValue: docked ? 1 : 0,
+      duration: 220,
+      useNativeDriver: true,
+    }).start()
+  }, [docked, anim])
+  const translateX = anim.interpolate({
+    inputRange: [0, 1],
+    outputRange: [0, Math.max(0, w - FAB_PEEK_W)],
+  })
+  return (
+    <Animated.View
+      onLayout={(e) => setW(e.nativeEvent.layout.width)}
+      style={{ transform: [{ translateX }] }}>
+      <Pressable
+        onPress={onPress}
+        android_ripple={{ color: 'rgba(255,255,255,0.25)', borderless: false }}
+        style={style}>
+        {children}
+      </Pressable>
+    </Animated.View>
+  )
+}
+
 function NearbyTrail({ km, idx, count }: { km: number | null; idx: number; count: number }) {
   const far = (km ?? 0) > 2.5
   const [trackW, setTrackW] = useState(0)
@@ -1354,27 +1396,28 @@ export default function HomeScreen() {
       </ScrollView>
 
       {/* 플로팅 AI 깐부 버튼 (PLANNING §9, 디자인 docs/AI Gganbu.png) — 알약형 + 로봇 아이콘 + 라벨.
-          전체폭 래퍼 + flex-end로 우측 정렬(absolute+right만으로는 전폭 늘어나는 문제 회피). */}
+          전체폭 래퍼 + flex-end로 우측 정렬(absolute+right만으로는 전폭 늘어나는 문제 회피).
+          탭바 노출 중엔 우측 도킹(아이콘만), 탭바 숨김(스크롤 다운) 시 전체 노출. */}
       <View
         style={[ss.gganbuFabWrap, tabBarHidden && { bottom: 18 + 56 + insets.bottom }]}
         pointerEvents="box-none">
-        {/* AI Translate — 음성 통역 실행화면 바로가기(teal=번역 전용) */}
-        <Pressable
-          onPress={() => router.push('/voice-interpret' as never)}
-          android_ripple={{ color: 'rgba(255,255,255,0.25)', borderless: false }}
-          style={[ss.gganbuFab, ss.translateFab]}>
-          <Icon name="translate" size={20} color="#fff" />
-          <Text style={ss.gganbuFabText}>Translate</Text>
-        </Pressable>
         {/* AI Gganbu — 챗봇 화면 */}
-        <Pressable
+        <DockedFab
+          docked={!tabBarHidden}
           onPress={() => router.push('/(tabs)/ai' as never)}
-          android_ripple={{ color: 'rgba(255,255,255,0.25)', borderless: false }}
           style={ss.gganbuFab}>
           {/* 외곽선 로봇(눈·안테나 보이도록) — filled면 눈 구멍이 메워져 가독성 저하 */}
           <Icon name="smart_toy" size={23} color="#fff" strokeWidth={2.2} />
           <Text style={ss.gganbuFabText}>Gganbu</Text>
-        </Pressable>
+        </DockedFab>
+        {/* AI Translate — 음성 통역 실행화면 바로가기(teal=번역 전용) */}
+        <DockedFab
+          docked={!tabBarHidden}
+          onPress={() => router.push('/voice-interpret' as never)}
+          style={[ss.gganbuFab, ss.translateFab]}>
+          <Icon name="translate" size={20} color="#fff" />
+          <Text style={ss.gganbuFabText}>Translate</Text>
+        </DockedFab>
       </View>
     </View>
   )
