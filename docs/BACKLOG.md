@@ -91,6 +91,10 @@
 > ✅ **포인트 홈(REQ-PT-4)** — CouTix 3번째 세그먼트(잔액·내역·소멸 예정, 게스트 로그인 유도) + 홈 걸음 배지 탭→적립(REQ-PD-2 서버 경로) 연결, i18n 5개 언어. **실기기 검증 완료(07-07 release 빌드 — 잔액 카드·기프트샵·걸음 배지·지도 딜 바·도보 길안내 화면 확인)**.
 > ✅ **콘텐츠 이미지 미표시 수정** — TourAPI `firstimage` http→https 승격(places 함수 v20 배포 + 클라이언트 MMKV 캐시 정규화). release 빌드 cleartext 차단이 원인.
 >
+> **📌 07-07 진행**:
+> ✅ **도보 길찾기 운영화** — Tmap 보행자 경로 1순위(키 설정·실검증 4,653m/62분), Google WALK 한국 미제공 확인, 폴백 체인(Tmap→Naver→mock)+타임아웃, 무료 쿼터(일 1,000건) 사용량 관측·종량제 전환 기준 문서화.
+> ✅ **이동 트래킹·걷기 랭킹(REQ-LOC-1~4, 신규 EPIC)** — 길찾기 중 위치 마커 4초/5m 갱신, 경로 MMKV→`walk_journeys` 업로드(GPS 튐·차량 필터, 속도 DB check), 10분 위치 핑(`location_pings`, 90일 자동 삭제, foreground 전용), 주간 랭킹 `walk_rank()`(마스킹)+포인트 세그먼트 랭킹 카드. DB 검증 완료, 실기기 검증 잔여. LBS 법무는 O-9.
+>
 > **🔜 프로덕션 준비 TODO(비차단, 나중에 처리)**:
 > ① Apple provider 설정(D-U-N-S 발급 후) ② Twilio 실 SMS 운영(업그레이드 완료, 발신 정책 점검) ③ **Auth 커스텀 SMTP** — 회사 Google Workspace(유료 구글메일) 보유 → SMTP relay로 이메일 가입/재설정 메일 전달률·상한 확보(내장 2/h는 dev용). 상세: `docs/SETUP_EXTERNAL.md` #9 "Auth 이메일 발송". ④ OTP 봇 남용 관측 시 CAPTCHA(OTP 전용 게이트웨이). ⑤ 노출 시크릿 로테이션(Twilio Auth Token·LINE Channel Secret). ⑥ **Tmap 도보 경로 종량제 전환** — 무료 일 1,000건, `usage_counters(kind='tmap_route')` 일 집계가 600~700건 근접 시 SK오픈API 유료 플랜 전환(폴백 체인 Tmap→Naver→mock으로 초과 시에도 무중단, 상세: SETUP_EXTERNAL #19).
 
