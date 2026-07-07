@@ -24,6 +24,8 @@ import Slider from '@react-native-community/slider'
 
 import { Icon } from '@/components/brand'
 import { askGganbu } from '@/features/gganbu/services'
+import { speakMessage } from '@/lib/speak'
+import { toSpeakable } from '@/lib/speakable'
 import { storage } from '@/lib/mmkv'
 import { startLiveTranslate, type LiveSession } from '@/features/translate/geminiLive'
 import { flushRemoteQueue, saveSession, saveSessionRemote } from '@/features/translate/history'
@@ -393,27 +395,47 @@ export default function VoiceInterpretScreen() {
     })
   }
 
-  // 웨이크워드 질문 응답 — "깐부, ~?" 발화를 질문으로 깐부에게 전달(자문 토글과 무관, 상시)
-  const answerWake = useCallback(async (turnId: number, question: string, lang: string) => {
-    if (adviceBusyRef.current) return
-    adviceBusyRef.current = true
-    try {
-      const context = turnsRef.current
-        .slice(-6)
-        .map((x) => `[${x.lang}] ${x.original}`)
-        .join('\n')
-      const prompt =
-        `During a live interpreted conversation, the traveler called you by name and asked: "${question || '(just called your name)'}"\n` +
-        `Recent conversation:\n${context}\n\n` +
-        `Answer briefly (2-3 sentences) as their local Busan friend, in language "${lang}".`
-      const { reply } = await askGganbu([{ role: 'user', text: prompt }], { language: lang })
-      if (reply) setAdvices((a) => [...a, { id: Date.now(), afterTurnId: turnId, text: reply }])
-    } catch {
-      // 응답 실패는 조용히 — 통역 흐름 무영향
-    } finally {
-      adviceBusyRef.current = false
-    }
+  // 깐부 답변 TTS — 재생 중 마이크 입력을 전부 차단(half-duplex)해 에코 재번역 방지
+  const gganbuSpeakingRef = useRef(false)
+  const speakGganbu = useCallback((text: string, lang: string) => {
+    const spoken = toSpeakable(text)
+    if (!spoken) return
+    gganbuSpeakingRef.current = true
+    speakMessage(spoken, lang, () => {
+      // 스피커 잔향이 마이크에 남는 시간 여유 후 입력 재개 (ai 탭과 동일)
+      setTimeout(() => {
+        gganbuSpeakingRef.current = false
+      }, 400)
+    })
   }, [])
+
+  // 웨이크워드 질문 응답 — "깐부, ~?" 발화를 질문으로 깐부에게 전달(자문 토글과 무관, 상시)
+  const answerWake = useCallback(
+    async (turnId: number, question: string, lang: string) => {
+      if (adviceBusyRef.current) return
+      adviceBusyRef.current = true
+      try {
+        const context = turnsRef.current
+          .slice(-6)
+          .map((x) => `[${x.lang}] ${x.original}`)
+          .join('\n')
+        const prompt =
+          `During a live interpreted conversation, the traveler called you by name and asked: "${question || '(just called your name)'}"\n` +
+          `Recent conversation:\n${context}\n\n` +
+          `Answer briefly (2-3 sentences) as their local Busan friend, in language "${lang}".`
+        const { reply } = await askGganbu([{ role: 'user', text: prompt }], { language: lang })
+        if (reply) {
+          setAdvices((a) => [...a, { id: Date.now(), afterTurnId: turnId, text: reply }])
+          speakGganbu(reply, lang) // v2 — 답변 음성 낭독(재생 중 마이크 차단)
+        }
+      } catch {
+        // 응답 실패는 조용히 — 통역 흐름 무영향
+      } finally {
+        adviceBusyRef.current = false
+      }
+    },
+    [speakGganbu],
+  )
 
   // 새 턴 누적 감지 — 자문 모드 중 4턴마다 자동 조언
   useEffect(() => {
@@ -562,6 +584,8 @@ export default function VoiceInterpretScreen() {
               if (!playerRef.current) playerRef.current = createPlayer(24000, volume)
               if (!micRef.current) {
                 micRef.current = startMic((pcm) => {
+                  // 깐부 TTS 재생 중 — 마이크 전면 차단(답변 음성이 재번역되는 루프 방지)
+                  if (gganbuSpeakingRef.current) return
                   if (playerRef.current?.isPlaying()) {
                     // 스피커 모드(이어폰 미사용): 내 발화·상대 발화가 모두 큰 볼륨으로 스피커에
                     // 나가 누설 RMS가 임계를 넘으면 RMS 게이트를 통과해 무한 재번역됨.
