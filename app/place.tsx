@@ -1,21 +1,22 @@
 // 장소 상세 (홈 Today's Pick·Nearby 카드 → 진입)
 // 상태바 영역은 홈과 동일한 스카이블루 그라데이션으로 남기고 그 아래부터 화면 구성.
-// 지도 시트와 동일한 리뷰(평점·AI 요약·리뷰 목록)를 제공하고,
-// Directions는 우리 지도 탭으로 이동해 해당 장소 선택 + 경로 표시까지 연결한다.
+// 이미지는 여러 장 슬라이드(place-lookup photosName), 리뷰는 지도 시트와 동일한
+// 공용 PlaceReviewsSection. Directions는 우리 지도 탭으로 이동해 경로까지 연결.
+import { useQuery } from '@tanstack/react-query'
 import { LinearGradient } from 'expo-linear-gradient'
 import { router, useLocalSearchParams } from 'expo-router'
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 import { Image, Pressable, Share, ScrollView, StyleSheet, Text, View } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 
 import { Icon, Pill } from '@/components/brand'
-import { FallbackBadge } from '@/components/FallbackBadge'
 import { PlaceThumb } from '@/components/PlaceThumb'
 import { useFavorites, useToggleFavorite } from '@/features/favorites/queries'
-import { useReviewInsights } from '@/features/review/insights'
+import { PlaceReviewsSection } from '@/features/review/PlaceReviewsSection'
 import { usePlaceReviews } from '@/features/review/queries'
 import { useLocaleStore, useT } from '@/lib/i18n'
-import { palette, shadows } from '@/theme/tokens'
+import { supabase } from '@/lib/supabase'
+import { palette } from '@/theme/tokens'
 
 export default function PlaceScreen() {
   const t = useT()
@@ -47,14 +48,28 @@ export default function PlaceScreen() {
     p.desc ??
     "Beloved by locals for fresh, no-frills seafood. Try the seaside terrace — it's where Haeundae sunsets feel infinite."
 
-  // 지도 시트와 동일한 리뷰 파이프라인 — 실 Google 리뷰 + AI 요약(서버 캐시)
+  // 평점 표시용 — 리뷰 본문은 공용 PlaceReviewsSection이 담당(동일 쿼리라 중복 호출 없음)
   const reviewTarget = useMemo(() => ({ id: extId, name, lat, lng }), [extId, name, lat, lng])
   const { data: reviews } = usePlaceReviews(reviewTarget, lang)
-  const { data: insights } = useReviewInsights(reviewTarget, lang)
   const rating = reviews?.rating != null ? String(reviews.rating) : (p.rating ?? '4.7')
-  // 캐시된 번역 힌트 — 작성자+원문 매칭(지도와 동일 규칙)
-  const translatedFor = (who: string, text: string) =>
-    insights?.reviews.find((x) => x.who === who && x.text === text)?.translated ?? null
+
+  // 장소 사진 여러 장 (이미지 슬라이드) — 전달받은 대표 이미지 + Google Places 사진
+  const [heroW, setHeroW] = useState(0)
+  const [heroIdx, setHeroIdx] = useState(0)
+  const { data: morePhotos } = useQuery({
+    queryKey: ['place-photos', extId],
+    staleTime: 24 * 60 * 60 * 1000,
+    queryFn: async (): Promise<string[]> => {
+      const { data } = await supabase.functions.invoke('place-lookup', {
+        body: { photosName: `${name} Busan` },
+      })
+      return (data?.urls ?? []) as string[]
+    },
+  })
+  const heroImages = useMemo(() => {
+    const all = [img, ...(morePhotos ?? [])].filter((u): u is string => !!u)
+    return [...new Set(all)]
+  }, [img, morePhotos])
 
   // 즐겨찾기 상태 (extId 기준)
   const { data: favorites } = useFavorites()
@@ -104,13 +119,34 @@ export default function PlaceScreen() {
         style={{ height: insets.top, width: '100%' }}
       />
       <ScrollView showsVerticalScrollIndicator={false}>
-        <View>
-          {img ? (
-            <Image
-              source={{ uri: img }}
-              style={{ width: '100%', height: 180 }}
-              resizeMode="cover"
-            />
+        <View onLayout={(e) => setHeroW(e.nativeEvent.layout.width)}>
+          {heroImages.length > 0 ? (
+            <>
+              {/* 이미지 슬라이드 — 좌우 스와이프로 여러 장 (기존 180 높이 형식 유지) */}
+              <ScrollView
+                horizontal
+                pagingEnabled
+                showsHorizontalScrollIndicator={false}
+                onMomentumScrollEnd={(e) =>
+                  heroW > 0 && setHeroIdx(Math.round(e.nativeEvent.contentOffset.x / heroW))
+                }>
+                {heroImages.map((u) => (
+                  <Image
+                    key={u}
+                    source={{ uri: u }}
+                    style={{ width: heroW || '100%', height: 180 }}
+                    resizeMode="cover"
+                  />
+                ))}
+              </ScrollView>
+              {heroImages.length > 1 && (
+                <View style={ss.heroDots} pointerEvents="none">
+                  {heroImages.map((u, i) => (
+                    <View key={u} style={[ss.heroDot, i === heroIdx && ss.heroDotOn]} />
+                  ))}
+                </View>
+              )}
+            </>
           ) : (
             <PlaceThumb category={cat} height={180} />
           )}
@@ -178,72 +214,10 @@ export default function PlaceScreen() {
             </Pressable>
           </View>
 
-          {/* ── 리뷰 — 지도 시트와 동일 데이터(한국인/외국인 관점 + AI 요약 + 목록) ── */}
-          {reviews && (
-            <View style={{ marginTop: 22 }}>
-              <Text style={ss.sectionTitle}>{t('map.reviews')}</Text>
-
-              {/* 관점 요약 카드 — 네이버(한국인)/구글(외국인) 대표 리뷰 */}
-              <View style={{ flexDirection: 'row', gap: 8, marginTop: 10 }}>
-                {reviews.korean && (
-                  <View style={[ss.persCard, { borderColor: '#03C75A55' }]}>
-                    <Text style={ss.persLabel}>🇰🇷 Local</Text>
-                    <Text style={ss.persScore}>★ {reviews.korean.score}</Text>
-                    <Text style={ss.persText} numberOfLines={3}>
-                      {reviews.korean.text}
-                    </Text>
-                  </View>
-                )}
-                {reviews.foreign && (
-                  <View style={[ss.persCard, { borderColor: '#4285F455' }]}>
-                    <Text style={ss.persLabel}>🌐 Traveler</Text>
-                    <Text style={ss.persScore}>★ {reviews.foreign.score}</Text>
-                    <Text style={ss.persText} numberOfLines={3}>
-                      {reviews.foreign.text}
-                    </Text>
-                  </View>
-                )}
-              </View>
-
-              {/* AI 요약 (서버 캐시 — 지도와 동일 소스) */}
-              {insights?.summary ? (
-                <View style={ss.aiCard}>
-                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                    <Icon name="auto_awesome" size={14} color={palette.blue[50]} filled />
-                    <Text style={ss.aiTitle}>AI Summary</Text>
-                    {insights.provider === 'mock' && <FallbackBadge label="Sample" />}
-                  </View>
-                  <Text style={ss.aiText}>{insights.summary}</Text>
-                  {insights.sources && (
-                    <Text style={ss.aiSources}>
-                      Google {insights.sources.google} · Naver blog {insights.sources.naver}
-                    </Text>
-                  )}
-                </View>
-              ) : null}
-
-              {/* 개별 리뷰 목록 — 번역 캐시 있으면 번역문 우선, 원문 병기 */}
-              {reviews.reviews.map((r, i) => {
-                const tr = translatedFor(r.who, r.text)
-                return (
-                  <View key={`${r.who}-${i}`} style={ss.reviewCard}>
-                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                      <Text style={{ fontSize: 13 }}>{r.flag}</Text>
-                      <Text style={ss.reviewWho}>{r.who}</Text>
-                      <Text style={ss.reviewScore}>★ {r.score}</Text>
-                      <Text style={ss.reviewTime}>{r.time}</Text>
-                    </View>
-                    <Text style={ss.reviewText}>{tr ?? r.text}</Text>
-                    {tr && (
-                      <Text style={ss.reviewOrig} numberOfLines={2}>
-                        {r.text}
-                      </Text>
-                    )}
-                  </View>
-                )
-              })}
-            </View>
-          )}
+          {/* ── 리뷰 — 지도 시트와 동일한 공용 섹션(AI 요약·출처 카드 필터·번역 토글) ── */}
+          <View style={{ marginTop: 14 }}>
+            <PlaceReviewsSection target={reviewTarget} />
+          </View>
         </View>
       </ScrollView>
     </View>
@@ -290,38 +264,21 @@ const ss = StyleSheet.create({
     alignItems: 'center',
   },
   iconBtnActive: { borderColor: palette.coral[50], backgroundColor: palette.coral[95] },
-  sectionTitle: { fontSize: 15, fontWeight: '800', color: palette.zinc[900] },
-  persCard: {
-    flex: 1,
-    borderWidth: 1,
-    borderRadius: 14,
-    padding: 10,
-    backgroundColor: '#FAFAFA',
+  // 이미지 슬라이드 인디케이터
+  heroDots: {
+    position: 'absolute',
+    bottom: 8,
+    left: 0,
+    right: 0,
+    flexDirection: 'row',
+    justifyContent: 'center',
+    gap: 5,
   },
-  persLabel: { fontSize: 11, fontWeight: '800', color: palette.zinc[700] },
-  persScore: { fontSize: 12, fontWeight: '800', color: '#D97706', marginTop: 2 },
-  persText: { fontSize: 11.5, color: palette.zinc[700], marginTop: 4, lineHeight: 16 },
-  aiCard: {
-    marginTop: 10,
-    borderRadius: 14,
-    padding: 12,
-    backgroundColor: '#EFF6FF',
-    ...shadows.card,
+  heroDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 999,
+    backgroundColor: 'rgba(255,255,255,.55)',
   },
-  aiTitle: { fontSize: 12, fontWeight: '800', color: '#0369A1' },
-  aiText: { fontSize: 12.5, color: palette.zinc[800], lineHeight: 18, marginTop: 6 },
-  aiSources: { fontSize: 10.5, color: palette.zinc[500], marginTop: 6 },
-  reviewCard: {
-    marginTop: 10,
-    borderRadius: 14,
-    borderWidth: 0.5,
-    borderColor: palette.zinc[200],
-    padding: 12,
-    backgroundColor: '#fff',
-  },
-  reviewWho: { fontSize: 12.5, fontWeight: '700', color: palette.zinc[900] },
-  reviewScore: { fontSize: 11.5, fontWeight: '800', color: '#D97706' },
-  reviewTime: { fontSize: 10.5, color: palette.zinc[400], marginLeft: 'auto' },
-  reviewText: { fontSize: 12.5, color: palette.zinc[800], lineHeight: 18, marginTop: 6 },
-  reviewOrig: { fontSize: 11, color: palette.zinc[400], lineHeight: 15, marginTop: 4 },
+  heroDotOn: { backgroundColor: '#fff', width: 14 },
 })

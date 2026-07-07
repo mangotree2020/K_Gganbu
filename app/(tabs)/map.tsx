@@ -42,13 +42,10 @@ import {
   type NaverMapHandle,
   type NaverMarker,
 } from '@/features/map/NaverMap'
-import { usePlaceReviews, type PlaceReview } from '@/features/review/queries'
-import { useReviewInsights } from '@/features/review/insights'
+import { PlaceReviewsSection } from '@/features/review/PlaceReviewsSection'
 import { getTickets, type Ticket } from '@/features/ticket/services'
-import { translateText } from '@/features/translate/services'
 import { useCurrentLocation } from '@/hooks/useCurrentLocation'
 import { useTabBarAutoHide, useTabBarStore } from '@/hooks/useTabBarAutoHide'
-import { appFlag, baseLang, flagFor } from '@/lib/flags'
 import { useLocaleStore, useT } from '@/lib/i18n'
 import { palette, shadows } from '@/theme/tokens'
 
@@ -161,110 +158,6 @@ const catGlyph = (cat: string) => CAT_GLYPH[cat] ?? '📍'
 // 개별 리뷰 행 — 리뷰 언어가 앱 언어와 다르면 출발 국기(예: 🇰🇷)를 표시하고,
 // 국기를 탭하면 앱 언어로 번역 + 국기를 앱 언어 국기로 교체. 미번역 외국어 리뷰의 국기는
 // 화면에 보일 때 탭 유도를 위해 브르르 떨린다(주기적 wiggle).
-function ReviewRow({
-  review,
-  appLang,
-  translatedHint,
-}: {
-  review: PlaceReview
-  appLang: string
-  translatedHint?: string | null // 서버 캐시(review-insights) 번역 — 있으면 API 호출 없이 즉시 사용
-}) {
-  const t = useT()
-  const needsTranslate = !!review.text && baseLang(review.lang) !== baseLang(appLang)
-  const [fetched, setFetched] = useState<string | null>(null)
-  const [showOriginal, setShowOriginal] = useState(false)
-  const translated = fetched ?? translatedHint ?? null
-  const [busy, setBusy] = useState(false)
-  const shake = useState(() => new Animated.Value(0))[0]
-
-  // 미번역 외국어 리뷰 국기 — 주기적으로 떨려 "탭하면 번역" 유도
-  useEffect(() => {
-    if (!needsTranslate || translated) return
-    let alive = true
-    const wiggle = () => {
-      Animated.sequence([
-        Animated.timing(shake, { toValue: 1, duration: 55, useNativeDriver: true }),
-        Animated.timing(shake, { toValue: -1, duration: 55, useNativeDriver: true }),
-        Animated.timing(shake, { toValue: 1, duration: 55, useNativeDriver: true }),
-        Animated.timing(shake, { toValue: 0, duration: 55, useNativeDriver: true }),
-      ]).start(() => {
-        if (alive) setTimeout(() => alive && wiggle(), 2400)
-      })
-    }
-    wiggle()
-    return () => {
-      alive = false
-    }
-  }, [needsTranslate, translated, shake])
-
-  const onTapFlag = async () => {
-    // 번역이 이미 있으면(캐시 힌트 포함) 원문↔번역 토글만 — 추가 API 호출 없음
-    if (translated) {
-      setShowOriginal((o) => !o)
-      return
-    }
-    if (!needsTranslate || busy) return
-    setBusy(true)
-    try {
-      const { translatedText } = await translateText({
-        source: baseLang(review.lang),
-        target: appLang,
-        text: review.text,
-      })
-      setFetched(translatedText)
-      setShowOriginal(false)
-    } finally {
-      setBusy(false)
-    }
-  }
-
-  const showTranslated = !!translated && !showOriginal
-  const flag = showTranslated ? appFlag(appLang) : review.flag || flagFor(review.lang)
-  const text = showTranslated ? translated! : review.text
-  const wobble = needsTranslate && !translated
-  const rotate = shake.interpolate({ inputRange: [-1, 1], outputRange: ['-11deg', '11deg'] })
-
-  return (
-    <View style={ss.reviewItem}>
-      <Pressable
-        onPress={onTapFlag}
-        disabled={(!wobble && !translated) || busy}
-        hitSlop={8}
-        style={ss.reviewAvatar}>
-        <Animated.Text style={[ss.reviewAvatarFlag, wobble && { transform: [{ rotate }] }]}>
-          {flag}
-        </Animated.Text>
-      </Pressable>
-      <View style={{ flex: 1 }}>
-        <View style={ss.reviewItemTop}>
-          <Text style={ss.reviewWho}>{review.who}</Text>
-          <View style={ss.reviewStars}>
-            {[1, 2, 3, 4, 5].map((s) => (
-              <Icon
-                key={s}
-                name="star"
-                size={9}
-                color={s <= review.score ? palette.amber[50] : palette.zinc[200]}
-                filled
-              />
-            ))}
-          </View>
-          <Text style={ss.reviewTime}>{review.time}</Text>
-        </View>
-        <Text style={ss.reviewItemText}>{text}</Text>
-        {wobble && (
-          <Pressable onPress={onTapFlag} hitSlop={6}>
-            <Text style={ss.reviewTapHint}>
-              {busy ? '…' : `${flagFor(review.lang)} ${t('map.tapTranslate')}`}
-            </Text>
-          </Pressable>
-        )}
-      </View>
-    </View>
-  )
-}
-
 export default function MapScreen() {
   const t = useT()
   // 시트 리뷰 영역 플릭 시에도 X식 하단 탭바 자동 숨김/표시
@@ -412,28 +305,8 @@ export default function MapScreen() {
     return sortedPlaces.find((p) => p.id === selectedId) ?? sortedPlaces[0]
   }, [sortedPlaces, selectedId, tapped])
 
-  // 선택 장소의 실 리뷰(Google Places, 한국인/외국인 분리). 실패 시 mock 폴백.
-  const reviewTarget = place
-    ? { id: place.id, name: place.name, lat: place.lat, lng: place.lng }
-    : null
-  const { data: reviews } = usePlaceReviews(reviewTarget, lang)
-  const reviewsMock = reviews?.provider === 'mock'
-  // AI 요약 + 번역 캐시(REQ-REV-1·2) — 서버가 장소×언어 단위로 저장·재사용
-  const { data: insights } = useReviewInsights(reviewTarget, lang)
-  // 캐시된 번역 힌트 — 작성자+원문으로 매칭(상대 시간 표기는 캐시 시점에 따라 달라질 수 있음)
-  const translatedFor = (r: PlaceReview) =>
-    insights?.reviews.find((x) => x.who === r.who && x.text === r.text)?.translated ?? null
-  // 리뷰 출처 필터 — 네이버(한국인)/구글(외국인) 카드를 탭하면 해당 리뷰만 표시(토글)
-  const [reviewFilter, setReviewFilter] = useState<'korean' | 'foreign' | null>(null)
-  // 선택 장소가 바뀌면 필터 초기화
-  const shownReviews = useMemo(() => {
-    const all = reviews?.reviews ?? []
-    if (!reviewFilter) return all
-    return all.filter((r) => {
-      const isKo = (r.lang ?? '').toLowerCase().startsWith('ko')
-      return reviewFilter === 'korean' ? isKo : !isKo
-    })
-  }, [reviews, reviewFilter])
+  // 선택 장소의 리뷰(제목·AI 요약·출처 카드·목록)는 공용 PlaceReviewsSection이 담당
+  // — 장소 상세(place.tsx)와 레이아웃·기능 단일화. key=place.id 로 장소 변경 시 필터 초기화.
 
   // 검색 결과로 지도 이동
   const goToSearchResult = (r: NaverPoi) => {
@@ -656,7 +529,6 @@ export default function MapScreen() {
     // 다른 장소 선택 시 기존 경로·리뷰 필터 초기화
     if (p.id !== selectedId) {
       setRouteInfo(null)
-      setReviewFilter(null)
       routePathRef.current = null
       naverRef.current?.clearRoute()
       googleRef.current?.clearRoute()
@@ -694,7 +566,6 @@ export default function MapScreen() {
     setTapped(res)
     setSelected(res.id)
     setRouteInfo(null)
-    setReviewFilter(null)
   }
 
   // 길찾기 — 현재 위치 → 선택 장소 (Naver Directions, 양 지도에 Polyline)
@@ -757,7 +628,6 @@ export default function MapScreen() {
     }
     setTapped(poi)
     setSelected(poi.id)
-    setReviewFilter(null)
     // WebView 지도 로딩 시간 확보 후 이동·경로 — 미로딩 시 경로는 onReady 재주입이 커버
     setTimeout(() => {
       naverRef.current?.moveTo(fLat, fLng, WALK_ZOOM)
@@ -841,23 +711,6 @@ export default function MapScreen() {
 
   // 외부 지도 앱 딥링크 (현지인=Naver / 외국인=Google)
   // Naver: 공식 앱 스킴 nmap://place(좌표+이름 → 정확한 장소 핀) → 미설치 시 웹 지도 검색 폴백
-  // Google: Place ID(review-insights가 확보)로 장소 상세 연결 → 없으면 좌표 핀 폴백
-  const openExternal = (kind: 'naver' | 'google') => {
-    if (!place?.lat || !place?.lng) return
-    const name = encodeURIComponent(place.name)
-    if (kind === 'naver') {
-      const app = `nmap://place?lat=${place.lat}&lng=${place.lng}&name=${name}&appname=com.mangonw.gganbu`
-      const web = `https://map.naver.com/p/search/${name}`
-      Linking.openURL(app).catch(() => Linking.openURL(web).catch(() => {}))
-      return
-    }
-    const placeId = insights?.placeKey
-    const url = placeId
-      ? `https://www.google.com/maps/search/?api=1&query=${name}&query_place_id=${placeId}`
-      : `https://www.google.com/maps/search/?api=1&query=${place.lat},${place.lng}`
-    Linking.openURL(url).catch(() => {})
-  }
-
   return (
     <View style={ss.container}>
       {/* 지도 영역 */}
@@ -1254,134 +1107,11 @@ export default function MapScreen() {
                 })}
               </ScrollView>
 
-              {/* 리뷰 — 두 관점 요약(실데이터, 언어별 분리) + 개별 리뷰 목록 */}
-              <View style={ss.sectionTitleRow}>
-                <Text style={ss.sectionTitle}>{t('map.reviews')}</Text>
-                {reviews?.rating != null && (
-                  <Text style={ss.reviewOverall}>
-                    ★ {reviews.rating.toFixed(1)} · {reviews.total}
-                  </Text>
-                )}
-                {reviewsMock && <FallbackBadge label="Sample" />}
-              </View>
-              {/* AI 리뷰 요약(REQ-REV-1) — 장소×언어 서버 캐시로 사용자 간 재사용 */}
-              {insights?.summary ? (
-                <View style={ss.aiSummaryCard}>
-                  <View style={ss.aiSummaryHead}>
-                    <Icon name="auto_awesome" size={14} color={palette.blue[50]} filled />
-                    <Text style={ss.aiSummaryTitle}>{t('map.aiSummary')}</Text>
-                    {insights.provider === 'mock' && <FallbackBadge label="Sample" />}
-                  </View>
-                  <Text style={ss.aiSummaryText}>{insights.summary}</Text>
-                  {insights.sources && (
-                    <Text style={ss.aiSummarySrc}>
-                      Google {insights.sources.google} · Naver blog {insights.sources.naver}
-                    </Text>
-                  )}
-                </View>
-              ) : null}
-              <View style={ss.reviewRow}>
-                {/* 카드 = 출처 필터(탭하면 해당 리뷰만). 우측 상단 아이콘만 지도 앱 호출 */}
-                <Pressable
-                  onPress={() => setReviewFilter((f) => (f === 'korean' ? null : 'korean'))}
-                  style={[
-                    ss.reviewCard,
-                    { borderColor: '#03C75A' },
-                    reviewFilter === 'korean' && ss.reviewCardSelN,
-                    reviewFilter === 'foreign' && ss.reviewCardDim,
-                  ]}>
-                  <View style={ss.reviewCardHead}>
-                    <View style={[ss.platformBadge, { backgroundColor: '#03C75A' }]}>
-                      <Text style={ss.platformBadgeText}>N</Text>
-                    </View>
-                    <Text style={ss.reviewCardTitle}>{t('map.reviewKorean')}</Text>
-                    <Pressable
-                      onPress={() => openExternal('naver')}
-                      hitSlop={10}
-                      style={ss.reviewExtBtn}>
-                      <Icon name="open_in_new" size={15} color="#03C75A" />
-                    </Pressable>
-                  </View>
-                  {reviews?.korean ? (
-                    <>
-                      <View style={ss.reviewStars}>
-                        {[1, 2, 3, 4, 5].map((i) => (
-                          <Icon
-                            key={i}
-                            name="star"
-                            size={11}
-                            color={
-                              i <= Math.round(reviews.korean!.score)
-                                ? palette.amber[50]
-                                : palette.zinc[200]
-                            }
-                            filled
-                          />
-                        ))}
-                        <Text style={ss.reviewScore}>{reviews.korean.score.toFixed(1)}</Text>
-                      </View>
-                      <Text style={ss.reviewQuote} numberOfLines={2}>
-                        “{reviews.korean.text}”
-                      </Text>
-                    </>
-                  ) : (
-                    <Text style={ss.reviewNone}>{t('map.reviewNone')}</Text>
-                  )}
-                </Pressable>
-                <Pressable
-                  onPress={() => setReviewFilter((f) => (f === 'foreign' ? null : 'foreign'))}
-                  style={[
-                    ss.reviewCard,
-                    { borderColor: '#4285F4' },
-                    reviewFilter === 'foreign' && ss.reviewCardSelG,
-                    reviewFilter === 'korean' && ss.reviewCardDim,
-                  ]}>
-                  <View style={ss.reviewCardHead}>
-                    <View style={[ss.platformBadge, { backgroundColor: '#4285F4' }]}>
-                      <Text style={ss.platformBadgeText}>G</Text>
-                    </View>
-                    <Text style={ss.reviewCardTitle}>{t('map.reviewForeign')}</Text>
-                    <Pressable
-                      onPress={() => openExternal('google')}
-                      hitSlop={10}
-                      style={ss.reviewExtBtn}>
-                      <Icon name="open_in_new" size={15} color="#4285F4" />
-                    </Pressable>
-                  </View>
-                  {reviews?.foreign ? (
-                    <>
-                      <View style={ss.reviewStars}>
-                        {[1, 2, 3, 4, 5].map((i) => (
-                          <Icon
-                            key={i}
-                            name="star"
-                            size={11}
-                            color={
-                              i <= Math.round(reviews.foreign!.score)
-                                ? palette.amber[50]
-                                : palette.zinc[200]
-                            }
-                            filled
-                          />
-                        ))}
-                        <Text style={ss.reviewScore}>{reviews.foreign.score.toFixed(1)}</Text>
-                      </View>
-                      <Text style={ss.reviewQuote} numberOfLines={2}>
-                        “{reviews.foreign.text}”
-                      </Text>
-                    </>
-                  ) : (
-                    <Text style={ss.reviewNone}>{t('map.reviewNone')}</Text>
-                  )}
-                </Pressable>
-              </View>
-              {/* 개별 리뷰 — 선택된 출처 카드의 리뷰만(필터). 미선택 시 전체 */}
-              {shownReviews.length === 0 && reviewFilter ? (
-                <Text style={ss.reviewNone}>{t('map.reviewNone')}</Text>
-              ) : null}
-              {shownReviews.map((r, i) => (
-                <ReviewRow key={i} review={r} appLang={lang} translatedHint={translatedFor(r)} />
-              ))}
+              {/* 리뷰 — 공용 섹션(장소 상세와 동일 레이아웃). key로 장소 변경 시 필터 초기화 */}
+              <PlaceReviewsSection
+                key={place.id}
+                target={{ id: place.id, name: place.name, lat: place.lat, lng: place.lng }}
+              />
             </ScrollView>
           </>
         ) : (

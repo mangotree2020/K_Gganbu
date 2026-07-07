@@ -91,6 +91,36 @@ Deno.serve(async (req) => {
     const key = Deno.env.get('GOOGLE_PLACES_API_KEY') ?? Deno.env.get('GOOGLE_MAPS_API_KEY')
     if (!key) return json({ error: 'no_key' }, 502)
 
+    // ⓪-1 이름 → 장소 사진 여러 장 (장소 상세 이미지 슬라이드용, 최대 6장)
+    const photosName: string | undefined = body.photosName
+    if (photosName) {
+      const findUrl =
+        `https://maps.googleapis.com/maps/api/place/findplacefromtext/json` +
+        `?input=${encodeURIComponent(photosName)}&inputtype=textquery&fields=place_id&key=${key}`
+      const fd = await fetch(findUrl).then((r) => r.json())
+      const pid: string | undefined = fd.candidates?.[0]?.place_id
+      if (!pid) return json({ urls: [] })
+      const det = await fetch(
+        `https://maps.googleapis.com/maps/api/place/details/json?place_id=${pid}&fields=photos&key=${key}`,
+      ).then((r) => r.json())
+      const refs: string[] = (det.result?.photos ?? [])
+        .slice(0, 6)
+        .map((p: { photo_reference: string }) => p.photo_reference)
+      // Photo 302 추적으로 키 없는 lh3 URL 확보 (병렬)
+      const urls = (
+        await Promise.all(
+          refs.map(async (ref) => {
+            const pr = await fetch(
+              `https://maps.googleapis.com/maps/api/place/photo?maxwidth=800&photoreference=${ref}&key=${key}`,
+              { redirect: 'manual' },
+            )
+            return pr.headers.get('location')
+          }),
+        )
+      ).filter(Boolean)
+      return json({ urls })
+    }
+
     // ⓪ 이름 → 장소 대표 사진 URL (Find Place → Photo 302 추적으로 키 없는 lh3 URL 확보)
     const photoName: string | undefined = body.photoName
     if (photoName) {
