@@ -88,7 +88,7 @@
 > **📌 07-06 진행(R2 착수 — 포인트 경제 v1)**:
 > ✅ **포인트 원장(REQ-PT-1·2)** — `points_ledger` 로트(FIFO) 회계·멱등키·RPC 4종(service role 전용)·`points_balance` 뷰, 일 상한 KST 서버 강제(steps 100/stamp 150/challenge·game 공유 30), pg_cron 소멸 배치(매일 KST 00:10). 실 DB 시나리오 검증 완료(클램프·멱등·FIFO·원복·소멸).
 > ✅ `points` Edge Function 배포 — summary(잔액·소멸 예정·내역) + earn_steps(하루 1회 멱등, 게스트 403). 401/403/200 실호출 검증.
-> 🟡 **포인트 홈(REQ-PT-4)** — CouTix 3번째 세그먼트(잔액·내역·소멸 예정, 게스트 로그인 유도) + 홈 걸음 배지 탭→적립(REQ-PD-2 서버 경로) 연결, i18n 5개 언어. 실기기 검증 잔여.
+> ✅ **포인트 홈(REQ-PT-4)** — CouTix 3번째 세그먼트(잔액·내역·소멸 예정, 게스트 로그인 유도) + 홈 걸음 배지 탭→적립(REQ-PD-2 서버 경로) 연결, i18n 5개 언어. **실기기 검증 완료(07-07 release 빌드 — 잔액 카드·기프트샵·걸음 배지·지도 딜 바·도보 길안내 화면 확인)**.
 > ✅ **콘텐츠 이미지 미표시 수정** — TourAPI `firstimage` http→https 승격(places 함수 v20 배포 + 클라이언트 MMKV 캐시 정규화). release 빌드 cleartext 차단이 원인.
 >
 > **🔜 프로덕션 준비 TODO(비차단, 나중에 처리)**:
