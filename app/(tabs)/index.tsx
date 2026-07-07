@@ -317,6 +317,48 @@ function playMeow() {
   }
 }
 
+// 장소 상세는 지도 탭 시트로 통일 — 지도와 동일 기능(길찾기·딜 바·리뷰 출처 필터·AI 요약)
+// + 하단 탭바 유지. 좌표가 없는 항목만 기존 상세 모달(/place)로 폴백.
+export function openPlaceOnMap(p: {
+  name: string
+  cat?: string
+  lat?: number | null
+  lng?: number | null
+  extId?: string
+  sub?: string
+  imageUrl?: string | null
+  rating?: number
+  badge?: string
+}) {
+  if (p.lat != null && p.lng != null) {
+    router.push({
+      pathname: '/(tabs)/map',
+      params: {
+        fId: p.extId ?? '',
+        fName: p.name,
+        fLat: String(p.lat),
+        fLng: String(p.lng),
+        fCat: p.cat ?? 'sights',
+      },
+    })
+    return
+  }
+  router.push({
+    pathname: '/place',
+    params: {
+      cat: p.cat ?? 'sights',
+      name: p.name,
+      sub: p.sub ?? '',
+      rating: p.rating ? String(p.rating) : '',
+      badge: p.badge ?? '',
+      img: p.imageUrl ?? '',
+      extId: p.extId ?? '',
+      lat: '',
+      lng: '',
+    },
+  })
+}
+
 // 도킹형 플로팅 버튼 — 탭바 노출 중엔 우측으로 밀어 아이콘만 보이고,
 // 탭바가 숨으면(스크롤 다운) 슬라이드로 전체 노출. 도킹 상태에서도 탭 가능.
 const FAB_PEEK_W = 44 // 도킹 시 화면에 남기는 폭 — 좌측 패딩 16 + 아이콘까지만(라벨 숨김)
@@ -560,22 +602,7 @@ function PlaceCard({
 }) {
   return (
     <Pressable
-      onPress={() =>
-        router.push({
-          pathname: '/place',
-          params: {
-            cat,
-            name,
-            sub,
-            rating: rating ? String(rating) : '',
-            badge: badge ?? '',
-            img: imageUrl ?? '',
-            extId: extId ?? '',
-            lat: lat != null ? String(lat) : '',
-            lng: lng != null ? String(lng) : '',
-          },
-        })
-      }
+      onPress={() => openPlaceOnMap({ name, cat, lat, lng, extId, sub, imageUrl, rating, badge })}
       style={[ss.placeCard, shadows.card]}>
       {imageUrl ? (
         <Image
@@ -1162,17 +1189,14 @@ export default function HomeScreen() {
                   <Pressable
                     key={p.id}
                     onPress={() =>
-                      router.push({
-                        pathname: '/place',
-                        params: {
-                          cat: p.cat,
-                          name: p.name,
-                          sub: p.address ?? 'Busan',
-                          img: p.imageUrl ?? '',
-                          extId: p.id,
-                          lat: p.lat != null ? String(p.lat) : '',
-                          lng: p.lng != null ? String(p.lng) : '',
-                        },
+                      openPlaceOnMap({
+                        name: p.name,
+                        cat: p.cat,
+                        lat: p.lat,
+                        lng: p.lng,
+                        extId: p.id,
+                        sub: p.address ?? 'Busan',
+                        imageUrl: p.imageUrl,
                       })
                     }
                     style={[ss.pickCard, { width: SCREEN_W - 72 }, shadows.card]}>

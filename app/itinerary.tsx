@@ -62,11 +62,21 @@ export default function ItineraryScreen() {
     return list.filter((c) => c.duration === filter || c.theme === filter)
   }, [data, filter])
 
-  const openStop = (s: Itinerary['stops'][number]) =>
+  // 장소 상세는 지도 시트로 통일(홈과 동일 정책) — 좌표 확보되면 지도 focus, 없으면 상세 모달 폴백
+  const openStop = (s: Itinerary['stops'][number]) => {
+    const coords = stopCoords(s.place)
+    if (coords) {
+      router.push({
+        pathname: '/(tabs)/map',
+        params: { fName: s.place, fLat: String(coords.lat), fLng: String(coords.lng), fCat: s.cat },
+      })
+      return
+    }
     router.push({
       pathname: '/place',
       params: { name: s.place, sub: s.sub, cat: s.cat },
     })
+  }
 
   // 코스 전체 지도 보기 (UX_REVIEW §4-3) — 좌표 확보된 스팟을 지도 탭에
   // 멀티 핀(순번) + 순서 폴리라인으로 펼친다. 스팟 2개 미만이면 지도만 연다.
