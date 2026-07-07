@@ -22,7 +22,12 @@ import { zodiacImage, zodiacOf, zodiacYearLabel, ZODIAC_EMOJI } from '@/features
 import { useSignOut } from '@/features/auth/queries'
 import { enablePush } from '@/features/notifications/services'
 import { usePushStore } from '@/features/notifications/store'
+import { useQuery } from '@tanstack/react-query'
+
 import { useUserCoupons } from '@/features/coupon/queries'
+import { useTodaySteps } from '@/features/points/pedometer'
+import { usePointsSummary } from '@/features/points/queries'
+import { getMyReviews } from '@/features/review/services'
 import { useFavorites } from '@/features/favorites/queries'
 import { usePassport } from '@/features/passport/queries'
 import { useAuthStore } from '@/features/auth/store'
@@ -31,15 +36,9 @@ import { useTabBarAutoHide } from '@/hooks/useTabBarAutoHide'
 import { APP_LANGS, useLocaleStore, useT, type AppLang } from '@/lib/i18n'
 import { palette, shadows } from '@/theme/tokens'
 
-const STATS = [
-  { n: 3, l: 'Trips', e: '✈️' },
-  { n: 12, l: 'Saved', e: '📍' },
-  { n: 8, l: 'Reviews', e: '⭐' },
-]
-
 type Row = { id: string; label: string; emoji: string; badge?: string; detail?: string }
 const ROWS: Row[] = [
-  { id: 'customize', label: 'Customize home', emoji: '🧩', detail: 'Reorder' },
+  { id: 'points', label: 'Points', emoji: '💰' },
   { id: 'itineraries', label: 'My itineraries', emoji: '🗓', badge: '3' },
   { id: 'tickets', label: 'Tickets', emoji: '🎫' },
   { id: 'saved-places', label: 'Saved places', emoji: '📍', badge: '12' },
@@ -56,7 +55,7 @@ const ROWS: Row[] = [
 
 // 행 id → i18n 키
 const ROW_KEY: Record<string, string> = {
-  customize: 'profile.customize',
+  points: 'coupon.segPoints',
   itineraries: 'profile.itineraries',
   tickets: 'ticket.title',
   'saved-places': 'profile.savedPlaces',
@@ -88,6 +87,25 @@ export default function ProfileScreen() {
   const { data: favorites } = useFavorites()
   const { data: savedCoupons } = useUserCoupons()
   const { data: passport } = usePassport()
+  // 통계 실데이터 — Points(원장 잔액)·Saved(찜)·Reviews(내 리뷰). mock 고정 수치 대체
+  const { steps } = useTodaySteps()
+  const { data: pointsSum } = usePointsSummary()
+  const { data: myReviews } = useQuery({ queryKey: ['my-reviews'], queryFn: getMyReviews })
+  const stats = [
+    {
+      l: 'Points',
+      e: '💰',
+      n: pointsSum?.balance ?? 0,
+      go: () => router.push('/(tabs)/coupons?seg=points' as never),
+    },
+    { l: 'Saved', e: '📍', n: favorites?.length ?? 0, go: () => router.push('/favorites') },
+    {
+      l: 'Reviews',
+      e: '⭐',
+      n: myReviews?.length ?? 0,
+      go: () => router.push('/reviews' as never),
+    },
+  ]
   const pushEnabled = usePushStore((s) => s.enabled)
   const isCruise = useCruiseStore((s) => s.isCruise)
   const setCruise = useCruiseStore((s) => s.setCruise)
@@ -131,6 +149,9 @@ export default function ProfileScreen() {
     else if (r.id === 'saved-coupons') router.push('/saved-coupons')
     else if (r.id === 'allergy') router.push('/allergy')
     else if (r.id === 'phrasebook') router.push('/phrases')
+    else if (r.id === 'points') router.push('/(tabs)/coupons?seg=points' as never)
+    else if (r.id === 'payment') router.push('/tips' as never)
+    else if (r.id === 'settings') router.push('/settings' as never)
   }
 
   return (
@@ -154,24 +175,22 @@ export default function ProfileScreen() {
               <Text style={ss.name}>{profile.displayName || user?.fullName || 'Traveler'}</Text>
               <Text style={ss.sub}>{user?.email ?? '🇯🇵 Japan · EN / 日本語'}</Text>
             </View>
-            <View style={ss.planBox}>
-              <Text style={ss.planLabel}>Plan</Text>
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 3 }}>
-                <Icon name="workspace_premium" size={11} color="#FDE68A" filled />
-                <Text style={ss.planValue}>Premium</Text>
-              </View>
-            </View>
           </View>
 
-          {/* 여행 진행 스트립 */}
-          <View style={ss.tripStrip}>
-            <Text style={{ fontSize: 22 }}>✈️</Text>
+          {/* 오늘 활동 스트립 — 실데이터(걸음·쿠폰·찜), 탭 시 포인트 홈(적립 동선) */}
+          <Pressable
+            style={ss.tripStrip}
+            onPress={() => router.push('/(tabs)/coupons?seg=points' as never)}>
+            <Text style={{ fontSize: 22 }}>👣</Text>
             <View style={{ flex: 1 }}>
-              <Text style={ss.tripTitle}>Busan trip · day 2 of 5</Text>
-              <Text style={ss.tripSub}>3 places visited · 2 coupons used · 12 phrases saved</Text>
+              <Text style={ss.tripTitle}>Busan · {new Date().toLocaleDateString()}</Text>
+              <Text style={ss.tripSub}>
+                👣 {(steps ?? 0).toLocaleString()} · 🎟 {savedCoupons?.length ?? 0} · 📍{' '}
+                {favorites?.length ?? 0}
+              </Text>
             </View>
             <Icon name="chevron_right" size={20} color="#fff" />
-          </View>
+          </Pressable>
         </SafeAreaView>
       </LinearGradient>
 
@@ -181,12 +200,12 @@ export default function ProfileScreen() {
         {...tabBarAutoHide}>
         {/* 통계 */}
         <View style={ss.statsRow}>
-          {STATS.map((s) => (
-            <View key={s.l} style={ss.statCard}>
+          {stats.map((s) => (
+            <Pressable key={s.l} style={ss.statCard} onPress={s.go}>
               <Text style={{ fontSize: 18 }}>{s.e}</Text>
               <Text style={ss.statNum}>{s.n}</Text>
               <Text style={ss.statLabel}>{s.l}</Text>
-            </View>
+            </Pressable>
           ))}
         </View>
 
@@ -237,25 +256,6 @@ export default function ProfileScreen() {
               </View>
             </LinearGradient>
           </TouchableOpacity>
-        </View>
-
-        {/* 프리미엄 */}
-        <View style={{ paddingHorizontal: 16, paddingTop: 12 }}>
-          <LinearGradient
-            colors={['#1E1B4B', '#312E81', '#0EA5E9']}
-            locations={[0, 0.6, 1]}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 1 }}
-            style={ss.premium}>
-            <Text style={{ fontSize: 30 }}>👑</Text>
-            <View style={{ flex: 1 }}>
-              <Text style={ss.premiumTitle}>K-Gganbu Premium · active</Text>
-              <Text style={ss.premiumSub}>Offline maps · unlimited translate · priority AI</Text>
-            </View>
-            <View style={ss.premiumPrice}>
-              <Text style={ss.premiumPriceText}>$4.99/mo</Text>
-            </View>
-          </LinearGradient>
         </View>
 
         {/* 메뉴 행 */}
