@@ -664,6 +664,27 @@ export default function HomeScreen() {
   const t = useT()
   const insets = useSafeAreaInsets() // 상태바 영역 틴트 높이 계산용
   const tabBarHidden = useTabBarStore((s) => s.hidden) // 탭바 숨김 시 플로팅 버튼 위치 보정
+  // 도킹 상태에서 탭 → 이동 대신 먼저 펼침(4초 무동작 시 자동 재도킹), 펼쳐진 뒤 탭 → 이동
+  const [fabOpen, setFabOpen] = useState(false)
+  const fabTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const fabDocked = !tabBarHidden && !fabOpen
+  useEffect(() => {
+    // 탭바 표시 상태가 바뀌면 임시 펼침 해제 (숨김 전환 시엔 어차피 전체 노출)
+    setFabOpen(false)
+    if (fabTimerRef.current) clearTimeout(fabTimerRef.current)
+    return () => {
+      if (fabTimerRef.current) clearTimeout(fabTimerRef.current)
+    }
+  }, [tabBarHidden])
+  const pressFab = (nav: () => void) => {
+    if (!fabDocked) {
+      nav()
+      return
+    }
+    setFabOpen(true)
+    if (fabTimerRef.current) clearTimeout(fabTimerRef.current)
+    fabTimerRef.current = setTimeout(() => setFabOpen(false), 4000)
+  }
   const tabBarAutoHide = useTabBarAutoHide() // 스크롤 방향 따라 하단 탭바 자동 숨김/표시
   const lang = useLocaleStore((s) => s.lang)
   const notifUnread = unreadCount(useInboxStore((s) => s.items))
@@ -1403,8 +1424,8 @@ export default function HomeScreen() {
         pointerEvents="box-none">
         {/* AI Gganbu — 챗봇 화면 */}
         <DockedFab
-          docked={!tabBarHidden}
-          onPress={() => router.push('/(tabs)/ai' as never)}
+          docked={fabDocked}
+          onPress={() => pressFab(() => router.push('/(tabs)/ai' as never))}
           style={ss.gganbuFab}>
           {/* 외곽선 로봇(눈·안테나 보이도록) — filled면 눈 구멍이 메워져 가독성 저하 */}
           <Icon name="smart_toy" size={23} color="#fff" strokeWidth={2.2} />
@@ -1412,8 +1433,8 @@ export default function HomeScreen() {
         </DockedFab>
         {/* AI Translate — 음성 통역 실행화면 바로가기(teal=번역 전용) */}
         <DockedFab
-          docked={!tabBarHidden}
-          onPress={() => router.push('/voice-interpret' as never)}
+          docked={fabDocked}
+          onPress={() => pressFab(() => router.push('/voice-interpret' as never))}
           style={[ss.gganbuFab, ss.translateFab]}>
           <Icon name="translate" size={20} color="#fff" />
           <Text style={ss.gganbuFabText}>Translate</Text>
