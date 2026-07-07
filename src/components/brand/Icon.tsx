@@ -102,6 +102,7 @@ import {
   CloudLightning,
   Droplets,
   type LucideIcon,
+  Wallet,
 } from 'lucide-react-native'
 
 const MAP: Record<string, LucideIcon> = {
@@ -137,6 +138,7 @@ const MAP: Record<string, LucideIcon> = {
   compare_arrows: ArrowLeftRight,
   swap_horiz: ArrowLeftRight,
   confirmation_number: Ticket,
+  wallet: Wallet,
   local_activity: Ticket,
   content_copy: Copy,
   directions_boat: Ship,

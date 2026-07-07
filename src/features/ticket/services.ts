@@ -1,5 +1,6 @@
 // 티켓 (PLANNING §6 "티켓/쿠폰 지갑", §19 ticket, §20 tickets) — mock-first.
 // 초기엔 외부 예매 아웃링크(outlinkUrl), 2차 인앱 결제(§24 payment-router)로 확장.
+import { storage } from '@/lib/mmkv'
 import { withRetry } from '@/lib/withRetry'
 import { USE_MOCK } from '@/lib/config'
 
@@ -106,4 +107,35 @@ export async function getTickets(): Promise<Ticket[]> {
   } catch {
     return MOCK
   }
+}
+
+// ── 내 티켓 (Travel Wallet 지갑 — 소유한 바우처) ──
+// 현재는 아웃링크 예매(외부 결제)라 실 소유 데이터가 없다 → 기본 빈 목록(가짜 소유 표시 금지).
+// 인앱 결제(REQ-PAY-1) 완성 시 결제 완료 훅에서 saveMyTicket으로 적재하는 계약만 먼저 확정.
+
+export type MyTicket = {
+  id: string
+  title: string
+  category: TicketCategory
+  price: number
+  purchasedAt: string // ISO
+  voucher: string // 바우처 코드(오프라인 표시용)
+  status: 'active' | 'used' | 'expired'
+}
+
+const WALLET_TICKETS_KEY = 'wallet:tickets'
+
+export async function getMyTickets(): Promise<MyTicket[]> {
+  try {
+    const raw = storage.getString(WALLET_TICKETS_KEY)
+    return raw ? (JSON.parse(raw) as MyTicket[]) : []
+  } catch {
+    return []
+  }
+}
+
+// 결제 완료 시 호출(payment-router 연동 지점) — 지갑에 바우처 적재
+export async function saveMyTicket(tk: MyTicket): Promise<void> {
+  const cur = await getMyTickets()
+  storage.set(WALLET_TICKETS_KEY, JSON.stringify([tk, ...cur.filter((x) => x.id !== tk.id)]))
 }

@@ -20,7 +20,6 @@ import { ProfileAvatar } from '@/features/profile/Avatar'
 import { useProfileStore } from '@/features/profile/store'
 import { zodiacImage, zodiacOf, zodiacYearLabel, ZODIAC_EMOJI } from '@/features/profile/zodiac'
 import { useSignOut } from '@/features/auth/queries'
-import { enablePush } from '@/features/notifications/services'
 import { usePushStore } from '@/features/notifications/store'
 import { useQuery } from '@tanstack/react-query'
 
@@ -38,18 +37,14 @@ import { palette, shadows } from '@/theme/tokens'
 
 type Row = { id: string; label: string; emoji: string; badge?: string; detail?: string }
 const ROWS: Row[] = [
+  { id: 'wallet', label: 'Travel Wallet', emoji: '👛' },
   { id: 'points', label: 'Points', emoji: '💰' },
-  { id: 'itineraries', label: 'My itineraries', emoji: '🗓', badge: '3' },
-  { id: 'tickets', label: 'Tickets', emoji: '🎫' },
-  { id: 'saved-places', label: 'Saved places', emoji: '📍', badge: '12' },
-  { id: 'saved-coupons', label: 'Saved coupons', emoji: '🎟', badge: '5' },
-  { id: 'reviews', label: 'My reviews', emoji: '⭐', badge: '8' },
+  { id: 'saved-places', label: 'Saved places', emoji: '📍' },
+  { id: 'itineraries', label: 'My itineraries', emoji: '🗓' },
+  { id: 'reviews', label: 'My reviews', emoji: '⭐' },
   { id: 'phrasebook', label: 'Phrasebook', emoji: '🗣' },
   { id: 'allergy', label: 'Allergy card', emoji: '🥜' },
   { id: 'payment', label: 'Payment tips', emoji: '💳' },
-  { id: 'cruise', label: 'Cruise mode', emoji: '🚢' },
-  { id: 'notifications', label: 'Notifications', emoji: '🔔' },
-  { id: 'language', label: 'Language', emoji: '🌐' },
   { id: 'settings', label: 'Settings', emoji: '⚙️' },
 ]
 
@@ -57,16 +52,12 @@ const ROWS: Row[] = [
 const ROW_KEY: Record<string, string> = {
   points: 'coupon.segPoints',
   itineraries: 'profile.itineraries',
-  tickets: 'ticket.title',
+  wallet: 'wallet.title',
   'saved-places': 'profile.savedPlaces',
-  'saved-coupons': 'profile.savedCoupons',
   reviews: 'profile.reviews',
   phrasebook: 'profile.phrasebook',
   allergy: 'profile.allergy',
   payment: 'profile.payment',
-  cruise: 'cruise.title',
-  notifications: 'profile.notifications',
-  language: 'common.language',
   settings: 'common.settings',
 }
 
@@ -108,24 +99,11 @@ export default function ProfileScreen() {
   ]
   const pushEnabled = usePushStore((s) => s.enabled)
   const isCruise = useCruiseStore((s) => s.isCruise)
-  const setCruise = useCruiseStore((s) => s.setCruise)
-  const setPushEnabled = usePushStore((s) => s.setEnabled)
-
-  // 알림 opt-in 토글 — 켤 때만 권한·토큰 등록(just-in-time)
-  const toggleNotifications = async () => {
-    if (pushEnabled) {
-      setPushEnabled(false)
-      return
-    }
-    const ok = await enablePush()
-    setPushEnabled(ok)
-  }
 
   // 저장 항목 개수는 실데이터로 표시
   const badgeFor = (r: Row) => {
     if (r.id === 'saved-places') return favorites?.length ? String(favorites.length) : undefined
-    if (r.id === 'saved-coupons')
-      return savedCoupons?.length ? String(savedCoupons.length) : undefined
+    if (r.id === 'wallet') return savedCoupons?.length ? String(savedCoupons.length) : undefined
     return r.badge
   }
 
@@ -138,15 +116,10 @@ export default function ProfileScreen() {
     return r.detail
   }
   const onRowPress = (r: Row) => {
-    if (r.id === 'language') setLangOpen(true)
-    else if (r.id === 'notifications') toggleNotifications()
-    else if (r.id === 'cruise')
-      setCruise(!isCruise) // 크루즈 고객 설정 — 홈 크루즈 타일 노출
+    if (r.id === 'wallet') router.push('/wallet' as never)
     else if (r.id === 'itineraries') router.push('/itinerary' as never)
-    else if (r.id === 'tickets') router.push('/(tabs)/coupons?seg=tickets' as never)
     else if (r.id === 'reviews') router.push('/reviews' as never)
     else if (r.id === 'saved-places') router.push('/favorites')
-    else if (r.id === 'saved-coupons') router.push('/saved-coupons')
     else if (r.id === 'allergy') router.push('/allergy')
     else if (r.id === 'phrasebook') router.push('/phrases')
     else if (r.id === 'points') router.push('/(tabs)/coupons?seg=points' as never)

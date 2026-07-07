@@ -10,7 +10,7 @@ import { useCruiseStore } from '@/features/cruise/prefs'
 import { isPingsEnabled, setPingsEnabled } from '@/features/journey/pings'
 import { enablePush } from '@/features/notifications/services'
 import { usePushStore } from '@/features/notifications/store'
-import { useT } from '@/lib/i18n'
+import { APP_LANGS, useLocaleStore, useT } from '@/lib/i18n'
 import { palette, shadows } from '@/theme/tokens'
 
 // 정적 호스팅 후 실 URL로 교체 (SETUP_EXTERNAL "QR 랜딩·Admin 호스팅"과 동일 체계)
@@ -19,6 +19,8 @@ const TERMS_URL = 'https://mangonw.com/kgganbu/terms'
 
 export default function SettingsScreen() {
   const t = useT()
+  const lang = useLocaleStore((s) => s.lang)
+  const setLang = useLocaleStore((s) => s.setLang)
   const pushEnabled = usePushStore((s) => s.enabled)
   const setPushEnabled = usePushStore((s) => s.setEnabled)
   const isCruise = useCruiseStore((s) => s.isCruise)
@@ -80,6 +82,18 @@ export default function SettingsScreen() {
           </View>
         </View>
 
+        {/* 언어 선택 — My 목록에서 Settings로 일원화 */}
+        <View style={[ss.card, shadows.card]}>
+          {APP_LANGS.map((l, i) => (
+            <Text
+              key={l.code}
+              style={[ss.langRow, i > 0 && ss.rowBorderTop, l.code === lang && ss.langRowOn]}
+              onPress={() => setLang(l.code)}>
+              {l.flag} {l.label} {l.code === lang ? '✓' : ''}
+            </Text>
+          ))}
+        </View>
+
         {/* 법적 고지 */}
         <View style={[ss.card, shadows.card]}>
           <Text style={ss.rowLink} onPress={() => Linking.openURL(PRIVACY_URL).catch(() => {})}>
@@ -124,6 +138,8 @@ const ss = StyleSheet.create({
     paddingVertical: 13,
   },
   rowBorderTop: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: palette.zinc[200] },
+  langRow: { fontSize: 13.5, fontWeight: '600', color: palette.zinc[800], paddingVertical: 12 },
+  langRowOn: { color: palette.blue[50], fontWeight: '800' },
   versionRow: { alignItems: 'center', paddingVertical: 8 },
   versionText: { fontSize: 11.5, color: palette.zinc[400] },
 })
