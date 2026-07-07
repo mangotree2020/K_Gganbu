@@ -3,7 +3,7 @@ import { useQuery } from '@tanstack/react-query'
 import { LinearGradient } from 'expo-linear-gradient'
 import { router, useLocalSearchParams } from 'expo-router'
 import { useEffect, useMemo, useState } from 'react'
-import { Linking, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
+import { Alert, Linking, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 
 import { Icon, Pill } from '@/components/brand'
@@ -19,7 +19,8 @@ import {
 } from '@/features/gifticon/services'
 import { useWalkRank } from '@/features/journey/queries'
 import { usePointsSummary, type PointsEntry } from '@/features/points/queries'
-import { getTickets, type Ticket } from '@/features/ticket/services'
+import { routePayment } from '@/features/payment/router'
+import { getTickets, saveMyTicket, type Ticket } from '@/features/ticket/services'
 import { useAuthStore } from '@/features/auth/store'
 import { useLoginPrompt, useRequireAccount } from '@/features/auth/loginPrompt'
 import { useTabBarAutoHide } from '@/hooks/useTabBarAutoHide'
@@ -148,6 +149,15 @@ export default function CouTixScreen() {
   const [seg, setSeg] = useState<Seg>(
     params.seg === 'tickets' || params.seg === 'points' ? params.seg : 'coupons',
   )
+  // 탭이 이미 마운트된 상태에서 딥링크(?seg=)로 재진입해도 세그먼트가 정확히 전환되도록
+  // (렌더 중 상태 조정 패턴 — 이펙트 setState의 연쇄 렌더 회피)
+  const [prevParamSeg, setPrevParamSeg] = useState(params.seg)
+  if (params.seg !== prevParamSeg) {
+    setPrevParamSeg(params.seg)
+    if (params.seg === 'tickets' || params.seg === 'points' || params.seg === 'coupons') {
+      setSeg(params.seg)
+    }
+  }
   const [couponFilter, setCouponFilter] = useState('all')
   const [ticketFilter, setTicketFilter] = useState('all')
 
@@ -197,6 +207,47 @@ export default function CouTixScreen() {
   const bookTicket = (x: Ticket) => {
     track('ticket_outlink', { ticket_id: String(x.id), category: x.category })
     Linking.openURL(x.outlinkUrl).catch(() => {})
+  }
+  // 인앱 구매 (REQ-PAY-1 병행 동선) — payment-router 경유(미연동 시 mock 폴백),
+  // 결제 완료 시 Travel Wallet에 바우처 적재. 계정 귀속이라 게스트는 로그인 유도.
+  const buyTicket = (x: Ticket) => {
+    requireAccount('auth.gateCoupon', () => {
+      Alert.alert(x.title, `₩${x.price.toLocaleString()}`, [
+        { text: t('common.cancel'), style: 'cancel' },
+        {
+          text: t('ticket.buyInApp'),
+          onPress: async () => {
+            track('ticket_buy_inapp', { ticket_id: String(x.id), amount: x.price })
+            const pay = await routePayment({
+              ticketId: x.id,
+              amount: x.price,
+              currency: 'KRW',
+              method: 'card',
+            })
+            if (pay.status !== 'paid') {
+              Alert.alert(t('ticket.buyFailed'))
+              return
+            }
+            await saveMyTicket({
+              id: x.id,
+              title: x.title,
+              category: x.category,
+              price: x.price,
+              purchasedAt: new Date().toISOString(),
+              voucher: pay.pgTxId ?? pay.id,
+              status: 'active',
+            })
+            Alert.alert(t('ticket.purchased'), '', [
+              { text: t('common.ok'), style: 'cancel' },
+              {
+                text: t('ticket.viewWallet'),
+                onPress: () => router.push('/wallet?seg=tickets' as never),
+              },
+            ])
+          },
+        },
+      ])
+    })
   }
   const ticketPrice = (x: Ticket) => `₩${x.price.toLocaleString()}`
 
@@ -329,10 +380,18 @@ export default function CouTixScreen() {
                     </View>
                     <Text style={ss.ticketPrice}>{ticketPrice(x)}</Text>
                   </View>
-                  <Pressable onPress={() => bookTicket(x)} style={ss.bookBtn}>
-                    <Icon name="open_in_new" size={14} color="#fff" filled />
-                    <Text style={ss.bookText}>{t('ticket.book')}</Text>
-                  </Pressable>
+                  <View style={{ gap: 6 }}>
+                    {/* 자체 구매 — 지갑 보관 (mock-first, PG 연동 시 실결제) */}
+                    <Pressable onPress={() => buyTicket(x)} style={[ss.bookBtn, ss.buyBtn]}>
+                      <Icon name="wallet" size={14} color="#fff" filled />
+                      <Text style={ss.bookText}>{t('ticket.buyInApp')}</Text>
+                    </Pressable>
+                    {/* 외부 예매 — 기존 아웃링크 병행 */}
+                    <Pressable onPress={() => bookTicket(x)} style={ss.bookBtn}>
+                      <Icon name="open_in_new" size={14} color="#fff" filled />
+                      <Text style={ss.bookText}>{t('ticket.book')}</Text>
+                    </Pressable>
+                  </View>
                 </View>
               ))
             : null}
@@ -679,5 +738,6 @@ const ss = StyleSheet.create({
     ...shadows.blue,
   },
   bookText: { color: '#fff', fontWeight: '700', fontSize: 13 },
+  buyBtn: { backgroundColor: palette.coral[50] },
   outlinkNote: { fontSize: 11, color: palette.zinc[400], textAlign: 'center', marginTop: 6 },
 })

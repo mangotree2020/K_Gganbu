@@ -103,6 +103,7 @@ import {
   Droplets,
   type LucideIcon,
   RotateCw,
+  Trash2,
   Wallet,
 } from 'lucide-react-native'
 
@@ -141,6 +142,7 @@ const MAP: Record<string, LucideIcon> = {
   confirmation_number: Ticket,
   wallet: Wallet,
   refresh: RotateCw,
+  delete: Trash2,
   local_activity: Ticket,
   content_copy: Copy,
   directions_boat: Ship,

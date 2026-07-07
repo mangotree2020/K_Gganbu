@@ -4,14 +4,14 @@
 // 티켓은 인앱 결제(REQ-PAY-1) 전까지 실 소유 데이터가 없어 빈 상태 CTA가 기본.
 import { useQuery } from '@tanstack/react-query'
 import { router, useLocalSearchParams } from 'expo-router'
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 
 import { Icon, Pill } from '@/components/brand'
 import { PlaceThumb } from '@/components/PlaceThumb'
 import { SheetHeader } from '@/components/SheetHeader'
-import { useUserCoupons } from '@/features/coupon/queries'
+import { useCoupons, useUserCoupons } from '@/features/coupon/queries'
 import { getMyTickets } from '@/features/ticket/services'
 import { useT } from '@/lib/i18n'
 import { palette } from '@/theme/tokens'
@@ -32,6 +32,26 @@ export default function WalletScreen() {
   const [seg, setSeg] = useState<Seg>(params.seg === 'tickets' ? 'tickets' : 'coupons')
   const { data: coupons, isLoading } = useUserCoupons()
   const { data: myTickets } = useQuery({ queryKey: ['my-tickets'], queryFn: getMyTickets })
+  // 쿠폰 카탈로그 조인 — 사용처 설명·거리 표시용 (couponId 매칭)
+  const { data: catalog } = useCoupons()
+
+  // 동일 쿠폰 수량 합산 — couponId 기준 그룹, 사용 가능(issued) 우선 대표
+  const grouped = useMemo(() => {
+    const map = new Map<
+      string,
+      { rep: typeof coupons extends (infer U)[] | undefined ? U : never; count: number }
+    >()
+    for (const c of coupons ?? []) {
+      const cur = map.get(c.couponId)
+      if (!cur) map.set(c.couponId, { rep: c, count: 1 })
+      else {
+        cur.count += 1
+        if (cur.rep.status !== 'issued' && c.status === 'issued') cur.rep = c
+      }
+    }
+    return [...map.values()]
+  }, [coupons])
+  const infoFor = (couponId: string) => catalog?.find((k) => String(k.id) === couponId)
 
   return (
     <View style={ss.container}>
@@ -78,32 +98,54 @@ export default function WalletScreen() {
                 </Pressable>
               </View>
             ) : (
-              coupons.map((c) => (
-                <Pressable
-                  key={c.id}
-                  onPress={() =>
-                    router.push({
-                      pathname: '/coupon-qr',
-                      params: { id: c.couponId, name: c.name, disc: c.disc },
-                    })
-                  }
-                  style={({ pressed }) => [ss.card, { opacity: pressed ? 0.9 : 1 }]}>
-                  <View style={ss.thumb}>
-                    <PlaceThumb category={c.category} height={52} />
-                  </View>
-                  <View style={{ flex: 1 }}>
-                    <Text style={ss.name} numberOfLines={1}>
-                      {c.name}
-                    </Text>
-                    <View style={{ flexDirection: 'row', marginTop: 5 }}>
-                      <Pill tone={STATUS_TONE[c.status] ?? 'neutral'} size="xs">
-                        {t(`status.${c.status}`)}
-                      </Pill>
+              grouped.map(({ rep: c, count }) => {
+                const info = infoFor(c.couponId)
+                return (
+                  <Pressable
+                    key={c.couponId}
+                    onPress={() =>
+                      router.push({
+                        pathname: '/coupon-qr',
+                        params: {
+                          id: c.couponId,
+                          name: c.name,
+                          disc: c.disc,
+                          detail: info?.detail ?? '',
+                          dist: info?.dist ?? '',
+                        },
+                      })
+                    }
+                    android_ripple={{ color: 'rgba(0,0,0,0.06)' }}
+                    style={[ss.card]}>
+                    <View style={ss.thumb}>
+                      <PlaceThumb category={info?.icon ?? c.category} height={52} />
                     </View>
-                  </View>
-                  <Text style={ss.disc}>{c.disc}</Text>
-                </Pressable>
-              ))
+                    <View style={{ flex: 1 }}>
+                      <Text style={ss.name} numberOfLines={1}>
+                        {c.name}
+                      </Text>
+                      {/* 사용처·조건 — 카탈로그 조인 (설명 + 거리) */}
+                      {(info?.detail || info?.dist) && (
+                        <Text style={ss.detail} numberOfLines={1}>
+                          {info?.detail}
+                          {info?.dist ? ` · 📍 ${info.dist}` : ''}
+                        </Text>
+                      )}
+                      <View style={{ flexDirection: 'row', gap: 6, marginTop: 5 }}>
+                        <Pill tone={STATUS_TONE[c.status] ?? 'neutral'} size="xs">
+                          {t(`status.${c.status}`)}
+                        </Pill>
+                        {count > 1 && (
+                          <Pill tone="blue" size="xs">
+                            ×{count}
+                          </Pill>
+                        )}
+                      </View>
+                    </View>
+                    <Text style={ss.disc}>{c.disc}</Text>
+                  </Pressable>
+                )
+              })
             )
           ) : !myTickets?.length ? (
             <View style={ss.empty}>
@@ -191,5 +233,6 @@ const ss = StyleSheet.create({
   },
   thumb: { width: 52, height: 52, borderRadius: 12, overflow: 'hidden' },
   name: { fontSize: 15, fontWeight: '700', color: palette.zinc[900] },
+  detail: { fontSize: 11.5, color: palette.zinc[500], marginTop: 2 },
   disc: { fontSize: 15, fontWeight: '800', color: palette.coral[50] },
 })

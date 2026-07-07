@@ -1,6 +1,6 @@
 // 즐겨찾기 목록 (BACKLOG #20) — 저장한 장소 조회/길찾기/삭제
 import { router } from 'expo-router'
-import { Linking, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
+import { Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 
 import { Icon } from '@/components/brand'
@@ -15,34 +15,35 @@ export default function FavoritesScreen() {
   const { data: favorites, isLoading } = useFavorites()
   const toggleFav = useToggleFavorite()
 
-  // 길찾기 — 외부 지도(구글) 열기
+  // 길찾기 — 우리 지도 탭으로 (장소 시트 선택 + 도보 경로까지, map.tsx focus 파라미터)
   const openDirections = (f: FavoriteRow) => {
     if (f.lat && f.lng) {
-      Linking.openURL(`https://www.google.com/maps/dir/?api=1&destination=${f.lat},${f.lng}`)
-    } else {
-      Linking.openURL(
-        `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(f.name)}`,
-      )
+      router.push({
+        pathname: '/(tabs)/map',
+        params: {
+          fId: f.place_ext_id,
+          fName: f.name,
+          fLat: String(f.lat),
+          fLng: String(f.lng),
+          fCat: f.cat ?? 'sights',
+          nav: '1',
+        },
+      })
+      return
     }
+    router.push('/(tabs)/map' as never)
   }
 
   return (
     <View style={ss.container}>
       <SafeAreaView edges={['top']} style={{ flex: 1 }}>
-        <View style={ss.headerRow}>
-          <View style={{ flex: 1 }}>
-            <SheetHeader
-              title={t('fav.title')}
-              sub={t('fav.subtitle')}
-              icon="bookmark"
-              accent={palette.coral[50]}
-              accentBg={palette.coral[95]}
-            />
-          </View>
-          <Pressable onPress={() => router.back()} style={ss.close}>
-            <Icon name="close" size={18} color={palette.zinc[700]} />
-          </Pressable>
-        </View>
+        <SheetHeader
+          title={t('fav.title')}
+          sub={t('fav.subtitle')}
+          icon="bookmark"
+          accent={palette.coral[50]}
+          accentBg={palette.coral[95]}
+        />
 
         <ScrollView contentContainerStyle={{ padding: 16, gap: 10 }}>
           {isLoading ? (
@@ -57,7 +58,11 @@ export default function FavoritesScreen() {
             favorites.map((f) => (
               <View key={f.id} style={ss.card}>
                 <View style={ss.thumb}>
-                  <PlaceThumb category={f.cat ?? 'sights'} height={52} />
+                  {f.image_url ? (
+                    <Image source={{ uri: f.image_url }} style={{ width: 52, height: 52 }} />
+                  ) : (
+                    <PlaceThumb category={f.cat ?? 'sights'} height={52} />
+                  )}
                 </View>
                 <View style={{ flex: 1 }}>
                   <Text style={ss.name} numberOfLines={1}>
@@ -74,7 +79,7 @@ export default function FavoritesScreen() {
                   style={ss.removeBtn}
                   hitSlop={6}
                   onPress={() => toggleFav.mutate({ extId: f.place_ext_id, name: f.name })}>
-                  <Icon name="bookmark" size={18} color={palette.coral[50]} filled />
+                  <Icon name="delete" size={18} color={palette.coral[50]} />
                 </Pressable>
               </View>
             ))
@@ -87,15 +92,6 @@ export default function FavoritesScreen() {
 
 const ss = StyleSheet.create({
   container: { flex: 1, backgroundColor: palette.zinc[50] },
-  headerRow: { flexDirection: 'row', alignItems: 'center', paddingRight: 12 },
-  close: {
-    width: 32,
-    height: 32,
-    borderRadius: 999,
-    backgroundColor: palette.zinc[100],
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
   dim: { fontSize: 14, color: palette.zinc[400], textAlign: 'center', marginTop: 40 },
   empty: { alignItems: 'center', gap: 8, marginTop: 64, paddingHorizontal: 32 },
   emptyText: { fontSize: 16, fontWeight: '700', color: palette.zinc[600] },

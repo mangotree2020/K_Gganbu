@@ -11,6 +11,7 @@ export type AnalyticsEventName =
   | 'coupon_qr_issued' // QR 발급 성공 {coupon_id, issue_id, offline, reissue, cached}
   | 'coupon_directions' // QR 화면 → 매장 길찾기 {coupon_id}
   | 'ticket_outlink' // 티켓 아웃링크 이동 {ticket_id, category}
+  | 'ticket_buy_inapp' // 티켓 인앱 구매 {ticket_id, amount}
   | 'ai_ask' // AI 깐부 질문 {mode: text|quick|voice, length}
   | 'ai_reply' // AI 응답 수신 {provider: claude|mock, has_card}
 
