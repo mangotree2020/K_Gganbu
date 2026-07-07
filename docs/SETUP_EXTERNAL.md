@@ -134,7 +134,12 @@ SMS 실비(~160원/건) 방어. **Auth → Rate Limits**로 총량 상한:
 > 확인된 사실(2026-07-07): **Google Routes API는 한국에서 WALK를 제공하지 않는다**(지도데이터 반출 규제 — 키·프로젝트 설정을 다 해도 빈 응답 `{}`. TRANSIT만 동작). Routes API 키 설정 삽질 로그: 키가 사는 프로젝트는 `k-gganbu-499503`(번호 257744476364, 서버 키 = "Open_API 키"), API를 프로젝트에 켜는 것과 **키의 [API 제한사항] 목록 추가**는 별개 — 둘 다 해야 `API_KEY_SERVICE_BLOCKED`가 풀린다. Naver Cloud에는 보행자 경로 API가 없다.
 
 - **TMAP_APP_KEY 설정 완료 (2026-07-07)**: SK오픈API appKey 발급 → `npx supabase secrets set TMAP_APP_KEY=...` → 실호출 검증 ✅ `provider: tmap, mode: walk` — 해운대 구간 실 보행자 경로 4,653m/62분(경로점 227개). 같은 구간 Naver 자동차 경로 추정(5,855m/78분)보다 짧고 정확.
-- Tmap 장애·쿼터 초과 시 Naver 폴백(`walk-estimated`)이 자동 동작.
+- **쿼터·요금**: 현재 무료 플랜 **일 1,000건**. 초과(429)·장애·지연(4초 타임아웃) 시 Naver 폴백(`walk-estimated`)→mock 이 자동 동작해 **길찾기는 어떤 경우에도 응답**한다.
+- **사용량 관측**: 호출(시도) 단위로 `usage_counters(kind='tmap_route', 글로벌 zero-uuid)`에 일 집계.
+  ```sql
+  select day, count from usage_counters where kind = 'tmap_route' order by day desc;
+  ```
+- **🔜 종량제 전환(프로덕션 TODO)**: 일 사용량이 무료 상한의 60~70%(600~700건)에 근접하면 SK오픈API 콘솔에서 유료(종량제) 플랜으로 전환. 요금 갱신 외 코드 변경 불필요.
 
 ## #22 AI 깐부 (Claude + RAG)
 

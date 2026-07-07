@@ -1,9 +1,13 @@
 // naver-directions — 길찾기 Edge Function (PLANNING §17, §13)
 // 여행자 이동은 도보가 기본 — **도보 경로 우선** 정책:
 //   1순위 Tmap 보행자 경로(SK오픈API, TMAP_APP_KEY) — 국내 유일한 실 보행자 라우팅
+//     · 무료 쿼터 일 1,000건 — 초과(429)·장애·지연(타임아웃 4초) 시 아래로 자동 폴백.
+//       실서비스 트래픽 도달 전 종량제 전환 필요(SETUP_EXTERNAL) — 일 사용량을
+//       usage_counters(kind=tmap_route, 글로벌)로 관측해 전환 시점을 판단한다.
 //   2순위 Google Routes API(WALK) — 해외 좌표 전용. **한국은 규제로 WALK 미제공(빈 응답) 확인(2026-07-07)**
 //   3순위 Naver Cloud Directions 5(자동차 경로) 폴백 — 시간은 도보 속도로 재계산
 //   4순위 직선 보간 mock
+// 어떤 단계가 실패해도 길찾기 응답은 반드시 반환된다(무응답 없음).
 // Naver Cloud 에는 보행자 경로 API 가 없다.
 // 경로 좌표 정규화와 요약(거리 m/시간 ms)을 서버에서 처리, 응답 mode 로 산출 방식 표기.
 import 'jsr:@supabase/functions-js/edge-runtime.d.ts'
@@ -85,11 +89,35 @@ function inKorea(p: LatLng): boolean {
   return p.latitude >= 33 && p.latitude <= 39 && p.longitude >= 124 && p.longitude <= 132
 }
 
+// Tmap 일 사용량 관측 (무료 쿼터 1,000건/일 — 종량제 전환 시점 판단용, 실패는 무시)
+// usage_counters 는 (user_id, day, kind) PK — 글로벌 카운터로 zero-uuid 사용.
+function countTmapUsage() {
+  const url = Deno.env.get('SUPABASE_URL')
+  const key = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')
+  if (!url || !key) return
+  const p = fetch(`${url}/rest/v1/rpc/bump_usage`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', apikey: key, Authorization: `Bearer ${key}` },
+    body: JSON.stringify({
+      p_user: '00000000-0000-0000-0000-000000000000',
+      p_kind: 'tmap_route',
+    }),
+  }).catch(() => {})
+  // 응답을 기다리지 않고 백그라운드로 — 길찾기 지연 없음
+  try {
+    // deno-lint-ignore no-explicit-any
+    ;(globalThis as any).EdgeRuntime?.waitUntil?.(p)
+  } catch {
+    // waitUntil 미지원 환경 — fire-and-forget
+  }
+}
+
 // 1순위 — Tmap 보행자 경로 (SK오픈API)
 async function tmapWalkRoute(start: LatLng, goal: LatLng, appKey: string) {
   const res = await fetch('https://apis.openapi.sk.com/tmap/routes/pedestrian?version=1', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', appKey },
+    signal: AbortSignal.timeout(4000), // 장애·지연 시 4초 내 Naver 폴백
     body: JSON.stringify({
       startX: String(start.longitude),
       startY: String(start.latitude),
@@ -166,6 +194,7 @@ async function naverDriveRoute(start: LatLng, goal: LatLng, id: string, secret: 
     try {
       const res = await fetch(`${base}?${qs}`, {
         headers: { 'x-ncp-apigw-api-key-id': id, 'x-ncp-apigw-api-key': secret },
+        signal: AbortSignal.timeout(5000), // 지연 시 mock 폴백으로 — 무응답 방지
       })
       const data = await res.json()
       if (!res.ok || data.code !== 0) {
@@ -211,6 +240,7 @@ Deno.serve(async (req) => {
 
     let walkDetail: unknown = null
     if (tmapKey) {
+      countTmapUsage() // 쿼터는 성공·실패 무관 호출 단위로 소진 — 시도 기준 집계
       try {
         return json(await tmapWalkRoute(start, goal, tmapKey))
       } catch (e) {
