@@ -577,35 +577,38 @@ function PlaceCard({
         })
       }
       style={[ss.placeCard, shadows.card]}>
-      {imageUrl ? (
-        <Image
-          source={{ uri: imageUrl }}
-          style={{ width: '100%', height: 92 }}
-          resizeMode="cover"
-        />
-      ) : (
-        <PlaceThumb category={cat} height={92} />
-      )}
-      <View style={{ padding: 8, paddingBottom: 10 }}>
+      <View>
+        {imageUrl ? (
+          <Image
+            source={{ uri: imageUrl }}
+            style={{ width: '100%', height: 92 }}
+            resizeMode="cover"
+          />
+        ) : (
+          <PlaceThumb category={cat} height={92} />
+        )}
+        {/* 딜 배지 — 이미지 위 오버랩(좌하단), 본문에선 제거해 카드 높이 압축 */}
+        {!!badge && (
+          <View style={ss.placeBadgeOverlay}>
+            <Pill tone={BADGE_TONE[badge] ?? 'coral'} size="xs">
+              {badge}
+            </Pill>
+          </View>
+        )}
+      </View>
+      <View style={{ padding: 8, paddingBottom: 9 }}>
         <Text style={ss.placeName} numberOfLines={1}>
           {name}
         </Text>
         <Text style={ss.placeSub} numberOfLines={1}>
           {sub}
         </Text>
-        <View style={ss.placeBottom}>
-          {rating != null && (
-            <View style={ss.row}>
-              <Icon name="star" size={12} color={palette.amber[50]} filled />
-              <Text style={ss.placeRating}> {rating}</Text>
-            </View>
-          )}
-          {!!badge && (
-            <Pill tone={BADGE_TONE[badge] ?? 'coral'} size="xs">
-              {badge}
-            </Pill>
-          )}
-        </View>
+        {rating != null && (
+          <View style={[ss.row, { marginTop: 4 }]}>
+            <Icon name="star" size={12} color={palette.amber[50]} filled />
+            <Text style={ss.placeRating}> {rating}</Text>
+          </View>
+        )}
       </View>
     </Pressable>
   )
@@ -1751,12 +1754,8 @@ const ss = StyleSheet.create({
   },
   placeName: { fontSize: 13, fontWeight: '700', color: palette.zinc[900], letterSpacing: -0.1 },
   placeSub: { fontSize: 11, color: palette.zinc[500], marginTop: 1 },
-  placeBottom: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginTop: 6,
-  },
+  // 딜 배지 이미지 오버랩 — 좌하단 고정 (Pill 자체 배경으로 사진 위 가독성 확보)
+  placeBadgeOverlay: { position: 'absolute', left: 6, bottom: 6 },
   placeRating: { fontSize: 11, fontWeight: '700', color: palette.zinc[800] },
 
   dealsBanner: {
