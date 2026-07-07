@@ -4,7 +4,7 @@
 // 마이크 16kHz PCM(react-native-audio-api) → Gemini Live → 통역 음성 24kHz + 원문/통역 자막.
 import { LinearGradient } from 'expo-linear-gradient'
 import { router, useFocusEffect } from 'expo-router'
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { Fragment, useCallback, useEffect, useRef, useState } from 'react'
 import {
   ActivityIndicator,
   Alert,
@@ -23,6 +23,7 @@ import { SafeAreaView } from 'react-native-safe-area-context'
 import Slider from '@react-native-community/slider'
 
 import { Icon } from '@/components/brand'
+import { askGganbu } from '@/features/gganbu/services'
 import { storage } from '@/lib/mmkv'
 import { startLiveTranslate, type LiveSession } from '@/features/translate/geminiLive'
 import { flushRemoteQueue, saveSession, saveSessionRemote } from '@/features/translate/history'
@@ -331,6 +332,59 @@ export default function VoiceInterpretScreen() {
   useEffect(() => {
     peerLangRef.current = peerLang
   }, [peerLang])
+
+  // ── AI 깐부 자문 모드 (3자 조언) — 통역 파이프라인과 완전 분리(추가 전용) ──
+  // 켜면 대화 transcript를 4턴마다 깐부에 보내 짧은 현지 팁 1건을 말풍선으로 삽입.
+  // 기존 gganbu Edge Function 재사용(페르소나·일일 사용량 상한 서버 강제 그대로).
+  const [gganbuOn, setGganbuOn] = useState(false)
+  const [advices, setAdvices] = useState<{ id: number; afterTurnId: number; text: string }[]>([])
+  const adviceBusyRef = useRef(false)
+  const advisedAtRef = useRef(0) // 마지막 조언 시점의 누적 턴 수
+  const ADVICE_EVERY = 4
+
+  const requestAdvice = useCallback(async () => {
+    const cur = turnsRef.current
+    if (adviceBusyRef.current || cur.length === 0) return
+    adviceBusyRef.current = true
+    advisedAtRef.current = cur.length
+    try {
+      const transcript = cur
+        .slice(-10)
+        .map((x) => `[${x.lang}] ${x.original}`)
+        .join('\n')
+      const prompt =
+        `You are quietly listening to a live interpreted conversation between me (a traveler) and a Korean local.\n` +
+        `Transcript (latest last):\n${transcript}\n\n` +
+        `As my local Busan friend, give ONE short practical tip or suggestion for this exact situation ` +
+        `(max 2 sentences, reply in my app language "${appLangRef.current}"). No greetings, no repetition of the transcript.`
+      const { reply } = await askGganbu([{ role: 'user', text: prompt }], {
+        language: appLangRef.current,
+      })
+      const last = turnsRef.current[turnsRef.current.length - 1]
+      if (reply && last) {
+        setAdvices((a) => [...a, { id: Date.now(), afterTurnId: last.id, text: reply }])
+      }
+    } catch {
+      // 조언 실패는 조용히 — 통역 흐름에 영향 없음
+    } finally {
+      adviceBusyRef.current = false
+    }
+  }, [])
+
+  // 토글 — 켤 때 대화가 있으면 즉시 1회 조언(즉각 피드백)
+  const toggleGganbu = () => {
+    setGganbuOn((on) => {
+      const next = !on
+      if (next && turnsRef.current.length > 0) void requestAdvice()
+      return next
+    })
+  }
+
+  // 새 턴 누적 감지 — 자문 모드 중 4턴마다 자동 조언
+  useEffect(() => {
+    if (!gganbuOn) return
+    if (turns.length - advisedAtRef.current >= ADVICE_EVERY) void requestAdvice()
+  }, [turns, gganbuOn, requestAdvice])
 
   // 현재 대화를 이력에 저장(빈 대화는 무시) — 로컬(MMKV) + 원격(Supabase, 사용자별).
   // 한 세션당 1회만 저장(persistedRef 가드).
@@ -666,6 +720,15 @@ export default function VoiceInterpretScreen() {
               <Text style={ss.title}>{t('voice.title')}</Text>
               <Text style={ss.sub}>{t('voice.headerSub')}</Text>
             </View>
+            {/* AI 깐부 자문 토글 — 켜면 대화에 3자 조언 참여 */}
+            <Pressable onPress={toggleGganbu} style={[ss.close, gganbuOn && ss.gganbuOnBtn]}>
+              <Icon
+                name="smart_toy"
+                size={18}
+                color={gganbuOn ? '#0F766E' : '#fff'}
+                strokeWidth={2.2}
+              />
+            </Pressable>
             <Pressable onPress={() => router.push('/voice-history')} style={ss.close}>
               <Icon name="history" size={18} color="#fff" />
             </Pressable>
@@ -825,6 +888,12 @@ export default function VoiceInterpretScreen() {
               </View>
             )}
 
+            {gganbuOn && advices.length === 0 && (
+              <View style={ss.gganbuJoinedPill}>
+                <Icon name="smart_toy" size={13} color={palette.blue[50]} strokeWidth={2.2} />
+                <Text style={ss.gganbuJoinedText}>{t('voice.gganbuJoined')}</Text>
+              </View>
+            )}
             <ScrollView
               ref={scrollRef}
               style={{ flex: 1, marginTop: 12 }}
@@ -843,14 +912,31 @@ export default function VoiceInterpretScreen() {
               ) : (
                 <>
                   {turns.map((tn) => (
-                    <Bubble
-                      key={tn.id}
-                      original={tn.original}
-                      translation={tn.translation}
-                      lang={tn.lang}
-                      isMe={tn.lang === myLang}
-                      onReplay={tn.hasAudio ? () => replay(tn.id) : undefined}
-                    />
+                    <Fragment key={tn.id}>
+                      <Bubble
+                        original={tn.original}
+                        translation={tn.translation}
+                        lang={tn.lang}
+                        isMe={tn.lang === myLang}
+                        onReplay={tn.hasAudio ? () => replay(tn.id) : undefined}
+                      />
+                      {advices
+                        .filter((a) => a.afterTurnId === tn.id)
+                        .map((a) => (
+                          <View key={a.id} style={ss.adviceCard}>
+                            <View style={ss.adviceHead}>
+                              <Icon
+                                name="smart_toy"
+                                size={13}
+                                color={palette.blue[50]}
+                                strokeWidth={2.2}
+                              />
+                              <Text style={ss.adviceTitle}>AI Gganbu</Text>
+                            </View>
+                            <Text style={ss.adviceText}>{a.text}</Text>
+                          </View>
+                        ))}
+                    </Fragment>
                   ))}
                   {!!current && (current.original || current.translation) && (
                     <Bubble
@@ -1145,6 +1231,34 @@ const ss = StyleSheet.create({
     width: 34,
     textAlign: 'right',
   },
+  // AI 깐부 자문 모드
+  gganbuOnBtn: { backgroundColor: '#fff' },
+  gganbuJoinedPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    alignSelf: 'center',
+    backgroundColor: palette.blue[95],
+    borderRadius: 999,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    marginTop: 10,
+  },
+  gganbuJoinedText: { fontSize: 11.5, fontWeight: '700', color: palette.blue[40] },
+  adviceCard: {
+    alignSelf: 'center',
+    maxWidth: '88%',
+    backgroundColor: palette.blue[95],
+    borderWidth: 0.5,
+    borderColor: '#BFDBFE',
+    borderRadius: 14,
+    paddingHorizontal: 12,
+    paddingVertical: 9,
+    gap: 4,
+  },
+  adviceHead: { flexDirection: 'row', alignItems: 'center', gap: 5 },
+  adviceTitle: { fontSize: 11, fontWeight: '800', color: palette.blue[40] },
+  adviceText: { fontSize: 12.5, lineHeight: 18, color: palette.zinc[800] },
   hint: { fontSize: 13, color: palette.zinc[400], textAlign: 'center' },
   toTextBtn: {
     flexDirection: 'row',
