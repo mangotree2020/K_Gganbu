@@ -5,6 +5,7 @@ import { Animated, Pressable, StyleSheet, Text, View } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 
 import { Icon } from '@/components/brand'
+import { useLocationPings } from '@/features/journey/pings'
 import { useAuth } from '@/hooks/useAuth'
 import { useTabBarStore } from '@/hooks/useTabBarAutoHide'
 import { useT } from '@/lib/i18n'
@@ -138,6 +139,8 @@ function TabBar({ state, navigation }: TabBarProps) {
 
 export default function TabsLayout() {
   const { isAuthenticated, isLoading } = useAuth()
+  // 앱 사용 중 10분 간격 위치 핑 (REQ-LOC-3) — 위치기반 이벤트 데이터화, foreground 전용
+  useLocationPings()
 
   if (!isLoading && !isAuthenticated) {
     return <Redirect href="/(auth)/landing" />

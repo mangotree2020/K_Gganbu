@@ -23,6 +23,7 @@ import { PlaceThumb } from '@/components/PlaceThumb'
 import { track } from '@/features/analytics/service'
 import { useRequireAccount } from '@/features/auth/loginPrompt'
 import { matchDeal } from '@/features/coupon/matchDeal'
+import { useJourneyTracker } from '@/features/journey/tracker'
 import { useCoupons } from '@/features/coupon/queries'
 import { useFavorites, useToggleFavorite } from '@/features/favorites/queries'
 import { GoogleMap, type GoogleMapHandle } from '@/features/map/GoogleMap'
@@ -333,6 +334,11 @@ export default function MapScreen() {
     mock: boolean
   } | null>(null)
   const [routing, setRouting] = useState(false)
+  // 길찾기 중 내 위치 마커 실시간 갱신(4초/5m) + 이동 경로 기록(REQ-LOC-1·2)
+  const journey = useJourneyTracker((lat, lng) => {
+    naverRef.current?.setMyLocation(lat, lng)
+    googleRef.current?.setMyLocation(lat, lng)
+  })
 
   // 검색 (Naver 지역검색 → 결과로 지도 이동)
   const [searchQuery, setSearchQuery] = useState('')
@@ -706,6 +712,8 @@ export default function MapScreen() {
     naverRef.current?.drawRoute(res.path)
     googleRef.current?.drawRoute(res.path)
     setRouting(false)
+    // 이동 트래킹 시작 (REQ-LOC-1·2) — 4초/5m 간격으로 내 위치 마커 갱신 + 경로 기록
+    journey.start()
   }
 
   const clearRoute = () => {
@@ -713,6 +721,8 @@ export default function MapScreen() {
     routePathRef.current = null
     naverRef.current?.clearRoute()
     googleRef.current?.clearRoute()
+    // 이동 트래킹 종료 — 유효 이동(100m+·도보 속도)이면 walk_journeys 업로드(랭킹 반영)
+    journey.stop()
   }
 
   // 장소 상세 Directions 딥링크 — /(tabs)/map?fName=..&fLat=..&fLng=..&nav=1

@@ -17,6 +17,7 @@ import {
   productName,
   type GifticonProduct,
 } from '@/features/gifticon/services'
+import { useWalkRank } from '@/features/journey/queries'
 import { usePointsSummary, type PointsEntry } from '@/features/points/queries'
 import { getTickets, type Ticket } from '@/features/ticket/services'
 import { useAuthStore } from '@/features/auth/store'
@@ -361,6 +362,8 @@ function PointsSection() {
     queryKey: ['gifticon-catalog'],
     queryFn: getGifticonCatalog,
   })
+  // 걷기 랭킹 (REQ-LOC-4) — 길찾기 이동거리 최근 7일, 마스킹 닉네임 집계만
+  const { data: walkRank } = useWalkRank(7)
 
   // 게스트 — 포인트가 핵심 가입 트리거 (REQ-PT-4)
   if (isGuest) {
@@ -433,6 +436,42 @@ function PointsSection() {
           </ScrollView>
         </View>
       )}
+
+      {/* 걷기 랭킹 (REQ-LOC-4) — 길찾기 이동거리 순위, 만보기·포인트 경제와 연동되는 리텐션 장치 */}
+      <View style={[ps.giftBox, shadows.card]}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+          <Text style={ps.giftTitle}>🏆 {t('points.walkRank')}</Text>
+        </View>
+        <Text style={ps.giftSub}>{t('points.walkRankSub')}</Text>
+        {(walkRank?.length ?? 0) === 0 ? (
+          <Text style={[ps.guestSub, { marginTop: 10 }]}>{t('points.walkRankEmpty')}</Text>
+        ) : (
+          <View style={{ marginTop: 10, gap: 8 }}>
+            {(walkRank ?? []).slice(0, 5).map((r) => (
+              <View key={`${r.rank}-${r.display_name}`} style={ps.rankRow}>
+                <Text style={ps.rankNum}>{r.rank}</Text>
+                <Text style={[ps.rankName, r.is_me && { color: palette.amber[50] }]}>
+                  {r.is_me ? t('points.me') : r.display_name}
+                </Text>
+                <Text style={ps.rankDist}>{(r.total_m / 1000).toFixed(1)}km</Text>
+              </View>
+            ))}
+            {/* 내가 Top 5 밖이면 내 순위를 하단에 표시 */}
+            {(walkRank ?? []).some((r) => r.is_me && r.rank > 5) &&
+              (walkRank ?? [])
+                .filter((r) => r.is_me && r.rank > 5)
+                .map((r) => (
+                  <View key="me" style={[ps.rankRow, { opacity: 0.9 }]}>
+                    <Text style={ps.rankNum}>{r.rank}</Text>
+                    <Text style={[ps.rankName, { color: palette.amber[50] }]}>
+                      {t('points.me')}
+                    </Text>
+                    <Text style={ps.rankDist}>{(r.total_m / 1000).toFixed(1)}km</Text>
+                  </View>
+                ))}
+          </View>
+        )}
+      </View>
 
       {/* 적립·사용 내역 */}
       {history.length === 0 ? (
@@ -555,6 +594,10 @@ const ps = StyleSheet.create({
   giftName: { fontSize: 12, fontWeight: '700', color: palette.zinc[900] },
   giftPrice: { fontSize: 13, fontWeight: '800', color: palette.zinc[900], marginTop: 2 },
   giftUsable: { fontSize: 10, fontWeight: '700', color: palette.amber[50] },
+  rankRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  rankNum: { width: 20, fontSize: 13, fontWeight: '800', color: palette.zinc[400] },
+  rankName: { flex: 1, fontSize: 13, fontWeight: '700', color: palette.zinc[900] },
+  rankDist: { fontSize: 13, fontWeight: '800', color: palette.zinc[900] },
 })
 
 const ss = StyleSheet.create({
