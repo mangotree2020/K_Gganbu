@@ -24,6 +24,8 @@ import Slider from '@react-native-community/slider'
 
 import { Icon } from '@/components/brand'
 import { askGganbu } from '@/features/gganbu/services'
+import { useCityLabel } from '@/features/weather/useCityLabel'
+import { useCurrentLocation } from '@/hooks/useCurrentLocation'
 import { speakMessage } from '@/lib/speak'
 import { toSpeakable } from '@/lib/speakable'
 import { storage } from '@/lib/mmkv'
@@ -348,6 +350,11 @@ export default function VoiceInterpretScreen() {
     peerLangRef.current = peerLang
   }, [peerLang])
 
+  // 위치 컨텍스트 — 깐부가 "근처 맛집" 같은 위치기반 질문에 답할 수 있도록 (AI 탭과 동일 소스)
+  const { coords: gpsCoords } = useCurrentLocation()
+  const cityLabel = useCityLabel(gpsCoords, appLang)
+  const gganbuLocation = cityLabel || 'Haeundae, Busan'
+
   // ── AI 깐부 자문 모드 (3자 조언) — 통역 파이프라인과 완전 분리(추가 전용) ──
   // 켜면 대화 transcript를 4턴마다 깐부에 보내 짧은 현지 팁 1건을 말풍선으로 삽입.
   // 기존 gganbu Edge Function 재사용(페르소나·일일 사용량 상한 서버 강제 그대로).
@@ -374,6 +381,7 @@ export default function VoiceInterpretScreen() {
         `(max 2 sentences, reply in my app language "${appLangRef.current}"). No greetings, no repetition of the transcript.`
       const { reply } = await askGganbu([{ role: 'user', text: prompt }], {
         language: appLangRef.current,
+        location: gganbuLocation,
       })
       const last = turnsRef.current[turnsRef.current.length - 1]
       if (reply && last) {
@@ -384,7 +392,7 @@ export default function VoiceInterpretScreen() {
     } finally {
       adviceBusyRef.current = false
     }
-  }, [])
+  }, [gganbuLocation])
 
   // 토글 — 켤 때 대화가 있으면 즉시 1회 조언(즉각 피드백)
   const toggleGganbu = () => {
