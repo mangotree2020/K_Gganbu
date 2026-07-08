@@ -4,7 +4,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useIsFocused } from 'expo-router'
 
-import { storage } from '@/lib/mmkv'
+import { useGganbuLive } from '@/features/gganbu/live'
 import { speakMessage, stopSpeak } from '@/lib/speak'
 import type { WeatherCondition } from '@/features/weather/queries'
 import { buildGganbuGreetings, gganbuGreeting } from './greetings'
@@ -42,8 +42,6 @@ export type GreetingItem = { text: string; isGreeting: boolean }
 // 설정은 MMKV에 저장되어 앱 재시작 후에도 유지된다.
 export type GreetingHandle = GreetingItem & { muted: boolean; toggleMute: () => void }
 
-const MUTE_KEY = 'gganbu_tts_muted'
-
 export function useGganbuGreeting({ lang, city, condition, hour, nearby }: Args): GreetingHandle {
   // [0]=시간대 인사(greeting 스타일), [1..]=컨텍스트 메시지
   const items = useMemo<GreetingItem[]>(() => {
@@ -58,15 +56,13 @@ export function useGganbuGreeting({ lang, city, condition, hour, nearby }: Args)
   const [idx, setIdx] = useState(0)
   const focused = useIsFocused()
   const spokenRef = useRef(-1)
-  // 소리 끄기 — 저장된 설정으로 시작. 끄면 진행 중 발화도 즉시 중단.
-  const [muted, setMuted] = useState(() => storage.getBoolean(MUTE_KEY) ?? false)
-  const mutedRef = useRef(muted)
+  // 깐부 라이브(전역)와 통합 — muted = 깐부 비활성. 끄면 진행 중 발화도 즉시 중단.
+  const gganbuActive = useGganbuLive((s) => s.active)
+  const toggleLive = useGganbuLive((s) => s.toggle)
+  const muted = !gganbuActive
   const toggleMute = () => {
-    const next = !mutedRef.current
-    mutedRef.current = next
-    storage.set(MUTE_KEY, next)
-    setMuted(next)
-    if (next) stopSpeak()
+    if (gganbuActive) stopSpeak() // 끄는 순간 발화 중단
+    toggleLive()
   }
 
   // 30초 순환 (포커스 중에만). 모듈로로 풀 크기 변화 흡수 → idx 리셋 불필요.
@@ -91,7 +87,8 @@ export function useGganbuGreeting({ lang, city, condition, hour, nearby }: Args)
     const answer = !cur.isGreeting && nearbyRef.current ? answerLine(lang, nearbyRef.current) : null
     speakMessage(cur.text, lang, () => {
       // 질문 낭독 종료 → 답변 낭독(홈에 머무는 동안 + 소리 켜짐 상태만)
-      if (answer && spokenRef.current === idx && !mutedRef.current) speakMessage(answer, lang)
+      if (answer && spokenRef.current === idx && useGganbuLive.getState().active)
+        speakMessage(answer, lang)
     })
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [idx, focused, muted])

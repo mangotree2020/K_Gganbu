@@ -41,6 +41,7 @@ import { useWeather } from '@/features/weather/queries'
 import { useCityLabel } from '@/features/weather/useCityLabel'
 import { useCurrentLocation } from '@/hooks/useCurrentLocation'
 import { speakMessage, stopSpeak } from '@/lib/speak'
+import { isGganbuActive, useGganbuLive } from '@/features/gganbu/live'
 import { toSpeakable } from '@/lib/speakable'
 import { useLocaleStore, useT } from '@/lib/i18n'
 import { palette } from '@/theme/tokens'
@@ -278,6 +279,7 @@ export default function AiMateScreen() {
   })
 
   // 음성 듣기 중지 — 마이크/세션 정리
+  const focusedRef = useRef(true)
   const stopListening = () => {
     micRef.current?.stop()
     micRef.current = null
@@ -319,6 +321,12 @@ export default function AiMateScreen() {
       if (!silent) Alert.alert(t('ai.micUnavailableTitle'), t('ai.micUnavailable'))
       return
     }
+    // 이탈 레이스 차단 — 권한/세션 대기 중 화면을 떠났다면 늦게 도착한 세션을 즉시 폐기.
+    // (통역 화면으로 넘어간 뒤 깐부가 통역 사운드를 듣고 답하던 버그의 근본 원인)
+    if (!focusedRef.current) {
+      session.close()
+      return
+    }
     sessionRef.current = session
     // TTS 재생 중(speakingRef)에는 오디오 전송 차단 — AI 음성의 에코 재전사 방지
     micRef.current = startMic((pcm) => {
@@ -334,20 +342,23 @@ export default function AiMateScreen() {
     else startListening(false)
   }
 
-  // 화면 진입 시 기본 On(바로 음성 지원), 이탈 시 Off(마이크 해제)
+  // 화면 진입 시 기본 On(바로 음성 지원), 이탈 시 Off(마이크 즉시 해제)
+  // 깐부 라이브(전역) OFF면 자동 청취를 시작하지 않는다 — 수동 마이크 버튼은 허용
   const isFocused = useIsFocused()
+  const gganbuActive = useGganbuLive((s) => s.active)
   useEffect(() => {
+    focusedRef.current = isFocused
     // 다음 틱으로 미뤄 실행(이펙트 내 동기 setState로 인한 연쇄 렌더 방지)
     const id = setTimeout(() => {
-      if (isFocused) startListening(true)
-      else {
+      if (isFocused && isGganbuActive()) startListening(true)
+      else if (!isFocused) {
         stopListening()
         stopSpeak()
       }
     }, 0)
     return () => clearTimeout(id)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isFocused])
+  }, [isFocused, gganbuActive])
 
   // GPS 좌표 → 지역 사투리 자동 감지(버튼 표시·사투리 답변용)
   useEffect(() => {

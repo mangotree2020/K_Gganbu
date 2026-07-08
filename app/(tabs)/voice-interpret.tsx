@@ -23,6 +23,7 @@ import { SafeAreaView } from 'react-native-safe-area-context'
 import Slider from '@react-native-community/slider'
 
 import { Icon } from '@/components/brand'
+import { isGganbuActive } from '@/features/gganbu/live'
 import { askGganbu } from '@/features/gganbu/services'
 import { useCityLabel } from '@/features/weather/useCityLabel'
 import { useCurrentLocation } from '@/hooks/useCurrentLocation'
@@ -257,6 +258,7 @@ async function ensureMicPermission(): Promise<boolean> {
 }
 
 // "깐부" 웨이크워드 — 통역 중 이름을 부르면 그 발화를 깐부 질문으로 처리 (다국어 표기·오인식 변형 포함)
+// 전역 깐부 라이브 OFF면 웨이크워드·자문·낭독 모두 휴면 (표준 모듈: features/gganbu/live)
 const WAKE_RE = /(깐부|깐뿌|간부|깜부|gganbu|ganbu|kanbu|kambu|カンブ|かんぶ|嘎恩布|甘布)/i
 
 // 발화 앞부분에서 웨이크워드를 찾으면 이름을 제거한 질문 텍스트 반환, 없으면 null
@@ -406,6 +408,7 @@ export default function VoiceInterpretScreen() {
   // 깐부 답변 TTS — 재생 중 마이크 입력을 전부 차단(half-duplex)해 에코 재번역 방지
   const gganbuSpeakingRef = useRef(false)
   const speakGganbu = useCallback((text: string, lang: string) => {
+    if (!isGganbuActive()) return // 전역 휴면 — 텍스트 답변만
     const spoken = toSpeakable(text)
     if (!spoken) return
     gganbuSpeakingRef.current = true
@@ -447,7 +450,7 @@ export default function VoiceInterpretScreen() {
 
   // 새 턴 누적 감지 — 자문 모드 중 4턴마다 자동 조언
   useEffect(() => {
-    if (!gganbuOn) return
+    if (!gganbuOn || !isGganbuActive()) return
     if (turns.length - advisedAtRef.current >= ADVICE_EVERY) void requestAdvice()
   }, [turns, gganbuOn, requestAdvice])
 
@@ -638,7 +641,7 @@ export default function VoiceInterpretScreen() {
                 const lang = detected || lastLangRef.current || myLang
                 if (turn.audio) audioStoreRef.current.set(idRef.current, turn.audio)
                 // "깐부 ..." 로 시작하면 질문으로 처리 — 답변은 조언 카드로(질문 언어로 응답)
-                const wakeQ = extractWakeQuestion(orig)
+                const wakeQ = isGganbuActive() ? extractWakeQuestion(orig) : null
                 if (wakeQ !== null) void answerWake(idRef.current, wakeQ, lang)
                 setTurns((prev) =>
                   [

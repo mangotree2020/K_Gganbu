@@ -1103,14 +1103,14 @@ export default function HomeScreen() {
 
             {/* 검색 Input Box 삭제 — 텍스트 입력 최소화 방향(요청). 음성/탭 기반 탐색으로 대체 */}
           </SafeAreaView>
-          {/* 히어로 우측 하단 스피커 — 질문·답변 낭독 소리 켜기/끄기(설정 유지) */}
+          {/* 히어로 우측 하단 깐부 라이브 토글 — 깐부가 귀 기울이고 있다/휴면 (전역 표준 모듈) */}
           <Pressable onPress={gganbuMsg.toggleMute} hitSlop={8} style={ss.heroMic}>
-            <Icon
-              name={gganbuMsg.muted ? 'volume_off' : 'volume_up'}
-              size={18}
-              color="#fff"
-              filled
-            />
+            <Icon name="smart_toy" size={18} color="#fff" filled />
+            {gganbuMsg.muted && (
+              <View style={ss.heroMicOff} pointerEvents="none">
+                <Icon name="block" size={34} color={palette.coral[50]} />
+              </View>
+            )}
           </Pressable>
         </View>
 
@@ -1487,6 +1487,16 @@ const ss = StyleSheet.create({
     backgroundColor: 'rgba(255,255,255,.24)',
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,.35)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  // 비활성(휴면) 표시 — 깐부 아이콘 위 사선 금지 사인 오버랩
+  heroMicOff: {
+    position: 'absolute',
+    top: 1,
+    left: 1,
+    right: 1,
+    bottom: 1,
     alignItems: 'center',
     justifyContent: 'center',
   },
