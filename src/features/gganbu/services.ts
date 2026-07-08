@@ -41,7 +41,12 @@ const capMessage = (lang?: string) => CAP_MESSAGES[lang ?? 'en'] ?? CAP_MESSAGES
 
 export async function askGganbu(
   messages: ChatMsg[],
-  opts: { language?: string; location?: string; dialect?: string } = {},
+  opts: {
+    language?: string
+    location?: string
+    dialect?: string
+    coords?: { lat: number; lng: number }
+  } = {},
 ): Promise<GganbuReply> {
   try {
     const { data, error } = await supabase.functions.invoke('gganbu', {
@@ -50,6 +55,7 @@ export async function askGganbu(
         language: opts.language ?? 'en',
         location: opts.location,
         dialect: opts.dialect,
+        coords: opts.coords,
       },
     })
     if (error) throw error
@@ -65,7 +71,13 @@ export async function askGganbu(
 // 서버 일일 상한 판정용으로 사용자 세션 토큰을 보낸다(게스트도 anonymous 세션 보유).
 export async function askGganbuStream(
   messages: ChatMsg[],
-  opts: { language?: string; location?: string; dialect?: string; context?: string },
+  opts: {
+    language?: string
+    location?: string
+    dialect?: string
+    context?: string
+    coords?: { lat: number; lng: number }
+  },
   onDelta: (fullText: string) => void,
 ): Promise<GganbuReply> {
   const { data: sess } = await supabase.auth.getSession().catch(() => ({ data: { session: null } }))
@@ -108,6 +120,7 @@ export async function askGganbuStream(
           location: opts.location,
           dialect: opts.dialect,
           context: opts.context,
+          coords: opts.coords,
           stream: true,
         }),
       )

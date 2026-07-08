@@ -19,6 +19,7 @@ type Body = {
   location?: string
   dialect?: string
   context?: string // 실시간 컨텍스트(날씨·주변 장소·통역 이력) — 정확한 답변용
+  coords?: { lat: number; lng: number } // 실데이터(Google/Naver) 조회 기준 좌표
   stream?: boolean
 }
 
@@ -74,6 +75,76 @@ async function ragContext(language: string): Promise<string> {
   }
 }
 
+// Google Places(평점·영업 중 여부) + Naver 지역검색(로컬 상호·카테고리) 실데이터 —
+// 답변 품질용 부가 컨텍스트. 속도 우선이라 병렬 0.9s 타임아웃, 실패 시 조용히 생략.
+async function livePlaceData(
+  coords: { lat: number; lng: number } | undefined,
+  location: string,
+  lang: string,
+): Promise<string> {
+  const tasks: Promise<string>[] = []
+
+  const gkey = Deno.env.get('GOOGLE_PLACES_API_KEY')
+  if (gkey && coords) {
+    tasks.push(
+      fetch(
+        `https://maps.googleapis.com/maps/api/place/nearbysearch/json` +
+          `?location=${coords.lat},${coords.lng}&radius=800&language=${lang}&key=${gkey}`,
+        { signal: AbortSignal.timeout(900) },
+      )
+        .then((r) => r.json())
+        .then((d) => {
+          const rows = (d.results ?? [])
+            .filter((x: any) => x.rating)
+            .slice(0, 8)
+            .map((x: any) => {
+              const open =
+                x.opening_hours?.open_now === true
+                  ? 'open now'
+                  : x.opening_hours?.open_now === false
+                    ? 'closed now'
+                    : ''
+              return `- ${x.name} (rating ${x.rating}/5, ${x.user_ratings_total ?? 0} reviews${open ? ', ' + open : ''})`
+            })
+            .join('\n')
+          return rows ? `Nearby places with live Google Maps data:\n${rows}` : ''
+        })
+        .catch(() => ''),
+    )
+  }
+
+  // Naver 지역검색 — 현지인 기준 상호·카테고리(로컬 정확도 보완). 지역명 + 맛집 키워드.
+  const nid = Deno.env.get('NAVER_SEARCH_CLIENT_ID') ?? Deno.env.get('NAVER_CLIENT_ID')
+  const nsec = Deno.env.get('NAVER_SEARCH_CLIENT_SECRET') ?? Deno.env.get('NAVER_CLIENT_SECRET')
+  if (nid && nsec) {
+    const q = `${location.split(',')[0]} 맛집`
+    tasks.push(
+      fetch(
+        `https://openapi.naver.com/v1/search/local.json?query=${encodeURIComponent(q)}&display=5&sort=random`,
+        {
+          headers: { 'X-Naver-Client-Id': nid, 'X-Naver-Client-Secret': nsec },
+          signal: AbortSignal.timeout(900),
+        },
+      )
+        .then((r) => r.json())
+        .then((d) => {
+          const rows = (d.items ?? [])
+            .map(
+              (x: any) =>
+                `- ${String(x.title).replace(/<[^>]+>/g, '')} (${x.category ?? ''}, ${x.roadAddress ?? ''})`,
+            )
+            .join('\n')
+          return rows ? `Local favorites from live Naver Map data:\n${rows}` : ''
+        })
+        .catch(() => ''),
+    )
+  }
+
+  if (!tasks.length) return ''
+  const parts = (await Promise.all(tasks)).filter(Boolean)
+  return parts.length ? `\n\n${parts.join('\n\n')}` : ''
+}
+
 function systemPrompt(
   language: string,
   location: string,
@@ -93,6 +164,7 @@ function systemPrompt(
     langLine,
     'Write in plain conversational sentences (no markdown headers, no bullet lists) so it sounds natural when read aloud.',
     'Recommend real places, food, and routes; suggest cards the app can link to map/coupons.',
+    'When live place data is provided below, prefer those REAL places (with their ratings/open status) over memory. For exact opening hours or real-time status, remind the traveler they can tap the place to check it live on the in-app Map tab.',
     // 실시간 컨텍스트 — 날씨/주변 장소/사용자가 통역한 내용. 정확한 답변에 적극 활용.
     context
       ? `LIVE CONTEXT (use these real facts for accurate answers about weather, nearby places, and the traveler's needs): ${context}`
@@ -187,6 +259,7 @@ Deno.serve(async (req) => {
       location = 'Haeundae, Busan',
       dialect,
       context,
+      coords,
       stream = false,
     }: Body = await req.json()
     if (!messages?.length) {
@@ -199,9 +272,13 @@ Deno.serve(async (req) => {
     // 속도 우선 — RAG(TourAPI) 대기를 기본 비활성화(즉시 응답). 필요 시 ?rag=1 로 켬.
     // (ragContext는 보존 — 추후 품질 모드에서 재사용)
     const useRag = new URL(req.url).searchParams.get('rag') === '1'
-    const rag = useRag ? await ragContext(dialect ? 'ko' : language) : ''
+    // 실데이터(Google 평점·영업 여부 + Naver 로컬)는 0.9s 상한이라 기본 수집 — 품질 우선, 속도 유지
+    const [rag, live] = await Promise.all([
+      useRag ? ragContext(dialect ? 'ko' : language) : Promise.resolve(''),
+      livePlaceData(coords, location, dialect ? 'ko' : language),
+    ])
 
-    const sys = systemPrompt(language, location, rag, dialect, context)
+    const sys = systemPrompt(language, location, rag + live, dialect, context)
 
     // ── 주력: Gemini 2.5 Flash-Lite ──
     const g = await callGemini(messages, sys, stream)

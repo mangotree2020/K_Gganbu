@@ -44,6 +44,7 @@ import { speakMessage, stopSpeak } from '@/lib/speak'
 import { isGganbuActive, useGganbuLive } from '@/features/gganbu/live'
 import { toSpeakable } from '@/lib/speakable'
 import { useLocaleStore, useT } from '@/lib/i18n'
+import { supabase } from '@/lib/supabase'
 import { palette } from '@/theme/tokens'
 
 type Schedule = { time: string; place: string; icon: string }
@@ -153,6 +154,50 @@ export default function AiMateScreen() {
       }),
     )
   }
+  // 추천 장소 → 우리 지도 연결(REQ-AI-1) — 영업 여부 등 초정밀 정보는 지도 탭(실데이터)이 정확.
+  // 좌표 해석: ① 주변 POI(TourAPI) 이름 매칭 ② place-lookup 텍스트 검색(Google) ③ 실패 시 지도 탭만
+  const openOnMap = async (name: string) => {
+    track('ai_place_to_map', { name })
+    const norm = (s: string) => s.toLowerCase().replace(/\s+/g, '')
+    const hit = (nearbyData?.pois ?? []).find(
+      (pp) =>
+        pp.lat != null &&
+        pp.lng != null &&
+        (norm(pp.name).includes(norm(name)) || norm(name).includes(norm(pp.name))),
+    )
+    let found: { id: string; name: string; lat: number; lng: number; cat: string } | null = hit
+      ? { id: String(hit.id), name: hit.name, lat: hit.lat!, lng: hit.lng!, cat: hit.cat }
+      : null
+    if (!found) {
+      try {
+        const { data } = await supabase.functions.invoke('place-lookup', {
+          body: { query: `${name} Busan`, lang: appLang },
+        })
+        if (data?.lat != null && data?.lng != null)
+          found = {
+            id: data.id,
+            name: data.name ?? name,
+            lat: data.lat,
+            lng: data.lng,
+            cat: data.cat ?? 'sights',
+          }
+      } catch {
+        // 조용히 지도 탭 폴백
+      }
+    }
+    if (found) {
+      router.push({
+        pathname: '/(tabs)/map',
+        params: {
+          fId: found.id,
+          fName: found.name,
+          fLat: String(found.lat),
+          fLng: String(found.lng),
+          fCat: found.cat,
+        },
+      })
+    } else router.push('/(tabs)/map' as never)
+  }
   const scrollRef = useRef<ScrollView>(null)
   // 음성 질문(STT) — Gemini Live 전사 세션 + 마이크 캡처
   const sessionRef = useRef<LiveSession | null>(null)
@@ -249,6 +294,8 @@ export default function AiMateScreen() {
         location: city || 'Haeundae, Busan',
         dialect: satoori ? dialect.instruction : undefined,
         context: buildContext(),
+        // 실데이터(Google 평점·영업 여부 + Naver 로컬) 조회 기준 좌표 — 답변 품질(REQ-AI-1)
+        coords: coords ? { lat: coords.latitude, lng: coords.longitude } : undefined,
       },
       (full) => {
         // 첫 토큰 도착 → 타이핑 표시를 끄고 봇 말풍선 생성, 이후 누적 갱신
@@ -585,6 +632,12 @@ export default function AiMateScreen() {
                         </View>
                         <Text style={ss.schedTime}>{s.time}</Text>
                         <Text style={ss.schedPlace}>{s.place}</Text>
+                        <Pressable
+                          onPress={() => openOnMap(s.place)}
+                          hitSlop={6}
+                          style={ss.mapChip}>
+                          <Icon name="map" size={13} color={palette.blue[30]} filled />
+                        </Pressable>
                         {dl && (
                           <Pressable onPress={() => openDeal(dl)} hitSlop={6} style={ss.dealChip}>
                             <Text style={ss.dealChipText}>🎟 {dl.disc}</Text>
@@ -605,6 +658,12 @@ export default function AiMateScreen() {
                           <Text style={ss.listName}>{it.name}</Text>
                           <Text style={ss.listNote}>{it.note}</Text>
                         </View>
+                        <Pressable
+                          onPress={() => openOnMap(it.name)}
+                          hitSlop={6}
+                          style={ss.mapChip}>
+                          <Icon name="map" size={13} color={palette.blue[30]} filled />
+                        </Pressable>
                         {dl && (
                           <Pressable onPress={() => openDeal(dl)} hitSlop={6} style={ss.dealChip}>
                             <Text style={ss.dealChipText}>🎟 {dl.disc}</Text>
@@ -792,6 +851,15 @@ const ss = StyleSheet.create({
     paddingHorizontal: 8,
     paddingVertical: 3,
     marginLeft: 6,
+  },
+  // 추천 장소 → 지도 확인 칩(실데이터 영업 여부·평점은 지도가 정확)
+  mapChip: {
+    width: 26,
+    height: 26,
+    borderRadius: 999,
+    backgroundColor: palette.blue[95],
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   dealChipText: { fontSize: 10.5, fontWeight: '800', color: palette.coral[50] },
   quickWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },

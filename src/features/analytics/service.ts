@@ -14,6 +14,7 @@ export type AnalyticsEventName =
   | 'ticket_buy_inapp' // 티켓 인앱 구매 {ticket_id, amount}
   | 'ai_ask' // AI 깐부 질문 {mode: text|quick|voice, length}
   | 'ai_reply' // AI 응답 수신 {provider: claude|mock, has_card}
+  | 'ai_place_to_map' // AI 추천 장소 → 지도 확인 전환(REQ-AI-1) {name}
 
 export type EventProps = Record<string, string | number | boolean | null>
 
