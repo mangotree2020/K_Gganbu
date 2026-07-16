@@ -12,6 +12,7 @@ import { queryClient } from '@/lib/queryClient'
 import { useAuth } from '@/hooks/useAuth'
 import { useOnboardingStore } from '@/features/onboarding/store'
 import { LoginPromptSheet } from '@/features/auth/LoginPromptSheet'
+import { setupNotificationDisplay } from '@/features/notifications/services'
 
 LogBox.ignoreAllLogs()
 SplashScreen.preventAutoHideAsync()
@@ -23,6 +24,11 @@ export const unstable_settings = {
 }
 
 export default function RootLayout() {
+  // 알림 채널·포그라운드 표시 셋업 (1회, 미포함 빌드는 내부에서 무시)
+  useEffect(() => {
+    setupNotificationDisplay()
+  }, [])
+
   return (
     <QueryClientProvider client={queryClient}>
       <GestureHandlerRootView style={{ flex: 1 }}>

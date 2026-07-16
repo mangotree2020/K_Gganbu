@@ -8,9 +8,14 @@ import { supabase } from '@/lib/supabase'
 export type PushPermission = 'granted' | 'denied' | 'undetermined'
 
 // messaging 모듈 lazy 로드 — 네이티브 미포함 빌드면 null
+type RemoteMessage = {
+  notification?: { title?: string; body?: string }
+  data?: Record<string, string>
+}
 type MessagingModule = {
   requestPermission: () => Promise<number>
   getToken: () => Promise<string>
+  onMessage?: (cb: (msg: RemoteMessage) => void) => () => void
 }
 function getMessaging(): MessagingModule | null {
   try {
@@ -20,6 +25,46 @@ function getMessaging(): MessagingModule | null {
     return gm() as MessagingModule
   } catch {
     return null
+  }
+}
+
+// 알림 표시 셋업 — 앱 시작 시 1회 호출.
+// ① Android 고중요도 채널 'kgb-default' 생성 (서버 push-send가 channel_id로 지정 →
+//    헤드업 팝업+사운드. 자동 생성되는 fcm_fallback 채널은 기본 중요도라 조용히 표시됨)
+// ② FCM 포그라운드 수신 시 로컬 알림으로 표시 (onMessage 없으면 포그라운드는 무표시)
+let displayReady = false
+export async function setupNotificationDisplay(): Promise<void> {
+  if (displayReady) return
+  displayReady = true
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const Notifications = require('expo-notifications')
+    Notifications.setNotificationHandler({
+      handleNotification: async () => ({
+        shouldShowBanner: true,
+        shouldShowList: true,
+        shouldPlaySound: true,
+        shouldSetBadge: false,
+      }),
+    })
+    if (Platform.OS === 'android') {
+      await Notifications.setNotificationChannelAsync('kgb-default', {
+        name: 'K-Gganbu',
+        importance: Notifications.AndroidImportance.HIGH,
+        sound: 'default',
+        vibrationPattern: [0, 250, 250, 250],
+      })
+    }
+    getMessaging()?.onMessage?.((msg) => {
+      const n = msg?.notification
+      if (!n?.title && !n?.body) return
+      Notifications.scheduleNotificationAsync({
+        content: { title: n.title ?? '', body: n.body ?? '', data: msg.data ?? {} },
+        trigger: null,
+      })
+    })
+  } catch {
+    // expo-notifications/messaging 미포함 빌드 — 표시 셋업 없이 동작 (mock 경로)
   }
 }
 

@@ -75,7 +75,25 @@ async function sendToToken(
   const res = await fetch(`https://fcm.googleapis.com/v1/projects/${sa.project_id}/messages:send`, {
     method: 'POST',
     headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ message: { token, notification: { title, body }, data } }),
+    body: JSON.stringify({
+      message: {
+        token,
+        notification: { title, body },
+        data,
+        // 헤드업 팝업+사운드: 앱이 생성하는 고중요도 채널(kgb-default) 지정.
+        // 채널 미생성 구버전 앱은 FCM이 fallback 채널로 자동 표시(조용히).
+        android: {
+          priority: 'HIGH',
+          notification: {
+            channel_id: 'kgb-default',
+            sound: 'default',
+            default_vibrate_timings: true,
+            notification_priority: 'PRIORITY_HIGH',
+          },
+        },
+        apns: { payload: { aps: { sound: 'default' } } },
+      },
+    }),
   })
   if (res.ok) return { ok: true }
   const err = await res.text()
