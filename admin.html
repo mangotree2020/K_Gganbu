@@ -3,8 +3,10 @@
   K-Gganbu Partner Admin (PRD REQ-ADM-1·2·3, REQ-NT-1) — 파트너 쿠폰 등록 · QR 검증 · 사용 통계 · 푸시 발송.
   Supabase 도메인은 HTML 렌더를 차단(text/plain 강제)하므로 외부 정적 호스팅에 배포한다
   (절차: docs/SETUP_EXTERNAL.md "QR 랜딩·Admin 호스팅").
-  페이지는 공개지만 모든 API는 x-admin-key(ADMIN_API_KEY) 없이는 동작하지 않는다.
-  접속 시 Supabase anon key(공개 키)와 Admin Key를 1회 입력(localStorage 저장).
+  페이지는 공개지만 모든 API는 관리자 인가 없이는 동작하지 않는다. 인가 방식 2가지:
+  ① Google 로그인 — ADMIN_EMAILS(서버 시크릿) 허용 이메일의 JWT (권장, 키 입력 불필요)
+  ② Admin Key(ADMIN_API_KEY 공유 시크릿) 직접 입력 (백업 수단)
+  anon key는 공개 키이므로 페이지에 내장(입력 불필요).
 -->
 <html lang="ko">
 <head>
@@ -12,6 +14,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>K-Gganbu Partner Admin</title>
 <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+<script src="https://unpkg.com/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <style>
   :root { --blue:#0EA5E9; --ok:#16A34A; --bad:#DC2626; --zinc:#3F3F46; }
   * { box-sizing:border-box; font-family:-apple-system,'Apple SD Gothic Neo','Noto Sans KR',sans-serif; }
@@ -42,12 +45,17 @@
 <main>
   <div class="card">
     <h2>접속</h2>
-    <label>Admin Key</label>
-    <input id="key" type="password" placeholder="운영팀에서 발급한 키" />
+    <div id="authBox">
+      <button onclick="signIn()">Google로 로그인</button>
+      <p class="muted" style="margin:6px 0 0">허용된 관리자 계정만 사용할 수 있습니다</p>
+    </div>
+    <div id="userBox" style="display:none">
+      <div class="item"><span id="userEmail"></span><button class="secondary" style="width:auto;margin:0;padding:6px 14px" onclick="signOut()">로그아웃</button></div>
+    </div>
     <details style="margin-top:8px">
-      <summary class="muted">연결 설정 (최초 1회)</summary>
-      <label>Supabase anon key</label>
-      <input id="anon" placeholder="sb_publishable_..." />
+      <summary class="muted">Admin Key로 접속 (백업 수단)</summary>
+      <label>Admin Key</label>
+      <input id="key" type="password" placeholder="운영팀에서 발급한 키" />
     </details>
     <label>파트너</label>
     <div class="row">
@@ -125,27 +133,43 @@
   </section>
 </main>
 <script>
-const BASE = 'https://ltdajglszqkgneegjryb.supabase.co/functions/v1';
+const SUPABASE_URL = 'https://ltdajglszqkgneegjryb.supabase.co';
+const ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imx0ZGFqZ2xzenFrZ25lZWdqcnliIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODE0Njk4NjcsImV4cCI6MjA5NzA0NTg2N30.uTpHH13tH3Pd-jbpSB6-x-fhRHhryrbgG3IJ4-gnYoo'; // 공개 키
+const BASE = SUPABASE_URL + '/functions/v1';
 const $ = (id) => document.getElementById(id);
+const sb = window.supabase.createClient(SUPABASE_URL, ANON_KEY);
 $('key').value = localStorage.getItem('kgb_admin_key') || '';
-$('anon').value = localStorage.getItem('kgb_anon_key') || '';
+
+async function signIn() {
+  const { error } = await sb.auth.signInWithOAuth({
+    provider: 'google',
+    options: { redirectTo: location.origin + location.pathname },
+  });
+  if (error) alert('로그인 실패: ' + error.message);
+}
+async function signOut() { await sb.auth.signOut(); renderAuth(null); }
+async function renderAuth(session) {
+  const on = !!session;
+  $('authBox').style.display = on ? 'none' : '';
+  $('userBox').style.display = on ? '' : 'none';
+  if (on) $('userEmail').textContent = session.user.email || '(이메일 없음)';
+}
+sb.auth.onAuthStateChange((_e, session) => renderAuth(session));
+sb.auth.getSession().then(({ data }) => renderAuth(data.session));
 
 async function api(fn, body) {
   const key = $('key').value.trim();
-  const anon = $('anon').value.trim();
-  if (!key) { alert('Admin Key를 입력하세요'); throw new Error('no key'); }
-  if (!anon) { alert('연결 설정에서 Supabase anon key를 입력하세요'); throw new Error('no anon'); }
-  localStorage.setItem('kgb_admin_key', key);
-  localStorage.setItem('kgb_anon_key', anon);
-  const res = await fetch(BASE + '/' + fn, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'x-admin-key': key,
-      'Authorization': 'Bearer ' + anon, 'apikey': anon },
-    body: JSON.stringify(body),
-  });
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(data.reason || data.error || data.message || res.status);
-  return data;
+  const { data } = await sb.auth.getSession();
+  const jwt = data.session?.access_token;
+  if (!jwt && !key) { alert('Google 로그인 또는 Admin Key 입력이 필요합니다'); throw new Error('no auth'); }
+  if (key) localStorage.setItem('kgb_admin_key', key);
+  const headers = { 'Content-Type': 'application/json', 'apikey': ANON_KEY,
+    'Authorization': 'Bearer ' + (jwt || ANON_KEY) };
+  if (key) headers['x-admin-key'] = key;
+  const res = await fetch(BASE + '/' + fn, { method: 'POST', headers, body: JSON.stringify(body) });
+  const resData = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(resData.reason || resData.error || resData.message || res.status);
+  return resData;
 }
 
 function showTab(t) {
