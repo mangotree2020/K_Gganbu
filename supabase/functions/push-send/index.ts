@@ -1,6 +1,6 @@
 // push-send — FCM HTTP v1 푸시 발송 (PRD REQ-NT-1, 크루즈 승선 알림 등 서버 발송용)
 // 게이트: x-admin-key === ADMIN_API_KEY (partner-coupon과 동일 패턴) — 클라이언트 직접 호출 차단.
-// 시크릿: FCM_SERVICE_ACCOUNT — Firebase 콘솔 > 프로젝트 설정 > 서비스 계정 > 비공개 키(JSON 전체).
+// 시크릿: FCM_SERVICE_ACCOUNT(우선) 또는 FIREBASE_SERVICE_ACCOUNT — Firebase 콘솔 > 프로젝트 설정 > 서비스 계정 > 비공개 키(JSON 전체).
 // body: { user_id? , token?, title, body, data? } — user_id면 등록된 전체 기기로 발송.
 import 'jsr:@supabase/functions-js/edge-runtime.d.ts'
 import { createClient } from 'jsr:@supabase/supabase-js@2'
@@ -88,7 +88,7 @@ Deno.serve(async (req) => {
   if (!adminKey || req.headers.get('x-admin-key') !== adminKey)
     return json({ error: 'forbidden' }, 403)
 
-  const saRaw = Deno.env.get('FCM_SERVICE_ACCOUNT')
+  const saRaw = Deno.env.get('FCM_SERVICE_ACCOUNT') ?? Deno.env.get('FIREBASE_SERVICE_ACCOUNT')
   if (!saRaw) return json({ error: 'no_key', message: 'FCM_SERVICE_ACCOUNT 미설정' }, 502)
 
   try {

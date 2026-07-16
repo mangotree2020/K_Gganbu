@@ -52,3 +52,7 @@ GoogleService-Info.plist
 
 # Local expo native modules build output
 modules/**/android/build/
+
+# 서비스 계정·시크릿 키 파일 (절대 커밋 금지)
+*firebase-adminsdk*.json
+*service-account*.json

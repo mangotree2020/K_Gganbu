@@ -157,7 +157,15 @@ SMS 실비(~160원/건) 방어. **Auth → Rate Limits**로 총량 상한:
 
 ---
 
-## QR 랜딩·Admin 호스팅 (REQ-ADM-1·2·3, REQ-CR-4 — 정적 파일 준비 완료 2026-07-03)
+## QR 랜딩·Admin 호스팅 (REQ-ADM-1·2·3, REQ-CR-4 — ✅ 호스팅·시크릿 완료 2026-07-16)
+
+> ✅ **완료(2026-07-16)**: GitHub Pages 배포 — `gh-pages` 브랜치(admin.html/landing.html/.nojekyll).
+>
+> - Admin: `https://mangotree2020.github.io/K_Gganbu/admin.html`
+> - 랜딩: `https://mangotree2020.github.io/K_Gganbu/landing.html`
+> - 시크릿 `LANDING_URL`·`ADMIN_WEB_URL`·`ADMIN_API_KEY` 설정 완료.
+>   landing 함수 302(+ch 유지)·admin-web 함수 302 실검증 완료. 파일 갱신 시 `gh-pages` 브랜치에 푸시.
+> - 잔여: 아래 E2E 시나리오(파트너·쿠폰 등록→앱 노출→QR 스캔) 실행.
 
 > **플랫폼 제약(실측)**: Supabase는 Edge Function·Storage 공개 URL의 HTML 응답을
 > `text/plain + CSP sandbox`로 강제(피싱 방지) → supabase.co 도메인에서 브라우저 페이지 서빙 불가.
@@ -214,7 +222,14 @@ SMS 실비(~160원/건) 방어. **Auth → Rate Limits**로 총량 상한:
 **검증**: 로그인 화면 → "Continue with LINE"(`EXPO_PUBLIC_LINE_CHANNEL_ID` 있을 때만 활성) → LINE 인증 →
 앱 복귀 → `auth.users`에 `app_metadata.provider=line` 유저 + 세션 생성 확인. 미설정 시 버튼은 "Coming soon"으로 graceful degrade.
 
-## FCM 푸시 실 전송 (REQ-NT-1 — 코드 완료 2026-07-02)
+## FCM 푸시 실 전송 (REQ-NT-1 — ✅ 서비스 계정 인증 검증 2026-07-16)
+
+> ✅ **완료(2026-07-16)**: 신규 서비스 계정 키(`d12c5d8c…`)를 `FCM_SERVICE_ACCOUNT` 시크릿으로 등록,
+> 더미 토큰 발송으로 FCM OAuth 인증 통과 확인(INVALID_ARGUMENT=토큰만 거부, 인증 정상).
+> `push-send`는 `FCM_SERVICE_ACCOUNT ?? FIREBASE_SERVICE_ACCOUNT` 폴백을 읽도록 수정·재배포
+> (기존 `FIREBASE_SERVICE_ACCOUNT`(06-15)도 유효 — 백업 역할). 키 원본은 repo 밖 `~/.secrets/k-gganbu/` 보관.
+>
+> - 잔여: 실기기 opt-in → `device_tokens` 실 토큰 → 아래 검증 curl로 기기 알림 도착 확인.
 
 **필요**: Firebase 콘솔 서비스 계정 키 + 실기기 재빌드. 코드: `src/features/notifications/services.ts`(실 어댑터, lazy require·mock 폴백), Edge Function `push-send`(배포됨), `device_tokens` 테이블(적용됨).
 
