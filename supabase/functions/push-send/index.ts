@@ -1,10 +1,11 @@
 // push-send — FCM HTTP v1 푸시 발송 (PRD REQ-NT-1, 크루즈 승선 알림 등 서버 발송용)
-// 게이트: x-admin-key === ADMIN_API_KEY (partner-coupon과 동일 패턴) — 클라이언트 직접 호출 차단.
+// 게이트: x-admin-key(ADMIN_API_KEY) 또는 ADMIN_EMAILS 허용 이메일 JWT — 클라이언트 직접 호출 차단.
 // 시크릿: FCM_SERVICE_ACCOUNT(우선) 또는 FIREBASE_SERVICE_ACCOUNT — Firebase 콘솔 > 프로젝트 설정 > 서비스 계정 > 비공개 키(JSON 전체).
 // body: { user_id? , token?, title, body, data? } — user_id면 등록된 전체 기기로 발송.
 // body: { action: 'targets' } — 발송 대상 선택용 최근 등록 기기 목록(Admin 웹 푸시 탭).
 import 'jsr:@supabase/functions-js/edge-runtime.d.ts'
 import { createClient } from 'jsr:@supabase/supabase-js@2'
+import { isAdmin } from '../_shared/adminAuth.ts'
 
 const cors = {
   'Access-Control-Allow-Origin': '*',
@@ -85,9 +86,8 @@ Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: cors })
   if (req.method !== 'POST') return json({ error: 'method_not_allowed' }, 405)
 
-  const adminKey = Deno.env.get('ADMIN_API_KEY')
-  if (!adminKey || req.headers.get('x-admin-key') !== adminKey)
-    return json({ error: 'forbidden' }, 403)
+  // Admin 게이트: 공유 시크릿(x-admin-key) 또는 ADMIN_EMAILS 허용 이메일 JWT
+  if (!(await isAdmin(req))) return json({ error: 'forbidden' }, 403)
 
   try {
     const body = await req.json()

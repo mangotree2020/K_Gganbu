@@ -1,8 +1,9 @@
 // partner-coupon — 파트너 쿠폰 등록/목록 (PLANNING Phase 2 "Admin 기본형: 파트너 쿠폰 등록")
 // Admin UI(별도 앱)가 호출하는 백엔드 primitive. coupons 쓰기는 RLS 우회(service role)가
-// 필요하므로 Edge Function에서만 처리(§20·§22 원칙). 공유 시크릿 ADMIN_API_KEY로 게이트.
+// 필요하므로 Edge Function에서만 처리(§20·§22 원칙). 게이트: ADMIN_API_KEY 또는 ADMIN_EMAILS JWT.
 import 'jsr:@supabase/functions-js/edge-runtime.d.ts'
 import { createClient } from 'jsr:@supabase/supabase-js@2'
+import { isAdmin } from '../_shared/adminAuth.ts'
 
 const cors = {
   'Access-Control-Allow-Origin': '*',
@@ -11,7 +12,6 @@ const cors = {
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!
 const SERVICE_ROLE = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
-const ADMIN_API_KEY = Deno.env.get('ADMIN_API_KEY')
 
 function json(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), {
@@ -60,11 +60,8 @@ type RegisterBody = {
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: cors })
   try {
-    // 공유 시크릿 게이트 (Admin 앱 전용). 미설정 시 비활성(503).
-    if (!ADMIN_API_KEY)
-      return json({ error: 'admin_disabled', message: 'ADMIN_API_KEY 미설정' }, 503)
-    if (req.headers.get('x-admin-key') !== ADMIN_API_KEY)
-      return json({ error: 'unauthorized' }, 401)
+    // Admin 게이트: 공유 시크릿(x-admin-key) 또는 ADMIN_EMAILS 허용 이메일 JWT
+    if (!(await isAdmin(req))) return json({ error: 'unauthorized' }, 401)
 
     const body: RegisterBody = await req.json()
     const { action, partner_id } = body

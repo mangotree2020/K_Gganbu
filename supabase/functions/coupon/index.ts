@@ -2,6 +2,7 @@
 // PLANNING §22: one-time QR token(TTL 5분), 검증 시 즉시 소멸. RLS 우회는 여기서만.
 import 'jsr:@supabase/functions-js/edge-runtime.d.ts'
 import { createClient } from 'jsr:@supabase/supabase-js@2'
+import { isAdmin } from '../_shared/adminAuth.ts'
 
 const cors = {
   'Access-Control-Allow-Origin': '*',
@@ -65,10 +66,9 @@ Deno.serve(async (req) => {
 
     // ── 검증/소멸: 파트너가 QR 토큰 제출 → 즉시 소멸 ──
     // §22: 검증·소멸은 파트너(Admin) 전용 — 사용자가 매장 방문 없이 자가 사용 처리하는
-    // 것을 막기 위해 ADMIN_API_KEY 게이트 필수 (Admin 웹 QR 검증 화면이 호출)
+    // 것을 막기 위해 Admin 게이트 필수: x-admin-key 또는 ADMIN_EMAILS 허용 이메일 JWT
     if (action === 'redeem') {
-      const adminKey = Deno.env.get('ADMIN_API_KEY')
-      if (!adminKey || req.headers.get('x-admin-key') !== adminKey)
+      if (!(await isAdmin(req)))
         return json({ error: 'unauthorized', message: '파트너 검증 전용' }, 401)
       if (!qr_token) return json({ error: 'qr_token 필수' }, 400)
       const { data: issue } = await admin
