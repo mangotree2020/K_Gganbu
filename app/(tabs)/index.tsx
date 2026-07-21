@@ -324,60 +324,6 @@ function playMeow() {
 // 도킹형 플로팅 버튼 — 탭바 노출 중엔 우측으로 밀어 아이콘만 보이고,
 // 탭바가 숨으면(스크롤 다운) 슬라이드로 전체 노출. 도킹 상태에서도 탭 가능.
 
-// 플로팅 액션 버튼 — 탭바 노출 시(docked) 라벨 폭을 0으로 접어 아이콘만 남기고,
-// 탭바 숨김(스크롤 다운) 시 라벨을 펼친다. 슬라이드 대신 폭 축소라 텍스트가 삐져나오지 않음.
-function DockedFab({
-  docked,
-  onPress,
-  style,
-  icon,
-  label,
-}: {
-  docked: boolean
-  onPress: () => void
-  style?: object | object[]
-  icon: React.ReactNode
-  label: string
-}) {
-  const anim = useState(() => new Animated.Value(docked ? 0 : 1))[0] // 1=펼침, 0=아이콘만
-  const [labelW, setLabelW] = useState(0)
-  useEffect(() => {
-    Animated.timing(anim, {
-      toValue: docked ? 0 : 1,
-      duration: 220,
-      useNativeDriver: false, // width 애니메이션이라 native driver 불가
-    }).start()
-  }, [docked, anim])
-  return (
-    <Pressable
-      onPress={onPress}
-      android_ripple={{ color: 'rgba(255,255,255,0.25)', borderless: false }}
-      style={style}>
-      {/* 아이콘 고정 정사각 박스 — 도킹 시 이 박스만 남아 완전한 원(50×50)이 된다 */}
-      <View style={ss.fabIconBox}>{icon}</View>
-      {/* 측정용 숨김 라벨 — 자연 너비(트레일링 패딩 포함) 확보 */}
-      <Text
-        style={[ss.gganbuFabText, ss.fabLabelMeasure]}
-        onLayout={(e) => setLabelW(e.nativeEvent.layout.width)}>
-        {label}
-      </Text>
-      {/* 실제 라벨 — 도킹 시 폭 0·투명으로 완전히 사라짐 */}
-      <Animated.View
-        style={{
-          overflow: 'hidden',
-          opacity: anim,
-          width: labelW
-            ? anim.interpolate({ inputRange: [0, 1], outputRange: [0, labelW] })
-            : undefined,
-        }}>
-        <Text style={[ss.gganbuFabText, ss.fabLabelInner]} numberOfLines={1}>
-          {label}
-        </Text>
-      </Animated.View>
-    </Pressable>
-  )
-}
-
 function NearbyTrail({ km, idx, count }: { km: number | null; idx: number; count: number }) {
   const far = (km ?? 0) > 2.5
   const [trackW, setTrackW] = useState(0)
@@ -673,27 +619,6 @@ export default function HomeScreen() {
   const t = useT()
   const insets = useSafeAreaInsets() // 상태바 영역 틴트 높이 계산용
   const tabBarHidden = useTabBarStore((s) => s.hidden) // 탭바 숨김 시 플로팅 버튼 위치 보정
-  // 도킹 상태에서 탭 → 이동 대신 먼저 펼침(4초 무동작 시 자동 재도킹), 펼쳐진 뒤 탭 → 이동
-  const [fabOpen, setFabOpen] = useState(false)
-  const fabTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const fabDocked = !tabBarHidden && !fabOpen
-  useEffect(() => {
-    // 탭바 표시 상태가 바뀌면 임시 펼침 해제 (숨김 전환 시엔 어차피 전체 노출)
-    setFabOpen(false)
-    if (fabTimerRef.current) clearTimeout(fabTimerRef.current)
-    return () => {
-      if (fabTimerRef.current) clearTimeout(fabTimerRef.current)
-    }
-  }, [tabBarHidden])
-  const pressFab = (nav: () => void) => {
-    if (!fabDocked) {
-      nav()
-      return
-    }
-    setFabOpen(true)
-    if (fabTimerRef.current) clearTimeout(fabTimerRef.current)
-    fabTimerRef.current = setTimeout(() => setFabOpen(false), 4000)
-  }
   const tabBarAutoHide = useTabBarAutoHide() // 스크롤 방향 따라 하단 탭바 자동 숨김/표시
   const lang = useLocaleStore((s) => s.lang)
   const notifUnread = unreadCount(useInboxStore((s) => s.items))
@@ -1461,39 +1386,44 @@ export default function HomeScreen() {
         </View>
       </ScrollView>
 
-      {/* 플로팅 AI 깐부 버튼 (PLANNING §9, 디자인 docs/AI Gganbu.png) — 알약형 + 로봇 아이콘 + 라벨.
-          전체폭 래퍼 + flex-end로 우측 정렬(absolute+right만으로는 전폭 늘어나는 문제 회피).
-          탭바 노출 중엔 우측 도킹(아이콘만), 탭바 숨김(스크롤 다운) 시 전체 노출. */}
+      {/* 플로팅 버튼(우하단 세로 스택) — 아이콘만 표시하는 동그라미(크기 통일).
+          지도/통역/깐부는 네비게이션 바가 숨은 상태(스크롤 다운)에서만 노출, 네비 순서(지도·통역·깐부).
+          맨 위로 가기는 스크롤 위치 기준(기존 로직)으로 맨 아래에 노출. */}
       <View
         style={[ss.gganbuFabWrap, tabBarHidden && { bottom: 18 + 56 + insets.bottom }]}
         pointerEvents="box-none">
-        {/* AI Gganbu — 챗봇 화면. 외곽선 로봇(눈·안테나 보이도록) */}
-        <DockedFab
-          docked={fabDocked}
-          onPress={() => pressFab(() => router.push('/(tabs)/ai' as never))}
-          style={ss.gganbuFab}
-          icon={<Icon name="smart_toy" size={23} color="#fff" strokeWidth={2.2} />}
-          label="Gganbu"
-        />
-        {/* AI Translate — 음성 통역 실행화면 바로가기(teal=번역 전용) */}
-        <DockedFab
-          docked={fabDocked}
-          onPress={() => pressFab(() => router.push('/voice-interpret' as never))}
-          style={[ss.gganbuFab, ss.translateFab]}
-          icon={<Icon name="translate" size={20} color="#fff" />}
-          label="Translate"
-        />
+        {tabBarHidden && (
+          <>
+            {/* 지도 */}
+            <Pressable
+              style={[ss.fabCircle, ss.mapFab]}
+              onPress={() => router.push('/(tabs)/map' as never)}
+              android_ripple={{ color: 'rgba(255,255,255,0.25)', borderless: false }}>
+              <Icon name="map" size={22} color="#fff" filled />
+            </Pressable>
+            {/* 통역 — 음성 통역 실행화면 바로가기(teal=번역 전용) */}
+            <Pressable
+              style={[ss.fabCircle, ss.translateFab]}
+              onPress={() => router.push('/voice-interpret' as never)}
+              android_ripple={{ color: 'rgba(255,255,255,0.25)', borderless: false }}>
+              <Icon name="translate" size={21} color="#fff" />
+            </Pressable>
+            {/* AI 깐부 — 챗봇 화면(외곽선 로봇) */}
+            <Pressable
+              style={[ss.fabCircle, ss.gganbuFab]}
+              onPress={() => router.push('/(tabs)/ai' as never)}
+              android_ripple={{ color: 'rgba(255,255,255,0.25)', borderless: false }}>
+              <Icon name="smart_toy" size={22} color="#fff" strokeWidth={2.2} />
+            </Pressable>
+          </>
+        )}
+        {/* 맨 위로 가기 — 후기 스크롤 시 노출(네비 상태와 무관) */}
+        {showToTop && (
+          <Pressable style={ss.toTopFab} onPress={scrollToTop} hitSlop={8}>
+            <Icon name="arrow_upward" size={22} color={palette.zinc[800]} />
+          </Pressable>
+        )}
       </View>
-
-      {/* 맨 위로 가기 — 후기를 스크롤해 내려가면 좌하단에 노출(우측 Gganbu FAB과 분리) */}
-      {showToTop && (
-        <Pressable
-          style={[ss.toTopFab, { bottom: 18 + 56 + insets.bottom }]}
-          onPress={scrollToTop}
-          hitSlop={8}>
-          <Icon name="arrow_upward" size={22} color={palette.zinc[800]} />
-        </Pressable>
-      )}
     </View>
   )
 }
@@ -1502,46 +1432,36 @@ const ss = StyleSheet.create({
   container: { flex: 1, backgroundColor: palette.zinc[50] },
   row: { flexDirection: 'row', alignItems: 'center' },
 
-  // 맨 위로 가기 플로팅 버튼(좌하단)
-  toTopFab: {
+  // 플로팅 버튼 우하단 세로 스택 — 아이콘만 동그라미(크기 통일 48)
+  gganbuFabWrap: {
     position: 'absolute',
-    left: 16,
-    width: 46,
-    height: 46,
+    right: 14,
+    bottom: 18,
+    alignItems: 'center',
+    gap: 12, // 지도 / 통역 / 깐부 / 맨위로 세로 간격
+  },
+  // 공용 원형 FAB(48) — 색만 각각 지정
+  fabCircle: {
+    width: 48,
+    height: 48,
+    borderRadius: 999,
+    alignItems: 'center',
+    justifyContent: 'center',
+    ...shadows.fab,
+  },
+  mapFab: { backgroundColor: palette.indigo[40] }, // 지도(네비)
+  translateFab: { backgroundColor: '#0D9488' }, // 통역(teal)
+  gganbuFab: { backgroundColor: palette.blue[50] }, // AI 깐부(블루)
+  // 맨 위로 가기 — 흰 동그라미(동일 크기)
+  toTopFab: {
+    width: 48,
+    height: 48,
     borderRadius: 999,
     backgroundColor: 'rgba(255,255,255,.97)',
     alignItems: 'center',
     justifyContent: 'center',
     ...shadows.card,
   },
-
-  // 플로팅 AI 깐부 버튼 — 알약형 솔리드 블루 + 로봇 아이콘 + 라벨 (docs/AI Gganbu.png)
-  gganbuFabWrap: {
-    position: 'absolute',
-    left: 0,
-    right: 10, // 도킹 원을 화면 우측에 더 붙임(마무리 위치 우측 이동)
-    bottom: 18,
-    alignItems: 'flex-end', // 알약을 우측 정렬(내용 너비로 shrink)
-    gap: 10, // AI Translate / AI Gganbu 세로 스택 간격
-  },
-  // AI Translate 플로팅 — teal(번역 전용 컬러)
-  translateFab: { backgroundColor: '#0D9488' },
-  gganbuFab: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    height: 52,
-    borderRadius: 999,
-    overflow: 'hidden', // 접힌 라벨이 원 밖으로 새지 않도록
-    backgroundColor: palette.blue[50],
-    ...shadows.blue,
-  },
-  // 아이콘 정사각 박스 — 폭=높이라 도킹 시 완전한 원
-  fabIconBox: { width: 52, height: 52, alignItems: 'center', justifyContent: 'center' },
-  gganbuFabText: { color: '#fff', fontSize: 15, fontWeight: '800', letterSpacing: -0.2 },
-  // 라벨 뒤 여백(펼침 시 우측 패딩)을 폭에 포함해 도킹 시 함께 접힘
-  fabLabelInner: { paddingRight: 20 },
-  // 측정 전용(레이아웃 영향 없음) — 자연 너비만 잰다
-  fabLabelMeasure: { position: 'absolute', left: 0, opacity: 0, paddingRight: 20 },
 
   hero: { paddingHorizontal: 18, paddingBottom: 6, overflow: 'hidden' },
   // 히어로 우측 하단 스피커 — 질문·답변 낭독 소리 켜기/끄기(히어로 필들과 동일 톤)
