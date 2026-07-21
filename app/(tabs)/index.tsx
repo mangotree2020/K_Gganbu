@@ -689,7 +689,8 @@ export default function HomeScreen() {
         onAction={() => router.push('/itinerary' as never)}
       />
       <View style={{ gap: 10 }}>
-        {COURSES.map((c) => (
+        {/* 크루즈 코스는 크루즈 모드(마이메뉴 토글) 설정 시에만 노출 */}
+        {COURSES.filter((c) => !c.isCruise || isCruise).map((c) => (
           <CourseCard key={c.id} course={c} />
         ))}
       </View>
