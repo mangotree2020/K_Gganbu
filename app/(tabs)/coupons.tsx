@@ -3,7 +3,8 @@ import { useQuery } from '@tanstack/react-query'
 import { LinearGradient } from 'expo-linear-gradient'
 import { router, useLocalSearchParams } from 'expo-router'
 import { useEffect, useMemo, useState } from 'react'
-import { Alert, Image, Linking, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
+import { Alert, Linking, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
+import { CachedImage } from '@/components/CachedImage'
 import { SafeAreaView } from 'react-native-safe-area-context'
 
 import { Icon, Pill } from '@/components/brand'
@@ -348,7 +349,7 @@ export default function CouTixScreen() {
                 style={({ pressed }) => [ss.card, shadows.card, { opacity: pressed ? 0.9 : 1 }]}>
                 <View style={ss.cardThumb}>
                   {couponPhotos[c.name] ? (
-                    <Image
+                    <CachedImage
                       source={{ uri: couponPhotos[c.name] as string }}
                       style={{ width: 56, height: 56 }}
                     />

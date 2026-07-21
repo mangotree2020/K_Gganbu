@@ -6,13 +6,14 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   Animated,
   Dimensions,
-  Image,
   Linking,
   Pressable,
   ScrollView,
   StyleSheet,
   Text,
   View,
+  type NativeScrollEvent,
+  type NativeSyntheticEvent,
 } from 'react-native'
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 
@@ -21,6 +22,7 @@ import Svg, { Circle, G, Path, Rect } from 'react-native-svg'
 
 import { Icon, Pill } from '@/components/brand'
 import { FallbackBadge } from '@/components/FallbackBadge'
+import { CachedImage } from '@/components/CachedImage'
 import { CatSprite, catWidth, type CatVariant } from '@/components/CatSprite'
 import { HeroBackdrop } from '@/components/HeroBackdrop'
 import { usePlaces, type Poi } from '@/features/map/queries'
@@ -35,6 +37,8 @@ import { getTickets, type Ticket } from '@/features/ticket/services'
 import { unreadCount, useInboxStore } from '@/features/notifications/inbox'
 import { stepsToPoints, useTodaySteps } from '@/features/points/pedometer'
 import { useEarnSteps } from '@/features/points/queries'
+import { TravelerFeed } from '@/features/travelers/TravelerFeed'
+import { buildTravelerFeed, feedPage } from '@/features/travelers/feed'
 import { conditionIcon, conditionLabelKey, useWeather } from '@/features/weather/queries'
 import { useCityLabel } from '@/features/weather/useCityLabel'
 import { useCurrentLocation } from '@/hooks/useCurrentLocation'
@@ -319,43 +323,58 @@ function playMeow() {
 
 // 도킹형 플로팅 버튼 — 탭바 노출 중엔 우측으로 밀어 아이콘만 보이고,
 // 탭바가 숨으면(스크롤 다운) 슬라이드로 전체 노출. 도킹 상태에서도 탭 가능.
-const FAB_PEEK_W = 44 // 도킹 시 화면에 남기는 폭 — 좌측 패딩 16 + 아이콘까지만(라벨 숨김)
 
+// 플로팅 액션 버튼 — 탭바 노출 시(docked) 라벨 폭을 0으로 접어 아이콘만 남기고,
+// 탭바 숨김(스크롤 다운) 시 라벨을 펼친다. 슬라이드 대신 폭 축소라 텍스트가 삐져나오지 않음.
 function DockedFab({
   docked,
   onPress,
   style,
-  children,
+  icon,
+  label,
 }: {
   docked: boolean
   onPress: () => void
   style?: object | object[]
-  children: React.ReactNode
+  icon: React.ReactNode
+  label: string
 }) {
-  const [w, setW] = useState(0)
-  const anim = useState(() => new Animated.Value(docked ? 1 : 0))[0]
+  const anim = useState(() => new Animated.Value(docked ? 0 : 1))[0] // 1=펼침, 0=아이콘만
+  const [labelW, setLabelW] = useState(0)
   useEffect(() => {
     Animated.timing(anim, {
-      toValue: docked ? 1 : 0,
+      toValue: docked ? 0 : 1,
       duration: 220,
-      useNativeDriver: true,
+      useNativeDriver: false, // width 애니메이션이라 native driver 불가
     }).start()
   }, [docked, anim])
-  const translateX = anim.interpolate({
-    inputRange: [0, 1],
-    outputRange: [0, Math.max(0, w - FAB_PEEK_W)],
-  })
   return (
-    <Animated.View
-      onLayout={(e) => setW(e.nativeEvent.layout.width)}
-      style={{ transform: [{ translateX }] }}>
-      <Pressable
-        onPress={onPress}
-        android_ripple={{ color: 'rgba(255,255,255,0.25)', borderless: false }}
-        style={style}>
-        {children}
-      </Pressable>
-    </Animated.View>
+    <Pressable
+      onPress={onPress}
+      android_ripple={{ color: 'rgba(255,255,255,0.25)', borderless: false }}
+      style={style}>
+      {/* 아이콘 고정 정사각 박스 — 도킹 시 이 박스만 남아 완전한 원(50×50)이 된다 */}
+      <View style={ss.fabIconBox}>{icon}</View>
+      {/* 측정용 숨김 라벨 — 자연 너비(트레일링 패딩 포함) 확보 */}
+      <Text
+        style={[ss.gganbuFabText, ss.fabLabelMeasure]}
+        onLayout={(e) => setLabelW(e.nativeEvent.layout.width)}>
+        {label}
+      </Text>
+      {/* 실제 라벨 — 도킹 시 폭 0·투명으로 완전히 사라짐 */}
+      <Animated.View
+        style={{
+          overflow: 'hidden',
+          opacity: anim,
+          width: labelW
+            ? anim.interpolate({ inputRange: [0, 1], outputRange: [0, labelW] })
+            : undefined,
+        }}>
+        <Text style={[ss.gganbuFabText, ss.fabLabelInner]} numberOfLines={1}>
+          {label}
+        </Text>
+      </Animated.View>
+    </Pressable>
   )
 }
 
@@ -579,7 +598,7 @@ function PlaceCard({
       style={[ss.placeCard, shadows.card]}>
       <View>
         {imageUrl ? (
-          <Image
+          <CachedImage
             source={{ uri: imageUrl }}
             style={{ width: '100%', height: 92 }}
             resizeMode="cover"
@@ -650,19 +669,6 @@ function CourseCard({ course }: { course: (typeof COURSES)[number] }) {
   )
 }
 
-const REVIEWS = [
-  {
-    name: 'Yuki · 🇯🇵',
-    text: "Mipojeong's gukbap is everything. Got the 10% coupon working — easy.",
-    time: '2h',
-  },
-  {
-    name: 'Alex · 🇺🇸',
-    text: 'Translate camera saved me from a pork dish — peanut allergy section is excellent.',
-    time: '5h',
-  },
-]
-
 export default function HomeScreen() {
   const t = useT()
   const insets = useSafeAreaInsets() // 상태바 영역 틴트 높이 계산용
@@ -694,6 +700,8 @@ export default function HomeScreen() {
   const { data: placesData } = usePlaces(lang, 12)
   const pois = placesData?.pois
   const poisMock = placesData?.provider === 'mock'
+  // 여행자 피드용 — 이미지·좌표 풍부한 별도 세트(무한 스크롤 소재). 24h 캐시
+  const { data: feedData } = usePlaces(lang, 30)
 
   // 실시간 위치·날씨·도시명
   const { coords } = useCurrentLocation()
@@ -978,9 +986,45 @@ export default function HomeScreen() {
     [pois],
   )
 
+  // 여행자 후기 피드 — 시간+거리 순 정렬 후 무한 스크롤로 아래에 계속 추가.
+  const feedBase = useMemo(
+    () =>
+      buildTravelerFeed(feedData?.pois ?? [], {
+        latitude: coords.latitude,
+        longitude: coords.longitude,
+      }),
+    [feedData, coords.latitude, coords.longitude],
+  )
+  const FEED_STEP = 4
+  const FEED_MAX = 40
+  const [feedCount, setFeedCount] = useState(FEED_STEP)
+  const [loadingMore, setLoadingMore] = useState(false)
+  const loadingMoreRef = useRef(false)
+  const visiblePosts = useMemo(() => feedPage(feedBase, feedCount), [feedBase, feedCount])
+  const canLoadMore = feedBase.length > 0 && feedCount < FEED_MAX
+
+  // 홈 스크롤 — 탭바 자동 숨김(기존) + 하단 근접 시 피드 추가 로드 합성
+  const onHomeScroll = (e: NativeSyntheticEvent<NativeScrollEvent>) => {
+    tabBarAutoHide.onScroll(e)
+    const { contentOffset, contentSize, layoutMeasurement } = e.nativeEvent
+    const toBottom = contentSize.height - (contentOffset.y + layoutMeasurement.height)
+    if (toBottom < 500 && !loadingMoreRef.current && canLoadMore) {
+      loadingMoreRef.current = true
+      setLoadingMore(true)
+      setTimeout(() => {
+        setFeedCount((c) => Math.min(FEED_MAX, c + FEED_STEP))
+        setLoadingMore(false)
+        loadingMoreRef.current = false
+      }, 350)
+    }
+  }
+
   return (
     <View style={ss.container}>
-      <ScrollView showsVerticalScrollIndicator={false} {...tabBarAutoHide}>
+      <ScrollView
+        showsVerticalScrollIndicator={false}
+        scrollEventThrottle={16}
+        onScroll={onHomeScroll}>
         {/* ── HERO ── */}
         <View style={ss.hero}>
           {/* 현재 위치 관광지 사진 배경(동적 순환) + 브랜드 틴트 + 폴백 실루엣 + 가독성 스크림 */}
@@ -1179,7 +1223,7 @@ export default function HomeScreen() {
                       })
                     }
                     style={[ss.pickCard, { width: SCREEN_W - 72 }, shadows.card]}>
-                    <Image
+                    <CachedImage
                       source={{ uri: p.imageUrl as string }}
                       style={{ width: '100%', height: 148 }}
                       resizeMode="cover"
@@ -1289,7 +1333,7 @@ export default function HomeScreen() {
                 style={[ss.dealCard, { width: SCREEN_W - 82 }]}>
                 <View style={{ width: 64, height: 64, borderRadius: 14, overflow: 'hidden' }}>
                   {dealPhotos[d.title] ? (
-                    <Image
+                    <CachedImage
                       source={{ uri: dealPhotos[d.title] as string }}
                       style={{ width: 64, height: 64 }}
                       resizeMode="cover"
@@ -1393,29 +1437,14 @@ export default function HomeScreen() {
         {/* ── Recommended courses ── (일반 고객 위치, 크루즈는 딜 위로 이동) */}
         {!isCruise && coursesSection}
 
-        {/* ── From travelers ── */}
+        {/* ── From travelers — 인스타 스타일 피드(프로필+리뷰글+이미지+별/댓글/공유) ── */}
         <View style={{ paddingHorizontal: 16, paddingTop: 16, paddingBottom: 28 }}>
           <SectionHeader
             title={t('home.travelers')}
             action={t('home.seeAll')}
             onAction={() => router.push('/reviews' as never)}
           />
-          <View style={[ss.community, shadows.card]}>
-            {REVIEWS.map((r, i) => (
-              <View key={r.name} style={[ss.reviewRow, i < REVIEWS.length - 1 && ss.reviewBorder]}>
-                <View style={ss.reviewAvatar}>
-                  <Text style={ss.reviewAvatarText}>{r.name[0]}</Text>
-                </View>
-                <View style={{ flex: 1 }}>
-                  <Text style={ss.reviewName}>
-                    {r.name}
-                    <Text style={ss.reviewTime}> · {r.time}</Text>
-                  </Text>
-                  <Text style={ss.reviewText}>{r.text}</Text>
-                </View>
-              </View>
-            ))}
-          </View>
+          <TravelerFeed posts={visiblePosts} loadingMore={loadingMore} />
         </View>
       </ScrollView>
 
@@ -1425,23 +1454,22 @@ export default function HomeScreen() {
       <View
         style={[ss.gganbuFabWrap, tabBarHidden && { bottom: 18 + 56 + insets.bottom }]}
         pointerEvents="box-none">
-        {/* AI Gganbu — 챗봇 화면 */}
+        {/* AI Gganbu — 챗봇 화면. 외곽선 로봇(눈·안테나 보이도록) */}
         <DockedFab
           docked={fabDocked}
           onPress={() => pressFab(() => router.push('/(tabs)/ai' as never))}
-          style={ss.gganbuFab}>
-          {/* 외곽선 로봇(눈·안테나 보이도록) — filled면 눈 구멍이 메워져 가독성 저하 */}
-          <Icon name="smart_toy" size={23} color="#fff" strokeWidth={2.2} />
-          <Text style={ss.gganbuFabText}>Gganbu</Text>
-        </DockedFab>
+          style={ss.gganbuFab}
+          icon={<Icon name="smart_toy" size={23} color="#fff" strokeWidth={2.2} />}
+          label="Gganbu"
+        />
         {/* AI Translate — 음성 통역 실행화면 바로가기(teal=번역 전용) */}
         <DockedFab
           docked={fabDocked}
           onPress={() => pressFab(() => router.push('/voice-interpret' as never))}
-          style={[ss.gganbuFab, ss.translateFab]}>
-          <Icon name="translate" size={20} color="#fff" />
-          <Text style={ss.gganbuFabText}>Translate</Text>
-        </DockedFab>
+          style={[ss.gganbuFab, ss.translateFab]}
+          icon={<Icon name="translate" size={20} color="#fff" />}
+          label="Translate"
+        />
       </View>
     </View>
   )
@@ -1455,7 +1483,7 @@ const ss = StyleSheet.create({
   gganbuFabWrap: {
     position: 'absolute',
     left: 0,
-    right: 16,
+    right: 10, // 도킹 원을 화면 우측에 더 붙임(마무리 위치 우측 이동)
     bottom: 18,
     alignItems: 'flex-end', // 알약을 우측 정렬(내용 너비로 shrink)
     gap: 10, // AI Translate / AI Gganbu 세로 스택 간격
@@ -1465,15 +1493,19 @@ const ss = StyleSheet.create({
   gganbuFab: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
-    height: 50,
-    paddingLeft: 16,
-    paddingRight: 18,
+    height: 52,
     borderRadius: 999,
+    overflow: 'hidden', // 접힌 라벨이 원 밖으로 새지 않도록
     backgroundColor: palette.blue[50],
     ...shadows.blue,
   },
+  // 아이콘 정사각 박스 — 폭=높이라 도킹 시 완전한 원
+  fabIconBox: { width: 52, height: 52, alignItems: 'center', justifyContent: 'center' },
   gganbuFabText: { color: '#fff', fontSize: 15, fontWeight: '800', letterSpacing: -0.2 },
+  // 라벨 뒤 여백(펼침 시 우측 패딩)을 폭에 포함해 도킹 시 함께 접힘
+  fabLabelInner: { paddingRight: 20 },
+  // 측정 전용(레이아웃 영향 없음) — 자연 너비만 잰다
+  fabLabelMeasure: { position: 'absolute', left: 0, opacity: 0, paddingRight: 20 },
 
   hero: { paddingHorizontal: 18, paddingBottom: 6, overflow: 'hidden' },
   // 히어로 우측 하단 스피커 — 질문·답변 낭독 소리 켜기/끄기(히어로 필들과 동일 톤)
@@ -1855,27 +1887,4 @@ const ss = StyleSheet.create({
   courseStops: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 4 },
   courseDot: { width: 7, height: 7, borderRadius: 999, marginRight: 4 },
   courseStop: { fontSize: 11, fontWeight: '600', color: palette.zinc[700] },
-
-  community: {
-    backgroundColor: '#fff',
-    borderWidth: 0.5,
-    borderColor: palette.zinc[200],
-    borderRadius: 18,
-    padding: 12,
-    gap: 12,
-  },
-  reviewRow: { flexDirection: 'row', gap: 10 },
-  reviewBorder: { paddingBottom: 12, borderBottomWidth: 0.5, borderBottomColor: palette.zinc[200] },
-  reviewAvatar: {
-    width: 32,
-    height: 32,
-    borderRadius: 999,
-    backgroundColor: palette.blue[50],
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  reviewAvatarText: { color: '#fff', fontWeight: '700', fontSize: 13 },
-  reviewName: { fontSize: 12, fontWeight: '700', color: palette.zinc[900] },
-  reviewTime: { color: palette.zinc[400], fontWeight: '500' },
-  reviewText: { fontSize: 12, color: palette.zinc[700], marginTop: 3, lineHeight: 17 },
 })

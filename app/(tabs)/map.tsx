@@ -5,7 +5,6 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   ActivityIndicator,
   Animated,
-  Image,
   Linking,
   PanResponder,
   Pressable,
@@ -18,6 +17,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context'
 
 import { Icon } from '@/components/brand'
+import { CachedImage } from '@/components/CachedImage'
 import { FallbackBadge } from '@/components/FallbackBadge'
 import { PlaceThumb } from '@/components/PlaceThumb'
 import { track } from '@/features/analytics/service'
@@ -272,7 +272,9 @@ export default function MapScreen() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [focused])
 
-  const { coords, loading: locLoading } = useCurrentLocation()
+  const { coords, loading: locLoading, refresh: refreshLocation } = useCurrentLocation()
+  // 내 위치 버튼 재측정 중 표시(스피너)
+  const [locating, setLocating] = useState(false)
   // 카테고리 선택 시 해당 contentTypeId로 재조회(필터가 마커·리스트에 실제 반영)
   const { data: poisData, isFetching: poisFetching } = useMapPoisMulti(
     lang,
@@ -360,10 +362,16 @@ export default function MapScreen() {
     return () => sub?.remove()
   }, [compassAnim])
 
-  // 내 위치로 이동 + 파란 점 표시
-  const goToMyLocation = () => {
-    naverRef.current?.setMyLocation(coords.latitude, coords.longitude, WALK_ZOOM)
-    googleRef.current?.setMyLocation(coords.latitude, coords.longitude, WALK_ZOOM)
+  // 내 위치로 이동 + 파란 점 표시 — 탭할 때마다 GPS를 새로 측정한다.
+  // (마운트 시 1회 좌표만 재사용하면 캐시·폴백 지점에 고정돼 잘못된 위치를 계속 가리킴)
+  const goToMyLocation = async () => {
+    if (locating) return
+    setLocating(true)
+    const fresh = await refreshLocation()
+    const c = fresh ?? coords // 측정 실패 시 마지막 좌표로 이동
+    naverRef.current?.setMyLocation(c.latitude, c.longitude, WALK_ZOOM)
+    googleRef.current?.setMyLocation(c.latitude, c.longitude, WALK_ZOOM)
+    setLocating(false)
   }
   // 지도 유형 순환 (일반→위성→하이브리드)
   const cycleMapType = () => {
@@ -961,7 +969,11 @@ export default function MapScreen() {
               </Animated.View>
             </Pressable>
             <Pressable style={ss.fab} onPress={goToMyLocation} hitSlop={6}>
-              <Icon name="my_location" size={20} color={palette.blue[50]} />
+              {locating ? (
+                <ActivityIndicator size="small" color={palette.blue[50]} />
+              ) : (
+                <Icon name="my_location" size={20} color={palette.blue[50]} />
+              )}
             </Pressable>
             <Pressable style={ss.fab} onPress={cycleMapType} hitSlop={6}>
               <Icon
@@ -987,7 +999,7 @@ export default function MapScreen() {
             <View style={ss.placeHead} {...sheetHeadPan.panHandlers}>
               <View style={ss.placeThumb}>
                 {place.imageUrl ? (
-                  <Image source={{ uri: place.imageUrl }} style={{ width: 46, height: 46 }} />
+                  <CachedImage source={{ uri: place.imageUrl }} style={{ width: 46, height: 46 }} />
                 ) : (
                   <PlaceThumb category={place.cat} height={46} />
                 )}
@@ -1083,7 +1095,10 @@ export default function MapScreen() {
                       ]}>
                       <View style={ss.attrThumbH}>
                         {p.imageUrl ? (
-                          <Image source={{ uri: p.imageUrl }} style={{ width: 150, height: 92 }} />
+                          <CachedImage
+                            source={{ uri: p.imageUrl }}
+                            style={{ width: 150, height: 92 }}
+                          />
                         ) : (
                           <PlaceThumb category={p.cat} height={92} />
                         )}

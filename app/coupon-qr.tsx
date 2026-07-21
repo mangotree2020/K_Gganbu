@@ -4,7 +4,8 @@
 import { LinearGradient } from 'expo-linear-gradient'
 import { router, useLocalSearchParams } from 'expo-router'
 import { useEffect, useState } from 'react'
-import { Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
+import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
+import { CachedImage } from '@/components/CachedImage'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import QRCode from 'react-native-qrcode-svg'
 
@@ -228,7 +229,7 @@ export default function CouponQrScreen() {
         <View style={[ss.merchant, shadows.card]}>
           <View style={ss.thumb}>
             {photo ? (
-              <Image source={{ uri: photo }} style={{ width: '100%', height: '100%' }} />
+              <CachedImage source={{ uri: photo }} style={{ width: '100%', height: '100%' }} />
             ) : (
               <PlaceThumb category={merchant?.cat ?? 'market'} height={64} />
             )}

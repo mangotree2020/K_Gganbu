@@ -5,7 +5,8 @@
 import { useQuery } from '@tanstack/react-query'
 import { router, useLocalSearchParams } from 'expo-router'
 import { useMemo, useState } from 'react'
-import { Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
+import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
+import { CachedImage } from '@/components/CachedImage'
 import { SafeAreaView } from 'react-native-safe-area-context'
 
 import { Icon, Pill } from '@/components/brand'
@@ -121,7 +122,7 @@ export default function WalletScreen() {
                     style={[ss.card]}>
                     <View style={ss.thumb}>
                       {photos[c.name] ? (
-                        <Image
+                        <CachedImage
                           source={{ uri: photos[c.name] as string }}
                           style={{ width: 52, height: 52 }}
                         />

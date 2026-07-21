@@ -1,5 +1,6 @@
 // ProfileAvatar — 프로필 아바타. 우선순위: 직접 사진 > 12지신 캐릭터 > 기본(👤).
-import { Image, Text, View, type StyleProp, type ViewStyle } from 'react-native'
+import { Text, View, type StyleProp, type ViewStyle } from 'react-native'
+import { CachedImage } from '@/components/CachedImage'
 import { useProfileStore } from './store'
 import { zodiacImage } from './zodiac'
 
@@ -27,7 +28,7 @@ export function ProfileAvatar({ size = 64, style }: Props) {
   if (photoUri) {
     return (
       <View style={[base, style]}>
-        <Image
+        <CachedImage
           source={{ uri: photoUri }}
           style={{ width: size, height: size }}
           resizeMode="cover"
@@ -39,7 +40,7 @@ export function ProfileAvatar({ size = 64, style }: Props) {
   if (birthYear) {
     return (
       <View style={[base, style]}>
-        <Image
+        <CachedImage
           source={zodiacImage(gender, birthYear)}
           style={{ width: size, height: size }}
           resizeMode="cover"

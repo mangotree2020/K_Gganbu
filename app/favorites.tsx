@@ -1,6 +1,7 @@
 // 즐겨찾기 목록 (BACKLOG #20) — 저장한 장소 조회/길찾기/삭제
 import { router } from 'expo-router'
-import { Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
+import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
+import { CachedImage } from '@/components/CachedImage'
 import { SafeAreaView } from 'react-native-safe-area-context'
 
 import { Icon } from '@/components/brand'
@@ -59,7 +60,7 @@ export default function FavoritesScreen() {
               <View key={f.id} style={ss.card}>
                 <View style={ss.thumb}>
                   {f.image_url ? (
-                    <Image source={{ uri: f.image_url }} style={{ width: 52, height: 52 }} />
+                    <CachedImage source={{ uri: f.image_url }} style={{ width: 52, height: 52 }} />
                   ) : (
                     <PlaceThumb category={f.cat ?? 'sights'} height={52} />
                   )}

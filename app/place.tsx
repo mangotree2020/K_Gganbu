@@ -6,7 +6,8 @@ import { useQuery } from '@tanstack/react-query'
 import { LinearGradient } from 'expo-linear-gradient'
 import { router, useLocalSearchParams } from 'expo-router'
 import { useMemo, useState } from 'react'
-import { Image, Pressable, Share, ScrollView, StyleSheet, Text, View } from 'react-native'
+import { Pressable, Share, ScrollView, StyleSheet, Text, View } from 'react-native'
+import { CachedImage } from '@/components/CachedImage'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 
 import { Icon, Pill } from '@/components/brand'
@@ -131,7 +132,7 @@ export default function PlaceScreen() {
                   heroW > 0 && setHeroIdx(Math.round(e.nativeEvent.contentOffset.x / heroW))
                 }>
                 {heroImages.map((u) => (
-                  <Image
+                  <CachedImage
                     key={u}
                     source={{ uri: u }}
                     style={{ width: heroW || '100%', height: 180 }}
