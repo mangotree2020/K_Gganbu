@@ -205,18 +205,7 @@ function PostCard({
       {/* 미디어 영역 — 이미지 여러 장 + 영상 캐러셀 */}
       <MediaCarousel media={post.media} cat={post.cat} />
 
-      {/* 장소 바로가기 — 좌표 있으면 이미지 하단에 링크 표시 → 장소 상세로 이동 */}
-      {post.lat != null && post.lng != null && (
-        <Pressable style={ss.placeLink} onPress={() => goToPlace(post)} hitSlop={4}>
-          <Icon name="location_on" size={14} color={palette.blue[50]} filled />
-          <Text style={ss.placeLinkText} numberOfLines={1}>
-            {post.place}
-          </Text>
-          <Icon name="open_in_new" size={13} color={palette.blue[50]} />
-        </Pressable>
-      )}
-
-      {/* 액션: 별(좋아요) / 댓글 / 공유 */}
+      {/* 액션: 별(좋아요) / 댓글 / 공유 + 우측 장소 바로가기(아이콘만 — 장소명은 프로필에 이미 표시) */}
       <View style={ss.actions}>
         <Pressable style={ss.actionBtn} onPress={() => toggleLike(post.id)} hitSlop={6}>
           <Icon
@@ -242,6 +231,12 @@ function PostCard({
         <Pressable style={ss.actionBtn} onPress={onShare} hitSlop={6}>
           <Icon name="share" size={19} color={palette.zinc[500]} />
         </Pressable>
+        {/* 장소 바로가기 → 장소 상세로 이동 (우측 정렬, 아이콘만) */}
+        {post.lat != null && post.lng != null && (
+          <Pressable style={ss.placeLinkBtn} onPress={() => goToPlace(post)} hitSlop={8}>
+            <Icon name="location_on" size={20} color={palette.blue[50]} filled />
+          </Pressable>
+        )}
       </View>
     </View>
   )
@@ -329,22 +324,16 @@ function CommentSheet({ postId, onClose }: { postId: string | null; onClose: () 
 
   const startReply = (id: string) => setReplyTo(id)
 
-  // 키보드가 뜨면 시트 전체를 그 높이만큼 위로 띄워(marginBottom) 입력창이 자판에 완전히 가리지 않게 한다.
-  // (paddingBottom만으로는 기기별 window pan과 겹쳐 입력창이 자판 경계에 걸리는 문제가 있었음)
-  const sheetLift = kbHeight > 0 ? kbHeight : 0
-  const bottomPad = kbHeight > 0 ? 12 : insets.bottom + 14
-  const listMaxH = kbHeight > 0 ? 160 : 300
+  // 키보드가 뜨면 그 높이 + 여유(자동완성 툴바까지 확실히 넘도록)만큼 입력창을 자판 위로 올린다.
+  const KB_CLEARANCE = 52 // 자동완성 툴바·여백 버퍼
+  const bottomPad = kbHeight > 0 ? kbHeight + KB_CLEARANCE : insets.bottom + 14
+  const listMaxH = kbHeight > 0 ? 150 : 300
 
   return (
-    <Modal
-      visible={!!postId}
-      transparent
-      animationType="slide"
-      onRequestClose={close}
-      statusBarTranslucent>
+    <Modal visible={!!postId} transparent animationType="slide" onRequestClose={close}>
       <View style={ss.modalRoot}>
         <Pressable style={ss.backdrop} onPress={close} />
-        <View style={[ss.sheet, { marginBottom: sheetLift, paddingBottom: bottomPad }]}>
+        <View style={[ss.sheet, { paddingBottom: bottomPad }]}>
           <View style={ss.sheetGrab} />
           <Text style={ss.sheetTitle}>{t('travelers.comments')}</Text>
           <ScrollView style={{ maxHeight: listMaxH }} keyboardShouldPersistTaps="handled">
@@ -494,25 +483,15 @@ const ss = StyleSheet.create({
   },
   dot: { width: 6, height: 6, borderRadius: 999, backgroundColor: 'rgba(255,255,255,0.5)' },
   dotActive: { backgroundColor: '#fff', width: 7, height: 7 },
-  // 장소 바로가기 링크(이미지 하단)
-  placeLink: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 5,
-    alignSelf: 'flex-start',
-    backgroundColor: palette.blue[90],
+  // 장소 바로가기(아이콘만) — 액션 줄 우측 정렬
+  placeLinkBtn: {
+    marginLeft: 'auto',
+    width: 32,
+    height: 32,
     borderRadius: 999,
-    paddingLeft: 9,
-    paddingRight: 10,
-    paddingVertical: 6,
-    marginTop: 10,
-    maxWidth: '100%',
-  },
-  placeLinkText: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: palette.blue[40],
-    flexShrink: 1,
+    backgroundColor: palette.blue[90],
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   actions: {
     flexDirection: 'row',

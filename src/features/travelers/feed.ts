@@ -146,11 +146,11 @@ function toPost(
   }
 }
 
-// 시간+거리 복합 정렬 점수(낮을수록 상위) — 최신(6h 단위)과 근접(2km 단위)을 비슷한 가중으로 혼합
+// 정렬 점수(낮을수록 상위) — 현위치에서 가까운 거리 우선 + 같은 거리대(1km) 내 최신순.
+// 1km 링 단위로 묶어 가까운 링부터, 각 링 안에서는 작성 시간이 최신(ageMin 작을수록)인 후기를 위로.
 function rankScore(post: TravelerPost): number {
-  const recency = post.ageMin / 60 / 6 // 6시간을 1점
-  const proximity = (post.dist === Infinity ? 30 : post.dist) / 2 // 2km를 1점
-  return recency + proximity
+  const ring = post.dist === Infinity ? 999 : Math.floor(post.dist) // 1km 거리대
+  return ring * 10000 + post.ageMin // ageMin(<4320) < 10000 이라 링 경계 안 겹침
 }
 
 // 피드 생성 — POI를 포스트화 후 시간+거리 순 정렬.
