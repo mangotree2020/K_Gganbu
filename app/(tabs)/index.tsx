@@ -1003,10 +1003,22 @@ export default function HomeScreen() {
   const visiblePosts = useMemo(() => feedPage(feedBase, feedCount), [feedBase, feedCount])
   const canLoadMore = feedBase.length > 0 && feedCount < FEED_MAX
 
-  // 홈 스크롤 — 탭바 자동 숨김(기존) + 하단 근접 시 피드 추가 로드 합성
+  // 맨 위로 가기 플로팅 버튼 — 일정 이상 스크롤하면 노출
+  const scrollRef = useRef<ScrollView>(null)
+  const [showToTop, setShowToTop] = useState(false)
+  const showToTopRef = useRef(false)
+  const scrollToTop = () => scrollRef.current?.scrollTo({ y: 0, animated: true })
+
+  // 홈 스크롤 — 탭바 자동 숨김(기존) + 하단 근접 시 피드 추가 로드 + 맨 위로 버튼 토글
   const onHomeScroll = (e: NativeSyntheticEvent<NativeScrollEvent>) => {
     tabBarAutoHide.onScroll(e)
     const { contentOffset, contentSize, layoutMeasurement } = e.nativeEvent
+    // 스크롤 위치에 따라 맨 위로 버튼 표시(상태 변경 시에만 setState)
+    const next = contentOffset.y > 700
+    if (next !== showToTopRef.current) {
+      showToTopRef.current = next
+      setShowToTop(next)
+    }
     const toBottom = contentSize.height - (contentOffset.y + layoutMeasurement.height)
     if (toBottom < 500 && !loadingMoreRef.current && canLoadMore) {
       loadingMoreRef.current = true
@@ -1022,6 +1034,7 @@ export default function HomeScreen() {
   return (
     <View style={ss.container}>
       <ScrollView
+        ref={scrollRef}
         showsVerticalScrollIndicator={false}
         scrollEventThrottle={16}
         onScroll={onHomeScroll}>
@@ -1471,6 +1484,16 @@ export default function HomeScreen() {
           label="Translate"
         />
       </View>
+
+      {/* 맨 위로 가기 — 후기를 스크롤해 내려가면 좌하단에 노출(우측 Gganbu FAB과 분리) */}
+      {showToTop && (
+        <Pressable
+          style={[ss.toTopFab, { bottom: 18 + 56 + insets.bottom }]}
+          onPress={scrollToTop}
+          hitSlop={8}>
+          <Icon name="arrow_upward" size={22} color={palette.zinc[800]} />
+        </Pressable>
+      )}
     </View>
   )
 }
@@ -1478,6 +1501,19 @@ export default function HomeScreen() {
 const ss = StyleSheet.create({
   container: { flex: 1, backgroundColor: palette.zinc[50] },
   row: { flexDirection: 'row', alignItems: 'center' },
+
+  // 맨 위로 가기 플로팅 버튼(좌하단)
+  toTopFab: {
+    position: 'absolute',
+    left: 16,
+    width: 46,
+    height: 46,
+    borderRadius: 999,
+    backgroundColor: 'rgba(255,255,255,.97)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    ...shadows.card,
+  },
 
   // 플로팅 AI 깐부 버튼 — 알약형 솔리드 블루 + 로봇 아이콘 + 라벨 (docs/AI Gganbu.png)
   gganbuFabWrap: {
