@@ -114,6 +114,8 @@
   <section id="sec-stats" style="display:none">
     <div class="card"><h2>쿠폰별 발급/사용</h2><div id="statsList" class="muted">파트너 선택 후 표시됩니다</div></div>
     <div class="card"><h2>최근 사용</h2><div id="recentList" class="muted">-</div></div>
+    <!-- 스탬프 송객 리포트 (REQ-ST-3) — 파트너 방문 증명 데이터 -->
+    <div class="card"><h2>스탬프 방문 (송객)</h2><div id="stampStats" class="muted">-</div></div>
   </section>
 
   <section id="sec-push" style="display:none">
@@ -261,13 +263,21 @@ async function loadCoupons() {
 async function loadStats() {
   const pid = $('partner').value; if (!pid) return;
   try {
-    const { stats, recent } = await api('partner-coupon', { action: 'stats', partner_id: pid });
+    const { stats, recent, stamp } = await api('partner-coupon', { action: 'stats', partner_id: pid });
     $('statsList').innerHTML = stats.length ? stats.map((s) =>
       '<div class="item"><span>' + s.title + '</span><span>발급 ' + s.issued + ' · <b style="color:var(--ok)">사용 ' + s.used + '</b></span></div>'
     ).join('') : '데이터 없음';
     $('recentList').innerHTML = recent.length ? recent.map((r) =>
       '<div class="item"><span>' + new Date(r.used_at).toLocaleString('ko-KR') + '</span></div>'
     ).join('') : '최근 사용 내역 없음';
+    // 스탬프 방문 — 총계·순 방문자·최근 7/30일 + 최근 방문 시각(개인 식별자 없음)
+    $('stampStats').innerHTML = stamp
+      ? '<div class="item"><span>총 방문</span><span><b>' + stamp.total + '</b>회 · 순 방문자 ' + stamp.unique_visitors + '명</span></div>'
+        + '<div class="item"><span>최근 7일 / 30일</span><span><b style="color:var(--ok)">' + stamp.last7 + '</b> / ' + stamp.last30 + '</span></div>'
+        + (stamp.recent.length
+            ? stamp.recent.map((t) => '<div class="item"><span>' + new Date(t).toLocaleString('ko-KR') + '</span></div>').join('')
+            : '<div class="item"><span>방문 기록 없음</span></div>')
+      : '데이터 없음';
   } catch (e) { $('statsList').textContent = '조회 실패: ' + e.message; }
 }
 

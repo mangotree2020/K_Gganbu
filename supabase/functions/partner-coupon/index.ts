@@ -57,6 +57,36 @@ type RegisterBody = {
   valid_until?: string
 }
 
+// 스탬프 송객 리포트 (REQ-ST-3) — 파트너에게 "우리 매장에 몇 명이 왔는가"를 증명하는 데이터.
+// 방문 총계·순 방문자·최근 7/30일·최근 방문 20건. 개인 식별자는 내보내지 않는다(방문 시각만).
+async function stampReport(
+  admin: ReturnType<typeof createClient>,
+  partnerId: string,
+): Promise<{
+  total: number
+  unique_visitors: number
+  last7: number
+  last30: number
+  recent: string[]
+}> {
+  const { data } = await admin
+    .from('stamp_visits')
+    .select('user_id, created_at')
+    .eq('partner_id', partnerId)
+    .order('created_at', { ascending: false })
+    .limit(1000)
+  const rows = (data ?? []) as { user_id: string; created_at: string }[]
+  const now = Date.now()
+  const days = (n: number) => now - n * 24 * 3600_000
+  return {
+    total: rows.length,
+    unique_visitors: new Set(rows.map((r) => r.user_id)).size,
+    last7: rows.filter((r) => new Date(r.created_at).getTime() >= days(7)).length,
+    last30: rows.filter((r) => new Date(r.created_at).getTime() >= days(30)).length,
+    recent: rows.slice(0, 20).map((r) => r.created_at),
+  }
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: cors })
   try {
@@ -129,7 +159,10 @@ Deno.serve(async (req) => {
         .eq('partner_id', partner_id)
       if (error) return json({ error: error.message }, 500)
       const ids = (coupons ?? []).map((c) => c.id)
-      if (!ids.length) return json({ stats: [], recent: [] })
+      // 쿠폰이 없어도 스탬프 방문(송객)은 집계해 준다 — 스탬프만 참여하는 파트너가 있다
+      if (!ids.length) {
+        return json({ stats: [], recent: [], stamp: await stampReport(admin, partner_id) })
+      }
 
       const { data: issues } = await admin
         .from('coupon_issues')
@@ -152,7 +185,7 @@ Deno.serve(async (req) => {
         .sort((a, b) => (a.used_at! < b.used_at! ? 1 : -1))
         .slice(0, 20)
         .map((i) => ({ coupon_id: i.coupon_id, used_at: i.used_at }))
-      return json({ stats, recent })
+      return json({ stats, recent, stamp: await stampReport(admin, partner_id) })
     }
 
     // ── 등록: 신규 쿠폰 생성 ──
