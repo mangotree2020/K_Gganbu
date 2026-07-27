@@ -1,7 +1,7 @@
-// points — 포인트 원장 API (PRD REQ-PT-1·2·4, BM§3.5)
+// points — 포인트 원장 API (PRD REQ-PT-1·2·3·4, BM§3.5)
 // 적립·차감 RPC 는 service role 전용이므로 모든 쓰기는 이 함수를 경유한다.
 // actions:
-//   summary    — 잔액·소멸 예정·최근 내역 (본인 RLS 경유 조회)
+//   summary    — 잔액·소멸 예정·최근 내역 + 등급 (본인 RLS 경유 조회)
 //   earn_steps — 만보기 적립: 1,000보=10P·일 상한 100P·하루 1회 멱등 (REQ-PD-2 정책)
 //                게스트(anonymous)는 적립 불가 → 로그인 유도 (REQ-PT-4)
 //                정밀 부정 검증(verified_steps·Activity Recognition)은 R2 REQ-PD-2 에서 추가.
@@ -49,7 +49,7 @@ Deno.serve(async (req) => {
     } = await userClient.auth.getUser()
     if (!user) return json({ error: 'unauthorized', message: '로그인이 필요합니다' }, 401)
 
-    // ── 잔액·최근 내역 (RLS 경유 — 본인 데이터만) ──
+    // ── 잔액·최근 내역 + 등급 (RLS 경유 — 본인 데이터만) ──
     if (action === 'summary') {
       const [{ data: balance }, { data: history }] = await Promise.all([
         userClient
@@ -62,11 +62,27 @@ Deno.serve(async (req) => {
           .order('created_at', { ascending: false })
           .limit(20),
       ])
+      // 등급(REQ-PT-3) — user_tier 는 service role 전용이라 여기서 조회해 함께 내려준다.
+      // 게스트는 원장 자체가 없어 기본 등급(seed) 폴백.
+      let tier: unknown = null
+      if (!user.is_anonymous) {
+        const admin = createClient(SUPABASE_URL, SERVICE_ROLE)
+        const { data: appUser } = await admin
+          .from('users')
+          .select('id')
+          .eq('auth_id', user.id)
+          .maybeSingle()
+        if (appUser) {
+          const { data } = await admin.rpc('user_tier', { p_user: appUser.id })
+          tier = data ?? null
+        }
+      }
       return json({
         balance: balance?.balance ?? 0,
         next_expires_at: balance?.next_expires_at ?? null,
         expiring_30d: balance?.expiring_30d ?? 0,
         history: history ?? [],
+        tier,
       })
     }
 

@@ -20,7 +20,12 @@ import {
   type GifticonProduct,
 } from '@/features/gifticon/services'
 import { useWalkRank } from '@/features/journey/queries'
-import { usePointsSummary, type PointsEntry } from '@/features/points/queries'
+import {
+  DEFAULT_TIER,
+  usePointsSummary,
+  type PointsEntry,
+  type TierKey,
+} from '@/features/points/queries'
 import { routePayment } from '@/features/payment/router'
 import { useStampCards } from '@/features/stamp/queries'
 import { getTickets, saveMyTicket, type Ticket } from '@/features/ticket/services'
@@ -414,6 +419,14 @@ export default function CouTixScreen() {
 }
 
 // ===== 포인트 홈 (REQ-PT-4) — 잔액·소멸 예정·최근 내역. 게스트는 적립 불가 → 로그인 유도 =====
+// 등급 상징 (REQ-PT-3) — 씨앗→친구→단짝→깐부
+const TIER_EMOJI: Record<TierKey, string> = {
+  seed: '🌱',
+  friend: '🤝',
+  bestie: '💛',
+  gganbu: '👑',
+}
+
 const KIND_KEY: Record<PointsEntry['kind'], string> = {
   earn: 'points.kind.earn',
   spend: 'points.kind.spend',
@@ -457,6 +470,14 @@ function PointsSection() {
   const balance = data?.balance ?? 0
   const expiring = data?.expiring_30d ?? 0
   const history = data?.history ?? []
+  // 깐부 등급 (REQ-PT-3) — 서버 산정값만 사용. 응답 전/실패 시 기본 등급으로 표시.
+  const tier = data?.tier ?? DEFAULT_TIER
+  // 다음 등급까지 진행도 — 현재 등급 하한~다음 등급 하한 구간에서의 비율
+  const tierProgress = (() => {
+    if (!tier.next_tier) return 1
+    const target = tier.lifetime + tier.next_need
+    return target > 0 ? Math.min(1, tier.lifetime / target) : 0
+  })()
 
   return (
     <View style={{ gap: 10 }}>
@@ -466,8 +487,31 @@ function PointsSection() {
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 1 }}
         style={[ps.balanceCard, shadows.card]}>
-        <Text style={ps.balanceLabel}>{t('points.balance')}</Text>
+        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+          <Text style={[ps.balanceLabel, { flex: 1 }]}>{t('points.balance')}</Text>
+          {/* 등급 배지 — 부스트가 있으면 함께 표시(혜택이 보여야 승급 동기가 생긴다) */}
+          <View style={ps.tierBadge}>
+            <Text style={ps.tierEmoji}>{TIER_EMOJI[tier.tier]}</Text>
+            <Text style={ps.tierName}>{t(`tier.${tier.tier}`)}</Text>
+            {tier.boost_pct > 0 && <Text style={ps.tierBoost}>+{tier.boost_pct}%</Text>}
+          </View>
+        </View>
         <Text style={ps.balanceValue}>{balance.toLocaleString()}P</Text>
+        {/* 다음 등급 진행도 (REQ-PT-3) */}
+        {tier.next_tier ? (
+          <View style={{ gap: 4 }}>
+            <View style={ps.tierTrack}>
+              <View style={[ps.tierFill, { width: `${Math.round(tierProgress * 100)}%` }]} />
+            </View>
+            <Text style={ps.tierNext}>
+              {t('tier.next')
+                .replace('{n}', tier.next_need.toLocaleString())
+                .replace('{tier}', t(`tier.${tier.next_tier}`))}
+            </Text>
+          </View>
+        ) : (
+          <Text style={ps.tierNext}>{t('tier.max')}</Text>
+        )}
         {expiring > 0 && (
           <View style={ps.expiringPill}>
             <Icon name="schedule" size={12} color="#92400E" />
@@ -487,7 +531,9 @@ function PointsSection() {
               {t('points.comingSoon')}
             </Pill>
           </View>
-          <Text style={ps.giftSub}>{t('points.giftShopSub')}</Text>
+          <Text style={ps.giftSub}>
+            {t('points.giftShopSub').replace('{n}', String(tier.gifticon_rate_pct))}
+          </Text>
           <ScrollView
             horizontal
             showsHorizontalScrollIndicator={false}
@@ -503,7 +549,10 @@ function PointsSection() {
                 </Text>
                 <Text style={ps.giftPrice}>₩{g.price.toLocaleString()}</Text>
                 <Text style={ps.giftUsable}>
-                  {t('points.usable').replace('{n}', pointUsableFor(g.price).toLocaleString())}
+                  {t('points.usable').replace(
+                    '{n}',
+                    pointUsableFor(g.price, tier.gifticon_rate_pct).toLocaleString(),
+                  )}
                 </Text>
               </View>
             ))}
@@ -639,6 +688,26 @@ const ps = StyleSheet.create({
     paddingHorizontal: 10,
     marginTop: 6,
   },
+  tierBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: 'rgba(255,255,255,.28)',
+    borderRadius: 999,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+  },
+  tierEmoji: { fontSize: 12 },
+  tierName: { fontSize: 11, fontWeight: '800', color: '#fff' },
+  tierBoost: { fontSize: 11, fontWeight: '800', color: '#FFF7ED' },
+  tierTrack: {
+    height: 5,
+    borderRadius: 3,
+    backgroundColor: 'rgba(255,255,255,.35)',
+    overflow: 'hidden',
+  },
+  tierFill: { height: 5, borderRadius: 3, backgroundColor: '#fff' },
+  tierNext: { fontSize: 11, fontWeight: '700', color: 'rgba(255,255,255,.95)' },
   expiringText: { fontSize: 11, fontWeight: '700', color: '#92400E' },
   emptyBox: {
     backgroundColor: '#fff',

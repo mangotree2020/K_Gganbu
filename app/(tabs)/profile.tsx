@@ -25,7 +25,7 @@ import { useQuery } from '@tanstack/react-query'
 
 import { useUserCoupons } from '@/features/coupon/queries'
 import { useTodaySteps } from '@/features/points/pedometer'
-import { usePointsSummary } from '@/features/points/queries'
+import { DEFAULT_TIER, usePointsSummary, type TierKey } from '@/features/points/queries'
 import { getMyReviews } from '@/features/review/services'
 import { useFavorites } from '@/features/favorites/queries'
 import { usePassport } from '@/features/passport/queries'
@@ -63,6 +63,14 @@ const ROW_KEY: Record<string, string> = {
   settings: 'common.settings',
 }
 
+// 깐부 등급 상징 (REQ-PT-3) — 산정·혜택은 서버(user_tier), 앱은 표시만
+const TIER_EMOJI: Record<TierKey, string> = {
+  seed: '🌱',
+  friend: '🤝',
+  bestie: '💛',
+  gganbu: '👑',
+}
+
 export default function ProfileScreen() {
   // 스크롤 방향 따라 하단 탭바 자동 숨김/표시
 
@@ -83,6 +91,7 @@ export default function ProfileScreen() {
   // 통계 실데이터 — Points(원장 잔액)·Saved(찜)·Reviews(내 리뷰). mock 고정 수치 대체
   const { steps } = useTodaySteps()
   const { data: pointsSum } = usePointsSummary()
+  const tier = pointsSum?.tier ?? DEFAULT_TIER
   const { data: myReviews } = useQuery({ queryKey: ['my-reviews'], queryFn: getMyReviews })
   const stats = [
     {
@@ -148,7 +157,17 @@ export default function ProfileScreen() {
               </View>
             </Pressable>
             <View style={{ flex: 1 }}>
-              <Text style={ss.name}>{profile.displayName || user?.fullName || 'Traveler'}</Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                <Text style={ss.name}>{profile.displayName || user?.fullName || 'Traveler'}</Text>
+                {/* 깐부 등급 (REQ-PT-3) — 탭 시 포인트 홈(등급 혜택·진행도) */}
+                <Pressable
+                  style={ss.tierChip}
+                  hitSlop={6}
+                  onPress={() => router.push('/(tabs)/coupons?seg=points' as never)}>
+                  <Text style={{ fontSize: 11 }}>{TIER_EMOJI[tier.tier]}</Text>
+                  <Text style={ss.tierChipText}>{t(`tier.${tier.tier}`)}</Text>
+                </Pressable>
+              </View>
               <Text style={ss.sub}>{user?.email ?? '🇯🇵 Japan · EN / 日本語'}</Text>
             </View>
           </View>
@@ -426,6 +445,16 @@ const ss = StyleSheet.create({
     borderColor: '#fff',
   },
   name: { fontSize: 18, fontWeight: '800', color: '#fff', letterSpacing: -0.2 },
+  tierChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    backgroundColor: 'rgba(255,255,255,.28)',
+    borderRadius: 999,
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+  },
+  tierChipText: { fontSize: 10, fontWeight: '800', color: '#fff' },
   sub: { fontSize: 12, color: 'rgba(255,255,255,.92)', marginTop: 2 },
   planBox: {
     alignItems: 'flex-end',

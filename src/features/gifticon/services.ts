@@ -12,10 +12,12 @@ export type GifticonProduct = {
   emoji: string // 카드 썸네일 (실 카탈로그 전환 시 이미지 URL로 교체)
 }
 
-// 포인트 혼합 결제 사용 상한 30% (REQ-GS-2 — 등급별 상향은 REQ-PT-3에서)
+// 포인트 혼합 결제 사용 상한 — 기본 30%, 등급별 상향(REQ-PT-3: friend 35 / bestie 40 / gganbu 50).
+// 상한 비율의 근거는 서버(user_tier)이며, 여기서는 전달받은 값을 쓰기만 한다.
 export const POINT_USE_RATE = 0.3
 
-export const pointUsableFor = (price: number): number => Math.floor(price * POINT_USE_RATE)
+export const pointUsableFor = (price: number, ratePct?: number): number =>
+  Math.floor(price * ((ratePct ?? POINT_USE_RATE * 100) / 100))
 
 // mock 카탈로그 — 외국인 여행자 사용 빈도 높은 전국 브랜드 일반상품 (BM§3.5 카탈로그 원칙)
 const MOCK_CATALOG: GifticonProduct[] = [
