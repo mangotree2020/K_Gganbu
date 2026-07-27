@@ -337,6 +337,9 @@ function CommentItem({
 
 // 댓글 시트 — 내 댓글 목록 + 대댓글 + 입력.
 // 키보드 높이만큼 시트를 띄워 입력·목록이 가리지 않게 하고, 등록 후 키보드를 자연히 내린다.
+// 서버 댓글 id 판별 — 로컬 댓글 id 는 `${postId}:1` 형태라 형식으로 구분된다
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
 function CommentSheet({ postId, onClose }: { postId: string | null; onClose: () => void }) {
   const t = useT()
   const insets = useSafeAreaInsets()
@@ -345,6 +348,14 @@ function CommentSheet({ postId, onClose }: { postId: string | null; onClose: () 
   const addReply = useFeedStore((s) => s.addReply)
   // 서버 댓글(다른 여행자 것 포함, 차단 작성자는 RLS 제외) — 내 로컬 댓글 위에 함께 보여준다
   const { data: remoteComments } = usePostComments(postId)
+  // 서버 댓글을 원댓글 + 대댓글 1단계로 묶는다(정렬은 서버가 시간순으로 준다)
+  const remoteTree = useMemo(() => {
+    const roots = (remoteComments ?? []).filter((c) => !c.parentId)
+    return roots.map((r) => ({
+      ...r,
+      replies: (remoteComments ?? []).filter((c) => c.parentId === r.id),
+    }))
+  }, [remoteComments])
   const addRemote = useAddCommentRemote()
   const myName = useProfileStore((s) => s.displayName) || 'Traveler'
   const [text, setText] = useState('')
@@ -374,15 +385,14 @@ function CommentSheet({ postId, onClose }: { postId: string | null; onClose: () 
   const submit = () => {
     if (!postId || !text.trim()) return
     // 로컬 먼저 반영(즉시 표시) → 서버 저장(로그인 사용자만, 실패해도 화면은 유지)
-    if (replyTo) addReply(postId, replyTo, text)
-    else addComment(postId, text)
+    if (replyTo && !UUID_RE.test(replyTo)) addReply(postId, replyTo, text)
+    else if (!replyTo) addComment(postId, text)
+    // 답글 대상이 서버 댓글(uuid)이면 parent_id 로 붙이고, 로컬 댓글 id 면 원 댓글로 저장한다
     addRemote.mutate({
       postId,
       body: text,
       authorName: myName,
-      // 로컬 답글 id 는 서버 uuid 가 아니라 매핑이 없다 — 서버에는 원 댓글로 저장한다.
-      // (대댓글 서버 구조는 실 UGC 노출 범위가 정해질 때 함께 맞춘다)
-      parentId: null,
+      parentId: replyTo && UUID_RE.test(replyTo) ? replyTo : null,
     })
     setText('')
     setReplyTo(null)
@@ -404,11 +414,22 @@ function CommentSheet({ postId, onClose }: { postId: string | null; onClose: () 
           <View style={ss.sheetGrab} />
           <Text style={ss.sheetTitle}>{t('travelers.comments')}</Text>
           <ScrollView style={{ maxHeight: listMaxH }} keyboardShouldPersistTaps="handled">
-            {/* 다른 여행자 댓글(서버) — 내 댓글은 아래 로컬 목록이 담당 */}
-            {(remoteComments ?? []).map((rc) => (
-              <View key={rc.id} style={ss.remoteComment}>
-                <Text style={ss.remoteAuthor}>{rc.author}</Text>
-                <Text style={ss.remoteBody}>{rc.body}</Text>
+            {/* 서버 댓글 — 원 댓글 아래에 대댓글을 들여 쓴다(parent_id 1단계) */}
+            {remoteTree.map((rc) => (
+              <View key={rc.id}>
+                <View style={ss.remoteComment}>
+                  <Text style={ss.remoteAuthor}>{rc.author}</Text>
+                  <Text style={ss.remoteBody}>{rc.body}</Text>
+                  <Pressable onPress={() => startReply(rc.id)} hitSlop={6}>
+                    <Text style={ss.remoteReply}>{t('travelers.reply')}</Text>
+                  </Pressable>
+                </View>
+                {rc.replies.map((rr) => (
+                  <View key={rr.id} style={[ss.remoteComment, ss.remoteReplyItem]}>
+                    <Text style={ss.remoteAuthor}>{rr.author}</Text>
+                    <Text style={ss.remoteBody}>{rr.body}</Text>
+                  </View>
+                ))}
               </View>
             ))}
             {comments && comments.length > 0 ? (
@@ -634,6 +655,8 @@ const ss = StyleSheet.create({
   commentAuthor: { fontSize: 12, fontWeight: '700', color: palette.zinc[900] },
   commentText: { fontSize: 13, color: palette.zinc[700], marginTop: 2, lineHeight: 18 },
   remoteComment: { paddingVertical: 8, gap: 2 },
+  remoteReply: { fontSize: 11, fontWeight: '700', color: palette.blue[50], marginTop: 2 },
+  remoteReplyItem: { paddingLeft: 22, borderLeftWidth: 2, borderLeftColor: palette.zinc[200] },
   remoteAuthor: { fontSize: 12, fontWeight: '800', color: palette.zinc[700] },
   remoteBody: { fontSize: 13, color: palette.zinc[700] },
   noComments: {
