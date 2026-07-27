@@ -45,6 +45,7 @@ import {
   type NaverMarker,
 } from '@/features/map/NaverMap'
 import { PlaceReviewsSection } from '@/features/review/PlaceReviewsSection'
+import { useStampCards } from '@/features/stamp/queries'
 import { getTickets, type Ticket } from '@/features/ticket/services'
 import { useCurrentLocation } from '@/hooks/useCurrentLocation'
 import { useTabBarAutoHide, useTabBarStore } from '@/hooks/useTabBarAutoHide'
@@ -78,8 +79,10 @@ const CATS: { key: string; labelKey: string; icon: string; color: string }[] = [
   { key: 'festival', labelKey: 'map.catFestival', icon: 'celebration', color: palette.violet[40] },
   { key: 'course', labelKey: 'map.catCourse', icon: 'route', color: palette.indigo[40] },
 ]
-// 카테고리 키 → 현지화 라벨(없으면 키 그대로)
+// 카테고리 키 → 현지화 라벨(없으면 키 그대로).
+// 'stamp'은 필터 칩이 아니라 스탬프 매장 레이어(REQ-ST-2) 전용 카테고리라 별도 매핑.
 const catLabel = (t: (k: string) => string, cat: string): string => {
+  if (cat === 'stamp') return t('stamp.title')
   const c = CATS.find((x) => x.key === cat)
   return c ? t(c.labelKey) : cat
 }
@@ -139,6 +142,7 @@ const CAT_COLOR: Record<string, string> = {
   cafe: palette.amber[50],
   village: palette.cruise.base,
   beach: palette.blue[50],
+  stamp: palette.amber[50], // 스탬프 매장(REQ-ST-2)
 }
 const catColor = (cat: string) => CAT_COLOR[cat] ?? palette.blue[50]
 
@@ -156,6 +160,7 @@ const CAT_GLYPH: Record<string, string> = {
   course: '🧭',
   beach: '⛱',
   village: '🏘',
+  stamp: '🔖',
 }
 const catGlyph = (cat: string) => CAT_GLYPH[cat] ?? '📍'
 
@@ -610,6 +615,58 @@ export default function MapScreen() {
     [sortedPlaces],
   )
 
+  // 스탬프 매장 레이어 (REQ-ST-2) — 테마 카드 구성 매장을 지도에 상시 표시.
+  // 찍은 곳은 초록 체크, 남은 곳은 앰버 북마크 → "다음에 어디를 들러야 하는지"가 지도에서 읽힌다.
+  // 여러 카드에 같은 매장이 들어갈 수 있어 partnerId로 중복 제거한다.
+  const { data: stampCards } = useStampCards()
+  const stampStores = useMemo(() => {
+    const byId = new Map<string, { name: string; lat: number; lng: number; stamped: boolean }>()
+    for (const card of stampCards ?? []) {
+      for (const s of card.stores) {
+        if (s.lat == null || s.lng == null) continue
+        const prev = byId.get(s.partnerId)
+        // 한 곳이라도 찍혔으면 찍은 것으로 표시
+        byId.set(s.partnerId, {
+          name: s.name,
+          lat: s.lat,
+          lng: s.lng,
+          stamped: s.stamped || !!prev?.stamped,
+        })
+      }
+    }
+    return [...byId.entries()].map(([partnerId, v]) => ({ partnerId, ...v }))
+  }, [stampCards])
+  const stampMarkers: NaverMarker[] = useMemo(
+    () =>
+      stampStores.map((s) => ({
+        id: `stamp:${s.partnerId}`,
+        lat: s.lat,
+        lng: s.lng,
+        color: s.stamped ? palette.success[50] : palette.amber[50],
+        glyph: s.stamped ? '✅' : '🔖',
+        label: s.name,
+      })),
+    [stampStores],
+  )
+  // 스탬프 마커 탭 — 해당 매장을 시트 선택 장소로 올려 길찾기까지 이어지게 한다
+  const selectStampStore = (markerId: string): boolean => {
+    const store = stampStores.find((s) => `stamp:${s.partnerId}` === markerId)
+    if (!store) return false
+    const poi: Poi = {
+      id: markerId,
+      name: store.name,
+      address: null,
+      lat: store.lat,
+      lng: store.lng,
+      imageUrl: null,
+      tel: null,
+      cat: 'stamp',
+    }
+    setTapped(poi)
+    setSelected(poi.id)
+    return true
+  }
+
   // 마지막 경로 보관 — 지도 전환(unmount→mount) 시에도 양 지도에 경로가 유지되도록
   // 각 지도 onReady에서 재주입한다 (Naver/Google/Blend 어디서든 동일 표시)
   const routePathRef = useRef<LatLng[] | null>(null)
@@ -829,17 +886,17 @@ export default function MapScreen() {
       : naverMarkersOn
         ? mapMarkers.map((m) => ({ ...m, outline: '#03C75A' }))
         : []
-    // 코스 순번 마커는 소스 구분 없이 항상 표시(흰 테두리 유지)
-    return [...base, ...courseMarkers]
-  }, [mapMarkers, isBlend, naverMarkersOn, courseMarkers])
+    // 코스 순번·스탬프 매장 마커는 소스 구분 없이 항상 표시(흰 테두리 유지)
+    return [...base, ...stampMarkers, ...courseMarkers]
+  }, [mapMarkers, isBlend, naverMarkersOn, stampMarkers, courseMarkers])
   const googleMarkers = useMemo(() => {
     const base = !isBlend
       ? mapMarkers
       : googleMarkersOn
         ? mapMarkers.map((m) => ({ ...m, outline: '#4285F4' }))
         : []
-    return [...base, ...courseMarkers]
-  }, [mapMarkers, isBlend, googleMarkersOn, courseMarkers])
+    return [...base, ...stampMarkers, ...courseMarkers]
+  }, [mapMarkers, isBlend, googleMarkersOn, stampMarkers, courseMarkers])
 
   // 외부 지도 앱 딥링크 (현지인=Naver / 외국인=Google)
   // Naver: 공식 앱 스킴 nmap://place(좌표+이름 → 정확한 장소 핀) → 미설치 시 웹 지도 검색 폴백
@@ -862,6 +919,7 @@ export default function MapScreen() {
             language={lang}
             selectedId={selectedId ?? undefined}
             onMarkerPress={(id) => {
+              if (selectStampStore(id)) return // 스탬프 매장 마커(REQ-ST-2)
               const p = places.find((x) => x.id === id)
               if (p) selectPlace(p)
             }}
@@ -896,6 +954,7 @@ export default function MapScreen() {
               language={lang}
               selectedId={selectedId ?? undefined}
               onMarkerPress={(id) => {
+                if (selectStampStore(id)) return // 스탬프 매장 마커(REQ-ST-2)
                 const p = places.find((x) => x.id === id)
                 if (p) selectPlace(p)
               }}
