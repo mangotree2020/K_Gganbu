@@ -24,6 +24,7 @@ import { CachedImage } from '@/components/CachedImage'
 import { PlaceThumb } from '@/components/PlaceThumb'
 import { ProfileAvatar as MyProfileAvatar } from '@/features/profile/Avatar'
 import { ageLabel, type MediaItem, type TravelerPost } from './feed'
+import { blockAuthorRemote, reportContent } from './moderation'
 import { useFeedStore, type MyComment } from './store'
 import { useT } from '@/lib/i18n'
 import { palette, shadows } from '@/theme/tokens'
@@ -167,6 +168,20 @@ function PostCard({
   onOpenComments: (id: string) => void
 }) {
   const t = useT()
+  const [menuOpen, setMenuOpen] = useState(false)
+  const blockAuthor = useFeedStore((s) => s.blockAuthor)
+  const hidePost = useFeedStore((s) => s.hidePost)
+  // 신고 = 이 게시물 즉시 가림 + 서버 기록(운영 대응 큐). 사용자를 기다리게 하지 않는다.
+  const onReport = () => {
+    setMenuOpen(false)
+    hidePost(post.id)
+    void reportContent({ targetType: 'post', targetId: post.id, reason: 'offensive' })
+  }
+  const onBlock = () => {
+    setMenuOpen(false)
+    blockAuthor(post.author)
+    void blockAuthorRemote(post.author)
+  }
   const liked = useFeedStore((s) => !!s.liked[post.id])
   const myComments = useFeedStore((s) => s.comments[post.id])
   const toggleLike = useFeedStore((s) => s.toggleLike)
@@ -197,7 +212,25 @@ function PostCard({
             {post.dist !== Infinity ? ` · ${post.dist.toFixed(1)}km` : ''}
           </Text>
         </View>
+        {/* 신고·차단 (REQ-UGC-3) — UGC 화면에는 항상 있어야 하는 탈출구 */}
+        <Pressable onPress={() => setMenuOpen((v) => !v)} hitSlop={10} style={ss.moreBtn}>
+          <Text style={ss.moreText}>⋯</Text>
+        </Pressable>
       </View>
+      {menuOpen && (
+        <View style={ss.menu}>
+          <Pressable style={ss.menuItem} onPress={onReport}>
+            <Icon name="block" size={14} color={palette.error[50]} />
+            <Text style={ss.menuText}>{t('ugc.report')}</Text>
+          </Pressable>
+          <Pressable style={ss.menuItem} onPress={onBlock}>
+            <Icon name="person" size={14} color={palette.zinc[600]} />
+            <Text style={[ss.menuText, { color: palette.zinc[700] }]}>
+              {t('ugc.block').replace('{name}', post.author)}
+            </Text>
+          </Pressable>
+        </View>
+      )}
 
       {/* 리뷰글 */}
       <Text style={ss.caption}>{post.text}</Text>
@@ -395,9 +428,15 @@ export function TravelerFeed({
   loadingMore?: boolean
 }) {
   const [openPostId, setOpenPostId] = useState<string | null>(null)
+  // 차단한 작성자·신고로 가린 글은 목록에서 제외 (REQ-UGC-3)
+  const blocked = useFeedStore((s) => s.blocked)
+  const hidden = useFeedStore((s) => s.hidden)
   const cards = useMemo(
-    () => posts.map((p) => <PostCard key={p.id} post={p} onOpenComments={setOpenPostId} />),
-    [posts],
+    () =>
+      posts
+        .filter((p) => !blocked[p.author] && !hidden[p.id])
+        .map((p) => <PostCard key={p.id} post={p} onOpenComments={setOpenPostId} />),
+    [posts, blocked, hidden],
   )
   return (
     <View style={{ gap: 12 }}>
@@ -420,6 +459,17 @@ const ss = StyleSheet.create({
     borderWidth: 0.5,
     borderColor: palette.zinc[200],
   },
+  moreBtn: { paddingHorizontal: 6, paddingVertical: 2 },
+  moreText: { fontSize: 18, color: palette.zinc[400], fontWeight: '800' },
+  menu: {
+    backgroundColor: palette.zinc[50],
+    borderRadius: 12,
+    marginHorizontal: 12,
+    marginBottom: 6,
+    overflow: 'hidden',
+  },
+  menuItem: { flexDirection: 'row', alignItems: 'center', gap: 8, padding: 12 },
+  menuText: { fontSize: 13, fontWeight: '700', color: palette.error[50] },
   head: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 8 },
   avatar: {
     width: 40,

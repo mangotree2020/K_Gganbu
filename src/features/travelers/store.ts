@@ -14,9 +14,14 @@ export type MyComment = {
 interface FeedState {
   liked: Record<string, boolean> // postId → 좋아요 여부
   comments: Record<string, MyComment[]> // postId → 내 댓글 목록
+  blocked: Record<string, boolean> // 차단한 작성자 (REQ-UGC-3)
+  hidden: Record<string, boolean> // 신고 후 가린 게시물
   toggleLike: (postId: string) => void
   addComment: (postId: string, text: string) => void
   addReply: (postId: string, commentId: string, text: string) => void
+  blockAuthor: (author: string) => void
+  unblockAuthor: (author: string) => void
+  hidePost: (postId: string) => void
 }
 
 export const useFeedStore = create<FeedState>()(
@@ -24,6 +29,8 @@ export const useFeedStore = create<FeedState>()(
     (set) => ({
       liked: {},
       comments: {},
+      blocked: {},
+      hidden: {},
       toggleLike: (postId) => set((s) => ({ liked: { ...s.liked, [postId]: !s.liked[postId] } })),
       addComment: (postId, text) =>
         set((s) => {
@@ -52,6 +59,15 @@ export const useFeedStore = create<FeedState>()(
           })
           return { comments: { ...s.comments, [postId]: next } }
         }),
+      // 차단·숨김 (REQ-UGC-3) — 사용자가 "안 보이게" 한 것은 서버 왕복을 기다리지 않고 즉시 반영한다
+      blockAuthor: (author) => set((s) => ({ blocked: { ...s.blocked, [author]: true } })),
+      unblockAuthor: (author) =>
+        set((s) => {
+          const next = { ...s.blocked }
+          delete next[author]
+          return { blocked: next }
+        }),
+      hidePost: (postId) => set((s) => ({ hidden: { ...s.hidden, [postId]: true } })),
     }),
     {
       name: 'traveler-feed-store',
