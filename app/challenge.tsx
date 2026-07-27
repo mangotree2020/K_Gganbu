@@ -1,6 +1,7 @@
 // 한국어 데일리 챌린지 (REQ-KL-1~5) — 오늘의 여행 문장 5문제.
 // 문제는 상황별 회화 데이터 재사용, 발음은 기존 TTS(speakMessage)로 듣는다.
 // 완료 보상(20P)은 서버가 하루 1회 멱등으로 지급 — 로컬 진도는 표시·동기부여용.
+import { RecordingPresets, requestRecordingPermissionsAsync, useAudioRecorder } from 'expo-audio'
 import { router } from 'expo-router'
 import { useMemo, useState } from 'react'
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
@@ -11,6 +12,7 @@ import { SheetHeader } from '@/components/SheetHeader'
 import { useLoginPrompt } from '@/features/auth/loginPrompt'
 import { useAuthStore } from '@/features/auth/store'
 import { dailyQuiz, todayKey } from '@/features/challenge/daily'
+import { scorePronunciation } from '@/features/challenge/pronounce'
 import { useChallengeStats, useEarnChallenge } from '@/features/challenge/queries'
 import { levelOf, levelProgress, useChallengeStore } from '@/features/challenge/store'
 import { useLocaleStore, useT } from '@/lib/i18n'
@@ -35,6 +37,12 @@ export default function ChallengeScreen() {
   const doneToday = lastDone === todayKey()
   const earn = useEarnChallenge()
 
+  // 발음 따라하기 (REQ-KL-3) — 녹음 → 서버 채점. 모듈·권한·키가 없으면 점수 없이 넘어간다.
+  const recorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY)
+  const [recording, setRecording] = useState(false)
+  const [scoring, setScoring] = useState(false)
+  const [pronScore, setPronScore] = useState<number | null>(null)
+
   const [idx, setIdx] = useState(0)
   const [picked, setPicked] = useState<string | null>(null)
   const [correct, setCorrect] = useState(0)
@@ -42,6 +50,37 @@ export default function ChallengeScreen() {
   const [reward, setReward] = useState<number | null>(null)
 
   const q = quiz[idx]
+
+  const toggleRecord = async () => {
+    if (recording) {
+      setRecording(false)
+      setScoring(true)
+      try {
+        await recorder.stop()
+        const uri = recorder.uri
+        if (uri) {
+          const r = await scorePronunciation(uri, q.ko)
+          setPronScore(r.score)
+        }
+      } catch {
+        setPronScore(null)
+      } finally {
+        setScoring(false)
+      }
+      return
+    }
+    try {
+      const perm = await requestRecordingPermissionsAsync()
+      if (!perm.granted) return
+      await recorder.prepareToRecordAsync()
+      recorder.record()
+      setPronScore(null)
+      setRecording(true)
+    } catch {
+      // 녹음 미지원 빌드 — 버튼만 반응 없이 유지(학습 흐름은 그대로)
+      setRecording(false)
+    }
+  }
 
   const onPick = (choice: string) => {
     if (picked) return
@@ -53,6 +92,7 @@ export default function ChallengeScreen() {
     if (idx + 1 < quiz.length) {
       setIdx(idx + 1)
       setPicked(null)
+      setPronScore(null)
       return
     }
     setFinished(true)
@@ -149,7 +189,25 @@ export default function ChallengeScreen() {
                   style={ss.speakBtn}>
                   <Icon name="volume_up" size={18} color={palette.teal[40]} />
                 </Pressable>
+                {/* 따라 말하기 — 녹음 후 발음 점수(REQ-KL-3). 채점 불가여도 연습은 가능 */}
+                <Pressable
+                  onPress={toggleRecord}
+                  hitSlop={8}
+                  disabled={scoring}
+                  style={[ss.speakBtn, recording && ss.speakBtnOn]}>
+                  <Icon
+                    name="mic"
+                    size={18}
+                    color={recording ? '#fff' : palette.coral[50]}
+                    filled={recording}
+                  />
+                </Pressable>
               </View>
+              {(scoring || pronScore != null) && (
+                <Text style={ss.pronScore}>
+                  {scoring ? '…' : t('challenge.pronScore').replace('{n}', String(pronScore ?? 0))}
+                </Text>
+              )}
               <Text style={ss.question}>{t('challenge.question')}</Text>
               {q.choices.map((c) => {
                 const isAnswer = c === q.answer
@@ -222,6 +280,8 @@ const ss = StyleSheet.create({
     justifyContent: 'center',
     backgroundColor: palette.teal[95],
   },
+  speakBtnOn: { backgroundColor: palette.coral[50] },
+  pronScore: { fontSize: 12, fontWeight: '800', color: palette.coral[50] },
   question: { fontSize: 12, color: palette.zinc[500], marginBottom: 2 },
   choice: {
     flexDirection: 'row',

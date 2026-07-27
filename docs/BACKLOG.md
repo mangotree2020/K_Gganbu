@@ -165,6 +165,10 @@
 > ✅ 사진 업로드 — 공개 버킷 `review-photos`(5MB·이미지 MIME, 본인 폴더만 쓰기/삭제) + `reviews.photos`, 별점 카드에서 공유 토글이 켜졌을 때만 첨부 노출. 업로드 실패해도 후기는 저장(사진은 부가 정보).
 > ✅ 대댓글 서버 구조 — `parent_id` 1단계, 서버 댓글(uuid)에 답글 달면 스레드로 저장되고 로컬 댓글은 기존대로 동작. 원댓글 삭제 시 대댓글 cascade 확인. **REQ-UGC-1·2·3 전부 완료**.
 >
+> **📌 07-28 진행(13) — 발음 채점·Android 걸음수 경로(REQ-KL-3·PD-1)**:
+> ✅ **발음 따라하기 채점** — `pronounce-score` EF(Gemini 오디오 전사 → 목표 문장과 문자 유사도 0~100). 학습자의 목표는 완벽 발음이 아니라 통하는 발음이라 이분법 대신 유사도로 돌려준다. 키·모듈·인식 실패 시 점수 없이 연습만 계속(학습을 막지 않음). EF 실호출 확인(필수값 400·무의미 오디오 0점). **실기기 녹음 검증 잔여**.
+> ✅ **Android 걸음수 Health Connect 경로** — `expo-sensors`가 일일 조회를 미지원해 "앱 켜 둔 동안"만 잡히던 한계를 OS 집계값으로 대체. 지연 로드·폴백이라 패키지 미설치 상태에서도 빌드가 깨지지 않고, 설치+prebuild하면 자동 활성화(절차: SETUP_EXTERNAL). 네이티브 의존성 추가는 배포 판단이라 설치하지 않음.
+>
 > **🔜 프로덕션 준비 TODO(비차단, 나중에 처리)**:
 > ① Apple provider 설정(D-U-N-S 발급 후) ② Twilio 실 SMS 운영(업그레이드 완료, 발신 정책 점검) ③ **Auth 커스텀 SMTP** — 회사 Google Workspace(유료 구글메일) 보유 → SMTP relay로 이메일 가입/재설정 메일 전달률·상한 확보(내장 2/h는 dev용). 상세: `docs/SETUP_EXTERNAL.md` #9 "Auth 이메일 발송". ④ OTP 봇 남용 관측 시 CAPTCHA(OTP 전용 게이트웨이). ⑤ 노출 시크릿 로테이션(Twilio Auth Token·LINE Channel Secret). ⑥ **Tmap 도보 경로 종량제 전환** — 무료 일 1,000건, `usage_counters(kind='tmap_route')` 일 집계가 600~700건 근접 시 SK오픈API 유료 플랜 전환(폴백 체인 Tmap→Naver→mock으로 초과 시에도 무중단, 상세: SETUP_EXTERNAL #19).
 
