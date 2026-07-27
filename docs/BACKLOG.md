@@ -147,6 +147,10 @@
 > ✅ `reengage_targets`(3~60일 이탈 + 알림 기기 보유, 이메일·이름 미반환) + `push-send action:'reengage'`(v10) + Admin "복귀 유도 대상 불러오기" 버튼·문안 프리필.
 > ⚠️ **자동 발송 미채택** — 이 프로젝트에 `pg_net`이 설치돼 있지 않아 DB에서 push-send HTTP 호출이 불가능하고, 실사용자 알림은 초기엔 운영자가 문안·시점을 확인해 보내는 편이 안전하다. 자동화하려면 pg_net 설치 후 `cron.schedule`로 연결.
 >
+> **📌 07-28 진행(9) — 쿠폰 사용 → 1탭 리뷰(UX_REVIEW §4-4 완료)**:
+> ✅ `reviews` 테이블(본인 RLS) + `addReview()` — 내 리뷰가 mock뿐이라 실후기가 쌓일 경로가 없던 문제 해소. 쿠폰 사용 1건당 1리뷰는 부분 unique 인덱스로 서버 강제.
+> ✅ QR 화면이 8초 간격으로 발급 상태를 확인해 매장 스캔('used') 즉시 QR 자리를 별점 요청으로 전환 — 선행 조건으로 적혀 있던 "파트너 검증 콜백"은 상태 폴링으로 대체 가능했다. 실 DB 검증(중복 차단 포함).
+>
 > **🔜 프로덕션 준비 TODO(비차단, 나중에 처리)**:
 > ① Apple provider 설정(D-U-N-S 발급 후) ② Twilio 실 SMS 운영(업그레이드 완료, 발신 정책 점검) ③ **Auth 커스텀 SMTP** — 회사 Google Workspace(유료 구글메일) 보유 → SMTP relay로 이메일 가입/재설정 메일 전달률·상한 확보(내장 2/h는 dev용). 상세: `docs/SETUP_EXTERNAL.md` #9 "Auth 이메일 발송". ④ OTP 봇 남용 관측 시 CAPTCHA(OTP 전용 게이트웨이). ⑤ 노출 시크릿 로테이션(Twilio Auth Token·LINE Channel Secret). ⑥ **Tmap 도보 경로 종량제 전환** — 무료 일 1,000건, `usage_counters(kind='tmap_route')` 일 집계가 600~700건 근접 시 SK오픈API 유료 플랜 전환(폴백 체인 Tmap→Naver→mock으로 초과 시에도 무중단, 상세: SETUP_EXTERNAL #19).
 
