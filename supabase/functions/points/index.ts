@@ -1,10 +1,12 @@
 // points — 포인트 원장 API (PRD REQ-PT-1·2·3·4, BM§3.5)
 // 적립·차감 RPC 는 service role 전용이므로 모든 쓰기는 이 함수를 경유한다.
 // actions:
-//   summary    — 잔액·소멸 예정·최근 내역 + 등급 (본인 RLS 경유 조회)
-//   earn_steps — 만보기 적립: 1,000보=10P·일 상한 100P·하루 1회 멱등 (REQ-PD-2 정책)
-//                게스트(anonymous)는 적립 불가 → 로그인 유도 (REQ-PT-4)
-//                정밀 부정 검증(verified_steps·Activity Recognition)은 R2 REQ-PD-2 에서 추가.
+//   summary        — 잔액·소멸 예정·최근 내역 + 등급 (본인 RLS 경유 조회)
+//   earn_steps     — 만보기 적립: 1,000보=10P·일 상한 100P·하루 1회 멱등 (REQ-PD-2 정책)
+//                    정밀 부정 검증(verified_steps·Activity Recognition)은 R2 REQ-PD-2 에서 추가.
+//   earn_challenge — 한국어 챌린지 완료: 하루 1회 20P (REQ-KL-4)
+//   earn_game      — 게임 승리: 승리당 10P (REQ-GM-2)
+//   게스트(anonymous)는 적립 불가 → 로그인 유도 (REQ-PT-4)
 import 'jsr:@supabase/functions-js/edge-runtime.d.ts'
 import { createClient } from 'jsr:@supabase/supabase-js@2'
 
@@ -120,6 +122,34 @@ Deno.serve(async (req) => {
         p_amount: points,
         p_idem: `steps:${appUser.id}:${kstToday()}`, // 하루 1회 — 재호출은 duplicate
         p_meta: { steps: n },
+      })
+      if (error) return json({ error: error.message }, 500)
+      return json(data)
+    }
+
+    // ── 한국어 챌린지 완료 적립 (REQ-KL-4) — 하루 1회 20P, 상한 30P(challenge·game 공유) ──
+    // 정답 수는 표시용일 뿐 지급액을 바꾸지 않는다: 클라이언트 신고 값이라 신뢰할 수 없고,
+    // "매일 연다"는 리텐션 목표에는 완주 여부만 있으면 충분하다.
+    if (action === 'earn_challenge') {
+      if (user.is_anonymous) {
+        return json(
+          { error: 'guest_not_allowed', message: '포인트 적립은 로그인이 필요합니다' },
+          403,
+        )
+      }
+      const admin = createClient(SUPABASE_URL, SERVICE_ROLE)
+      const { data: appUser } = await admin
+        .from('users')
+        .select('id')
+        .eq('auth_id', user.id)
+        .single()
+      if (!appUser) return json({ error: 'no_profile' }, 404)
+      const { data, error } = await admin.rpc('earn_points', {
+        p_user: appUser.id,
+        p_source: 'challenge',
+        p_amount: 20,
+        p_idem: `challenge:${appUser.id}:${kstToday()}`, // 하루 1회 — 재호출은 duplicate
+        p_meta: { kind: 'daily_korean' },
       })
       if (error) return json({ error: error.message }, 500)
       return json(data)

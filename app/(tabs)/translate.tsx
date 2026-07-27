@@ -406,6 +406,18 @@ export default function TranslateScreen() {
             </View>
           )}
 
+          {/* 한국어 챌린지 진입 (REQ-KL-5) — 통역을 쓰러 온 맥락이 곧 학습 동기라 이 자리에 둔다 */}
+          <View style={{ paddingHorizontal: 16, paddingTop: 14 }}>
+            <Pressable onPress={() => router.push('/challenge' as never)} style={ss.challengeCard}>
+              <Text style={{ fontSize: 22 }}>🎯</Text>
+              <View style={{ flex: 1 }}>
+                <Text style={ss.challengeTitle}>{t('challenge.title')}</Text>
+                <Text style={ss.challengeSub}>{t('challenge.entry')}</Text>
+              </View>
+              <Icon name="chevron_right" size={18} color={palette.teal[40]} />
+            </Pressable>
+          </View>
+
           {/* 상황별 문구 */}
           <View style={{ paddingHorizontal: 16, paddingTop: 14 }}>
             <Text style={ss.sectionLabel}>{t('translate.situationPhrases')}</Text>
@@ -792,6 +804,18 @@ const ss = StyleSheet.create({
     letterSpacing: 0.6,
     marginBottom: 8,
   },
+  challengeCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    backgroundColor: palette.teal[95],
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: palette.teal[80],
+    padding: 14,
+  },
+  challengeTitle: { fontSize: 13, fontWeight: '800', color: palette.zinc[900] },
+  challengeSub: { fontSize: 11, color: palette.zinc[600] },
   scenarioGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   scenarioCard: {
     width: '47.5%',
