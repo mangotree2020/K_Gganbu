@@ -222,9 +222,6 @@ export function PlaceReviewsSection({ target }: { target: ReviewTarget }) {
                 ))}
                 <Text style={rs.reviewScore}>{reviews.korean.score.toFixed(1)}</Text>
               </View>
-              <Text style={rs.reviewQuote} numberOfLines={2}>
-                “{reviews.korean.text}”
-              </Text>
             </>
           ) : (
             <Text style={rs.reviewNone}>{t('map.reviewNone')}</Text>
@@ -265,9 +262,6 @@ export function PlaceReviewsSection({ target }: { target: ReviewTarget }) {
                 ))}
                 <Text style={rs.reviewScore}>{reviews.foreign.score.toFixed(1)}</Text>
               </View>
-              <Text style={rs.reviewQuote} numberOfLines={2}>
-                “{reviews.foreign.text}”
-              </Text>
             </>
           ) : (
             <Text style={rs.reviewNone}>{t('map.reviewNone')}</Text>
@@ -334,7 +328,6 @@ const rs = StyleSheet.create({
   reviewExtBtn: { padding: 2 }, // 우측 상단 외부지도 아이콘(이것만 탭 시 지도 앱 호출)
   reviewStars: { flexDirection: 'row', alignItems: 'center', gap: 1 },
   reviewScore: { fontSize: 11, fontWeight: '800', color: palette.zinc[700], marginLeft: 4 },
-  reviewQuote: { fontSize: 11.5, color: palette.zinc[600], lineHeight: 16 },
   reviewNone: { fontSize: 11, color: palette.zinc[400], marginTop: 6, fontStyle: 'italic' },
   reviewItem: {
     flexDirection: 'row',
