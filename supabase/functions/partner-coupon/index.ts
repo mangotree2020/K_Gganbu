@@ -42,7 +42,8 @@ async function geocode(q: string): Promise<{ lat: number; lng: number; address: 
 }
 
 type RegisterBody = {
-  action: 'register' | 'list' | 'partners' | 'partner_create' | 'stats' | 'reports'
+  action: 'register' | 'list' | 'partners' | 'partner_create' | 'stats' | 'reports' | 'issue_code'
+  label?: string
   partner_id?: string
   name?: string
   contact?: string
@@ -139,6 +140,18 @@ Deno.serve(async (req) => {
         .limit(50)
       if (error) return json({ error: error.message }, 500)
       return json({ reports: data ?? [] })
+    }
+
+    // ── 파트너 접근 코드 발급 (REQ-PTL-1) — 원문은 이 응답에서 한 번만 보인다.
+    //    DB 에는 해시만 남으므로 분실 시 재발급뿐이다(그게 의도된 설계).
+    if (action === 'issue_code') {
+      if (!partner_id) return json({ error: 'partner_id는 필수입니다' }, 400)
+      const { data, error } = await admin.rpc('issue_partner_code', {
+        p_partner: partner_id,
+        p_label: body.label ?? null,
+      })
+      if (error) return json({ error: error.message }, 500)
+      return json({ code: data })
     }
 
     if (!partner_id) return json({ error: 'partner_id는 필수입니다' }, 400)
