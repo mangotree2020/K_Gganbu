@@ -110,9 +110,21 @@ Deno.serve(async (req) => {
         .single()
       if (!appUser) return json({ error: 'no_profile', message: '사용자 프로필 없음' }, 404)
 
+      // 신뢰 검증 (REQ-PD-2) — 걸음수는 클라이언트 신고 값이라 서버가 셀 수 없다.
+      // 이미 수집 중인 이동 데이터(위치 핑·길찾기 경로)와 대조해 "움직인 흔적"을 본다.
+      // 정상 사용자를 벌하지 않는 것이 우선: 위치를 껐거나 실내만 걸었으면 흔적이 없을 수 있으므로
+      // 흔적 부재만으로는 차감하지 않고, "흔적 0 + 극단적 걸음수"만 clamp 한다.
+      const { data: corr } = await admin.rpc('step_corroboration', { p_user: appUser.id })
+      const pings = Number(corr?.pings ?? 0)
+      const journeyM = Number(corr?.journey_m ?? 0)
+      const noMovement = pings < 3 && journeyM < 500
+      const EXTREME_STEPS = 15_000
+      const CLAMP_STEPS = 5_000
+      const effective = noMovement && n > EXTREME_STEPS ? CLAMP_STEPS : n
+
       const points = Math.min(
         STEP_POINT_DAILY_CAP,
-        Math.floor(n / STEP_POINT_UNIT) * STEP_POINT_PER_UNIT,
+        Math.floor(effective / STEP_POINT_UNIT) * STEP_POINT_PER_UNIT,
       )
       if (points <= 0) return json({ ok: true, granted: 0, reason: 'below_unit' })
 
@@ -121,7 +133,14 @@ Deno.serve(async (req) => {
         p_source: 'steps',
         p_amount: points,
         p_idem: `steps:${appUser.id}:${kstToday()}`, // 하루 1회 — 재호출은 duplicate
-        p_meta: { steps: n },
+        // 판정 근거를 원장에 남겨 이후 임계값을 데이터로 조정한다
+        p_meta: {
+          steps: n,
+          effective_steps: effective,
+          pings,
+          journey_m: journeyM,
+          verified: !noMovement,
+        },
       })
       if (error) return json({ error: error.message }, 500)
       return json(data)
