@@ -94,11 +94,12 @@ export default function ProfileScreen() {
   const tier = pointsSum?.tier ?? DEFAULT_TIER
   const { data: myReviews } = useQuery({ queryKey: ['my-reviews'], queryFn: getMyReviews })
   const stats = [
+    // 포인트 잔액은 위 자산 카드가 보여주므로 여기서는 "가진 것들"의 개수를 센다
     {
-      l: 'Points',
-      e: '💰',
-      n: pointsSum?.balance ?? 0,
-      go: () => router.push('/(tabs)/coupons?seg=points' as never),
+      l: 'Coupons',
+      e: '🎟',
+      n: savedCoupons?.length ?? 0,
+      go: () => router.push('/wallet' as never),
     },
     { l: 'Saved', e: '📍', n: favorites?.length ?? 0, go: () => router.push('/favorites') },
     {
@@ -193,7 +194,56 @@ export default function ProfileScreen() {
         showsVerticalScrollIndicator={false}
         contentContainerStyle={{ paddingBottom: 28 }}
         {...tabBarAutoHide}>
-        {/* 통계 */}
+        {/* 내 여행 자산 (UX_REVIEW §2.6·§4-6) — My를 설정 화면이 아니라 "자산 대시보드"로.
+            등급·다음 등급까지 남은 포인트·소멸 예정이 재방문 이유가 된다. */}
+        <Pressable
+          style={[ss.assetCard, shadows.card]}
+          onPress={() => router.push('/(tabs)/coupons?seg=points' as never)}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+            <Text style={{ fontSize: 20 }}>{TIER_EMOJI[tier.tier]}</Text>
+            <Text style={ss.assetTier}>{t(`tier.${tier.tier}`)}</Text>
+            {tier.boost_pct > 0 && (
+              <Text style={ss.assetBoost}>
+                {t('tier.boost').replace('{n}', String(tier.boost_pct))}
+              </Text>
+            )}
+            <View style={{ flex: 1 }} />
+            <Text style={ss.assetPoints}>{(pointsSum?.balance ?? 0).toLocaleString()}P</Text>
+          </View>
+          {tier.next_tier ? (
+            <>
+              <View style={ss.assetTrack}>
+                <View
+                  style={[
+                    ss.assetFill,
+                    {
+                      width: `${Math.round(
+                        (tier.lifetime / Math.max(tier.lifetime + tier.next_need, 1)) * 100,
+                      )}%`,
+                    },
+                  ]}
+                />
+              </View>
+              <Text style={ss.assetSub}>
+                {t('tier.next')
+                  .replace('{n}', tier.next_need.toLocaleString())
+                  .replace('{tier}', t(`tier.${tier.next_tier}`))}
+              </Text>
+            </>
+          ) : (
+            <Text style={ss.assetSub}>{t('tier.max')}</Text>
+          )}
+          {(pointsSum?.expiring_30d ?? 0) > 0 && (
+            <Text style={ss.assetWarn}>
+              {t('points.expiring30d').replace(
+                '{n}',
+                (pointsSum?.expiring_30d ?? 0).toLocaleString(),
+              )}
+            </Text>
+          )}
+        </Pressable>
+
+        {/* 통계 — 저장 자산 개수(쿠폰·찜·후기) */}
         <View style={ss.statsRow}>
           {stats.map((s) => (
             <Pressable key={s.l} style={ss.statCard} onPress={s.go}>
@@ -480,6 +530,21 @@ const ss = StyleSheet.create({
   tripTitle: { fontSize: 12, fontWeight: '700', color: '#fff' },
   tripSub: { fontSize: 10, color: 'rgba(255,255,255,.85)', marginTop: 1 },
 
+  assetCard: {
+    backgroundColor: '#fff',
+    borderRadius: 18,
+    padding: 14,
+    marginHorizontal: 16,
+    marginTop: 14,
+    gap: 6,
+  },
+  assetTier: { fontSize: 14, fontWeight: '800', color: palette.zinc[900] },
+  assetBoost: { fontSize: 11, fontWeight: '800', color: palette.amber[50] },
+  assetPoints: { fontSize: 18, fontWeight: '800', color: palette.amber[50] },
+  assetTrack: { height: 5, borderRadius: 3, backgroundColor: palette.zinc[200] },
+  assetFill: { height: 5, borderRadius: 3, backgroundColor: palette.amber[50] },
+  assetSub: { fontSize: 11, color: palette.zinc[500] },
+  assetWarn: { fontSize: 11, fontWeight: '700', color: palette.coral[50] },
   statsRow: { flexDirection: 'row', gap: 8, paddingHorizontal: 16, paddingTop: 12 },
   statCard: {
     flex: 1,
