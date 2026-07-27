@@ -21,7 +21,7 @@ import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import { useTabBarAutoHide, useTabBarStore } from '@/hooks/useTabBarAutoHide'
 import Svg, { Circle, G, Path, Rect } from 'react-native-svg'
 
-import { Icon, Pill } from '@/components/brand'
+import { AppIcon, Icon, Pill } from '@/components/brand'
 import { FallbackBadge } from '@/components/FallbackBadge'
 import { CachedImage } from '@/components/CachedImage'
 import { CatSprite, catWidth, type CatVariant } from '@/components/CatSprite'
@@ -640,6 +640,19 @@ export default function HomeScreen() {
   // 걸음 포인트 적립(REQ-PD-2·PT-4) — 배지 탭 → 서버 적립(하루 1회 멱등), 게스트는 로그인 유도
   const earnSteps = useEarnSteps()
   const [stepsMsg, setStepsMsg] = useState<string | null>(null)
+  // 적립 성공 시 마스코트 축하 (REQ-PD-3) — 숫자만 바뀌면 "적립됐다"는 실감이 없다.
+  // 짧게 튀어오르는 마스코트로 보상을 몸으로 느끼게 한다(2초 후 자동 소멸).
+  const [celebrate, setCelebrate] = useState<number | null>(null)
+  const celebrateAnim = useState(() => new Animated.Value(0))[0]
+  const popCelebrate = (granted: number) => {
+    setCelebrate(granted)
+    celebrateAnim.setValue(0)
+    Animated.sequence([
+      Animated.spring(celebrateAnim, { toValue: 1, useNativeDriver: true, bounciness: 14 }),
+      Animated.delay(1200),
+      Animated.timing(celebrateAnim, { toValue: 0, duration: 260, useNativeDriver: true }),
+    ]).start(() => setCelebrate(null))
+  }
   const claimSteps = () => {
     if (!steps || earnSteps.isPending || stepsMsg) return
     requireAccount('auth.gatePoints', async () => {
@@ -651,6 +664,7 @@ export default function HomeScreen() {
             ? t('points.claimed').replace('{n}', String(r.granted))
             : t('points.claimedToday') // 상한 도달·1000보 미만도 동일 안내
         setStepsMsg(msg)
+        if (!r.duplicate && (r.granted ?? 0) > 0) popCelebrate(r.granted!)
       } catch {
         setStepsMsg(null)
         return
@@ -1436,6 +1450,31 @@ export default function HomeScreen() {
             <Icon name="arrow_upward" size={22} color={palette.zinc[800]} />
           </Pressable>
         )}
+        {/* 걸음 적립 축하 마스코트 (REQ-PD-3) — 화면 조작을 막지 않도록 pointerEvents none */}
+        {celebrate != null && (
+          <Animated.View
+            pointerEvents="none"
+            style={[
+              ss.celebrateWrap,
+              {
+                opacity: celebrateAnim,
+                transform: [
+                  {
+                    scale: celebrateAnim.interpolate({ inputRange: [0, 1], outputRange: [0.6, 1] }),
+                  },
+                  {
+                    translateY: celebrateAnim.interpolate({
+                      inputRange: [0, 1],
+                      outputRange: [30, 0],
+                    }),
+                  },
+                ],
+              },
+            ]}>
+            <AppIcon size={54} />
+            <Text style={ss.celebrateText}>+{celebrate}P</Text>
+          </Animated.View>
+        )}
       </View>
     </View>
   )
@@ -1466,6 +1505,19 @@ const ss = StyleSheet.create({
   translateFab: { backgroundColor: '#0D9488' }, // 통역(teal)
   gganbuFab: { backgroundColor: palette.blue[50] }, // AI 깐부(블루)
   // 맨 위로 가기 — 흰 동그라미(동일 크기)
+  celebrateWrap: {
+    position: 'absolute',
+    alignSelf: 'center',
+    bottom: 140,
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: 'rgba(255,255,255,.96)',
+    borderRadius: 22,
+    paddingVertical: 14,
+    paddingHorizontal: 22,
+    ...shadows.pop,
+  },
+  celebrateText: { fontSize: 18, fontWeight: '800', color: palette.amber[50] },
   toTopFab: {
     width: 48,
     height: 48,

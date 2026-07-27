@@ -176,6 +176,9 @@
 > **📌 07-28 진행(15) — 걸음수 신뢰 검증(REQ-PD-2)**:
 > ✅ 걸음수는 클라이언트 신고 값이라 서버가 셀 수 없다 — 이미 수집 중인 이동 데이터(위치 핑·길찾기 경로)와 대조하는 `step_corroboration`. **정상 사용자를 벌하지 않는 것이 우선**이라 흔적 부재만으로는 차감하지 않고(위치 끔·실내 보행), "흔적 0 + 15,000보 초과"만 5,000보로 clamp. 판정 근거(pings·journey_m·verified)를 원장 meta에 남겨 임계값을 데이터로 조정할 수 있게 했다. points EF v11. 실 DB 검증.
 >
+> **📌 07-28 진행(16) — 걸음 적립 마스코트 피드백(REQ-PD-3 완료)**:
+> ✅ 숫자만 바뀌면 "적립됐다"는 실감이 없어 적립 성공 시에만 마스코트가 튀어오르는 축하 오버레이 추가(1.5초 후 자동 소멸, `pointerEvents='none'`으로 조작 방해 없음). 중복 적립·상한 도달 시에는 기존 안내 문구만 유지.
+>
 > **🔜 프로덕션 준비 TODO(비차단, 나중에 처리)**:
 > ① Apple provider 설정(D-U-N-S 발급 후) ② Twilio 실 SMS 운영(업그레이드 완료, 발신 정책 점검) ③ **Auth 커스텀 SMTP** — 회사 Google Workspace(유료 구글메일) 보유 → SMTP relay로 이메일 가입/재설정 메일 전달률·상한 확보(내장 2/h는 dev용). 상세: `docs/SETUP_EXTERNAL.md` #9 "Auth 이메일 발송". ④ OTP 봇 남용 관측 시 CAPTCHA(OTP 전용 게이트웨이). ⑤ 노출 시크릿 로테이션(Twilio Auth Token·LINE Channel Secret). ⑥ **Tmap 도보 경로 종량제 전환** — 무료 일 1,000건, `usage_counters(kind='tmap_route')` 일 집계가 600~700건 근접 시 SK오픈API 유료 플랜 전환(폴백 체인 Tmap→Naver→mock으로 초과 시에도 무중단, 상세: SETUP_EXTERNAL #19).
 
