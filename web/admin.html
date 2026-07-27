@@ -125,6 +125,8 @@
       <label>대상 기기</label>
       <div class="row">
         <select id="pushTarget"><option value="">불러오기를 누르세요</option></select>
+        <!-- 복귀 유도 대상 (REQ-KL-5) — 챌린지를 하다 조용해진 사용자만 골라 담는다 -->
+        <button onclick="loadReengage()" style="margin-top:6px">복귀 유도 대상 불러오기</button>
         <button class="secondary" style="flex:0 0 90px" onclick="loadTargets()">불러오기</button>
       </div>
       <label>제목</label><input id="pushTitle" placeholder="예: K-Gganbu 알림 테스트" />
@@ -195,6 +197,25 @@ async function loadTargets() {
       sel.appendChild(o);
     });
   } catch (e) { alert('대상 불러오기 실패: ' + e.message); }
+}
+
+// 복귀 유도 대상 (REQ-KL-5) — 며칠 조용해진 챌린지 사용자. 문안은 운영자가 확인 후 발송.
+async function loadReengage() {
+  const sel = $('pushTarget');
+  try {
+    const { targets } = await api('push-send', { action: 'reengage', min_days: 3, max_days: 60 });
+    sel.innerHTML = targets.length ? '' : '<option value="">복귀 유도 대상 없음</option>';
+    targets.filter((t) => t.token).forEach((t) => {
+      const o = document.createElement('option');
+      o.value = t.token;
+      o.textContent = t.days_since + '일 미접속 · ' + t.streak_days + '일 학습 · …' + t.token_tail;
+      sel.appendChild(o);
+    });
+    if (!$('pushTitle').value) $('pushTitle').value = '한국어 챌린지가 기다려요';
+    if (!$('pushBody').value) $('pushBody').value = '오늘 5문장만 풀고 연속 기록을 이어가세요!';
+  } catch (e) {
+    sel.innerHTML = '<option value="">조회 실패: ' + e.message + '</option>';
+  }
 }
 
 async function sendPush() {

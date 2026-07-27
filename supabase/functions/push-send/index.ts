@@ -3,6 +3,7 @@
 // 시크릿: FCM_SERVICE_ACCOUNT(우선) 또는 FIREBASE_SERVICE_ACCOUNT — Firebase 콘솔 > 프로젝트 설정 > 서비스 계정 > 비공개 키(JSON 전체).
 // body: { user_id? , token?, title, body, data? } — user_id면 등록된 전체 기기로 발송.
 // body: { action: 'targets' } — 발송 대상 선택용 최근 등록 기기 목록(Admin 웹 푸시 탭).
+// body: { action: 'reengage', min_days?, max_days? } — 챌린지 이탈자 복귀 유도 대상(REQ-KL-5).
 import 'jsr:@supabase/functions-js/edge-runtime.d.ts'
 import { createClient } from 'jsr:@supabase/supabase-js@2'
 import { isAdmin } from '../_shared/adminAuth.ts'
@@ -130,6 +131,43 @@ Deno.serve(async (req) => {
           token: r.token,
           token_tail: r.token.slice(-8),
         })),
+      })
+    }
+
+    // 복귀 유도 대상 (REQ-KL-5) — 챌린지를 하다 며칠 조용해진 사용자 + 등록 기기 보유자.
+    // 발송은 운영자가 문안을 보고 누른다(자동 발송 아님 — reengage_targets 주석 참조).
+    if (body.action === 'reengage') {
+      const admin = createClient(
+        Deno.env.get('SUPABASE_URL')!,
+        Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,
+      )
+      const { data: rows, error } = await admin.rpc('reengage_targets', {
+        p_min_days: Number(body.min_days ?? 3),
+        p_max_days: Number(body.max_days ?? 60),
+        p_limit: Number(body.limit ?? 50),
+      })
+      if (error) return json({ error: 'list_failed', detail: error.message }, 500)
+      // 사용자별 대표 토큰 1개를 붙여 그대로 발송할 수 있게 한다
+      const ids = (rows ?? []).map((r: { user_id: string }) => r.user_id)
+      const { data: toks } = ids.length
+        ? await admin.from('device_tokens').select('user_id, token, platform').in('user_id', ids)
+        : { data: [] }
+      const byUser = new Map<string, { token: string; platform: string }>()
+      for (const t of (toks ?? []) as { user_id: string; token: string; platform: string }[]) {
+        if (!byUser.has(t.user_id)) byUser.set(t.user_id, { token: t.token, platform: t.platform })
+      }
+      return json({
+        targets: (rows ?? []).map(
+          (r: { user_id: string; last_done: string; days_since: number; streak_days: number }) => ({
+            user_id: r.user_id,
+            last_done: r.last_done,
+            days_since: r.days_since,
+            streak_days: r.streak_days,
+            token: byUser.get(r.user_id)?.token ?? null,
+            platform: byUser.get(r.user_id)?.platform ?? null,
+            token_tail: (byUser.get(r.user_id)?.token ?? '').slice(-8),
+          }),
+        ),
       })
     }
 
