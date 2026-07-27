@@ -25,6 +25,14 @@ import { PlaceThumb } from '@/components/PlaceThumb'
 import { ProfileAvatar as MyProfileAvatar } from '@/features/profile/Avatar'
 import { ageLabel, type MediaItem, type TravelerPost } from './feed'
 import { blockAuthorRemote, reportContent } from './moderation'
+import {
+  useAddCommentRemote,
+  useFeedCounts,
+  usePostComments,
+  useToggleLikeRemote,
+  type FeedCount,
+} from './social'
+import { useProfileStore } from '@/features/profile/store'
 import { useFeedStore, type MyComment } from './store'
 import { useT } from '@/lib/i18n'
 import { palette, shadows } from '@/theme/tokens'
@@ -163,9 +171,11 @@ function MediaCarousel({ media, cat }: { media: MediaItem[]; cat: string }) {
 function PostCard({
   post,
   onOpenComments,
+  serverCount,
 }: {
   post: TravelerPost
   onOpenComments: (id: string) => void
+  serverCount?: FeedCount
 }) {
   const t = useT()
   const [menuOpen, setMenuOpen] = useState(false)
@@ -185,12 +195,23 @@ function PostCard({
   const liked = useFeedStore((s) => !!s.liked[post.id])
   const myComments = useFeedStore((s) => s.comments[post.id])
   const toggleLike = useFeedStore((s) => s.toggleLike)
+  const likeRemote = useToggleLikeRemote()
 
-  const likeCount = post.likes + (liked ? 1 : 0)
+  // 서버 집계가 있으면 그 값을 쓰고(다른 사람의 좋아요·댓글까지 반영), 없으면 기존 로컬 계산.
+  // 로컬 값을 먼저 그려 탭 반응은 즉시, 서버 값은 뒤따라 덮는다.
   const myCommentCount =
     (myComments?.length ?? 0) + (myComments?.reduce((n, c) => n + (c.replies?.length ?? 0), 0) ?? 0)
-  const commentCount = post.seedComments + myCommentCount
+  const likeCount = serverCount
+    ? serverCount.likes + (liked && !serverCount.liked_by_me ? 1 : 0)
+    : post.likes + (liked ? 1 : 0)
+  const commentCount = serverCount
+    ? serverCount.comments + post.seedComments
+    : post.seedComments + myCommentCount
   const commented = myCommentCount > 0 // 내가 이 후기에 댓글/답글을 남겼는지
+  const onToggleLike = () => {
+    toggleLike(post.id)
+    likeRemote.mutate({ postId: post.id, liked: !liked })
+  }
 
   const onShare = () => {
     Share.share({
@@ -240,7 +261,7 @@ function PostCard({
 
       {/* 액션: 별(좋아요) / 댓글 / 공유 + 우측 장소 바로가기(아이콘만 — 장소명은 프로필에 이미 표시) */}
       <View style={ss.actions}>
-        <Pressable style={ss.actionBtn} onPress={() => toggleLike(post.id)} hitSlop={6}>
+        <Pressable style={ss.actionBtn} onPress={onToggleLike} hitSlop={6}>
           <Icon
             name="star"
             size={22}
@@ -322,6 +343,10 @@ function CommentSheet({ postId, onClose }: { postId: string | null; onClose: () 
   const comments = useFeedStore((s) => (postId ? s.comments[postId] : undefined))
   const addComment = useFeedStore((s) => s.addComment)
   const addReply = useFeedStore((s) => s.addReply)
+  // 서버 댓글(다른 여행자 것 포함, 차단 작성자는 RLS 제외) — 내 로컬 댓글 위에 함께 보여준다
+  const { data: remoteComments } = usePostComments(postId)
+  const addRemote = useAddCommentRemote()
+  const myName = useProfileStore((s) => s.displayName) || 'Traveler'
   const [text, setText] = useState('')
   const [replyTo, setReplyTo] = useState<string | null>(null) // 답글 대상 댓글 id
   const [kbHeight, setKbHeight] = useState(0)
@@ -348,8 +373,17 @@ function CommentSheet({ postId, onClose }: { postId: string | null; onClose: () 
 
   const submit = () => {
     if (!postId || !text.trim()) return
+    // 로컬 먼저 반영(즉시 표시) → 서버 저장(로그인 사용자만, 실패해도 화면은 유지)
     if (replyTo) addReply(postId, replyTo, text)
     else addComment(postId, text)
+    addRemote.mutate({
+      postId,
+      body: text,
+      authorName: myName,
+      // 로컬 답글 id 는 서버 uuid 가 아니라 매핑이 없다 — 서버에는 원 댓글로 저장한다.
+      // (대댓글 서버 구조는 실 UGC 노출 범위가 정해질 때 함께 맞춘다)
+      parentId: null,
+    })
     setText('')
     setReplyTo(null)
     Keyboard.dismiss() // 등록 후 키보드를 자연히 내려 입력 영역이 사라지게 함
@@ -370,6 +404,13 @@ function CommentSheet({ postId, onClose }: { postId: string | null; onClose: () 
           <View style={ss.sheetGrab} />
           <Text style={ss.sheetTitle}>{t('travelers.comments')}</Text>
           <ScrollView style={{ maxHeight: listMaxH }} keyboardShouldPersistTaps="handled">
+            {/* 다른 여행자 댓글(서버) — 내 댓글은 아래 로컬 목록이 담당 */}
+            {(remoteComments ?? []).map((rc) => (
+              <View key={rc.id} style={ss.remoteComment}>
+                <Text style={ss.remoteAuthor}>{rc.author}</Text>
+                <Text style={ss.remoteBody}>{rc.body}</Text>
+              </View>
+            ))}
             {comments && comments.length > 0 ? (
               comments.map((c) => (
                 <CommentItem
@@ -380,9 +421,9 @@ function CommentSheet({ postId, onClose }: { postId: string | null; onClose: () 
                   youLabel={t('travelers.you')}
                 />
               ))
-            ) : (
+            ) : (remoteComments?.length ?? 0) === 0 ? (
               <Text style={ss.noComments}>{t('travelers.noComments')}</Text>
-            )}
+            ) : null}
           </ScrollView>
           {/* 답글 모드 배너 — 취소 가능 */}
           {replyTo && (
@@ -431,12 +472,18 @@ export function TravelerFeed({
   // 차단한 작성자·신고로 가린 글은 목록에서 제외 (REQ-UGC-3)
   const blocked = useFeedStore((s) => s.blocked)
   const hidden = useFeedStore((s) => s.hidden)
+  const shown = useMemo(
+    () => posts.filter((p) => !blocked[p.author] && !hidden[p.id]),
+    [posts, blocked, hidden],
+  )
+  // 화면에 있는 포스트의 좋아요·댓글 수를 한 번에 조회 (REQ-UGC-2)
+  const { data: counts } = useFeedCounts(shown.map((p) => p.id))
   const cards = useMemo(
     () =>
-      posts
-        .filter((p) => !blocked[p.author] && !hidden[p.id])
-        .map((p) => <PostCard key={p.id} post={p} onOpenComments={setOpenPostId} />),
-    [posts, blocked, hidden],
+      shown.map((p) => (
+        <PostCard key={p.id} post={p} onOpenComments={setOpenPostId} serverCount={counts?.[p.id]} />
+      )),
+    [shown, counts],
   )
   return (
     <View style={{ gap: 12 }}>
@@ -586,6 +633,9 @@ const ss = StyleSheet.create({
   meAvatar: { width: 32, height: 32, backgroundColor: palette.blue[50] },
   commentAuthor: { fontSize: 12, fontWeight: '700', color: palette.zinc[900] },
   commentText: { fontSize: 13, color: palette.zinc[700], marginTop: 2, lineHeight: 18 },
+  remoteComment: { paddingVertical: 8, gap: 2 },
+  remoteAuthor: { fontSize: 12, fontWeight: '800', color: palette.zinc[700] },
+  remoteBody: { fontSize: 13, color: palette.zinc[700] },
   noComments: {
     fontSize: 12.5,
     color: palette.zinc[400],
