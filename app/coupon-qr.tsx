@@ -14,9 +14,10 @@ import { FallbackBadge } from '@/components/FallbackBadge'
 import { PlaceThumb } from '@/components/PlaceThumb'
 import { track } from '@/features/analytics/service'
 import { getCachedIssue, issueCoupon, type CouponIssue } from '@/features/coupon/services'
+import { addReview } from '@/features/review/services'
 import { storage } from '@/lib/mmkv'
 import { supabase } from '@/lib/supabase'
-import { useLocaleStore } from '@/lib/i18n'
+import { useLocaleStore, useT } from '@/lib/i18n'
 import { palette, shadows } from '@/theme/tokens'
 
 function useCountdown(expiresAt?: string) {
@@ -49,6 +50,7 @@ export default function CouponQrScreen() {
     detail?: string
     dist?: string
   }>()
+  const t = useT()
   const couponId = p.id ?? 'demo'
   const lang = useLocaleStore((s) => s.lang)
   // 캐시된 유효 발급분이 있으면 QR 즉시 표시 — 서버 왕복 없이 0ms 렌더
@@ -58,6 +60,10 @@ export default function CouponQrScreen() {
     () => storage.getString(`dealphoto:${p.name ?? ''}`) || null,
   )
   const [merchant, setMerchant] = useState<Merchant>(null)
+  // 사용 완료 감지 (UX_REVIEW §4-4) — 매장에서 QR을 스캔하면 status가 'used'로 바뀐다.
+  // 그 순간이 후기를 받기 가장 좋은 시점이라 1탭 별점을 띄운다(실후기 축적 = UGC의 전제).
+  const [used, setUsed] = useState(false)
+  const [rated, setRated] = useState<number | null>(null)
 
   // 퍼널 계측(REQ-CP-4): 발급 성공 — 오프라인 폴백 여부 구분
   const trackIssued = (r: CouponIssue, reissued: boolean, cached = false) =>
@@ -98,6 +104,43 @@ export default function CouponQrScreen() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+
+  // 사용 완료 폴링 — QR이 화면에 떠 있는 동안 8초마다 발급 상태 확인(본인 RLS 조회).
+  // 매장 직원이 스캔하면 status='used'가 되고, 그 즉시 별점 요청을 띄운다.
+  useEffect(() => {
+    if (!issue?.id || used) return
+    let alive = true
+    const check = async () => {
+      const { data } = await supabase
+        .from('coupon_issues')
+        .select('status')
+        .eq('id', issue.id)
+        .maybeSingle()
+      if (alive && data?.status === 'used') setUsed(true)
+    }
+    const timer = setInterval(check, 8000)
+    void check()
+    return () => {
+      alive = false
+      clearInterval(timer)
+    }
+  }, [issue?.id, used])
+
+  // 별점 저장 — 1탭으로 끝난다(본문은 선택). 같은 사용 건은 서버 unique 가 중복을 막는다.
+  const rate = async (n: number) => {
+    setRated(n)
+    try {
+      await addReview({
+        placeName: p.name ?? p.detail ?? 'Place',
+        rating: n,
+        cat: merchant?.cat,
+        placeKey: merchant?.placeId ?? null,
+        refId: issue?.id ?? null,
+      })
+    } catch {
+      // 저장 실패해도 화면은 감사 상태로 둔다(재시도 유도는 과함)
+    }
+  }
 
   // 매장 정보 — 실사진(홈 딜과 같은 7일 캐시) + 주소·좌표(place-lookup query)
   useEffect(() => {
@@ -183,32 +226,52 @@ export default function CouponQrScreen() {
         {/* QR 카드 */}
         <View style={[ss.card, shadows.pop]}>
           {p.disc && <Text style={ss.disc}>{p.disc}</Text>}
-          <View style={ss.qrBox}>
-            {loading ? (
-              <Text style={ss.dim}>Issuing…</Text>
-            ) : expired ? (
-              <View style={{ alignItems: 'center', gap: 10 }}>
-                <Icon name="schedule" size={40} color={palette.zinc[400]} />
-                <Text style={ss.dim}>QR expired</Text>
-              </View>
-            ) : (
-              // 디자인 QR — 중앙 브랜드 로고 + 고보정(ecl H, 로고 가림 복원)
-              <QRCode
-                value={issue?.qr_token ?? 'x'}
-                size={200}
-                backgroundColor="#fff"
-                color="#1C1917"
-                ecl="H"
-                logo={require('../assets/icon.png')}
-                logoSize={44}
-                logoBackgroundColor="#fff"
-                logoBorderRadius={10}
-                logoMargin={3}
-              />
-            )}
-          </View>
+          {/* 사용 완료 → 1탭 별점 (UX_REVIEW §4-4) — QR 자리를 그대로 후기 요청으로 바꾼다 */}
+          {used ? (
+            <View style={ss.ratingBox}>
+              <Text style={{ fontSize: 34 }}>{rated ? '🙏' : '✅'}</Text>
+              <Text style={ss.ratingTitle}>
+                {rated ? t('review.thanks') : t('review.askTitle')}
+              </Text>
+              {!rated && <Text style={ss.dim}>{t('review.askSub')}</Text>}
+              {!rated && (
+                <View style={{ flexDirection: 'row', gap: 6, marginTop: 6 }}>
+                  {[1, 2, 3, 4, 5].map((n) => (
+                    <Pressable key={n} onPress={() => rate(n)} hitSlop={6}>
+                      <Icon name="star" size={30} color={palette.amber[50]} />
+                    </Pressable>
+                  ))}
+                </View>
+              )}
+            </View>
+          ) : (
+            <View style={ss.qrBox}>
+              {loading ? (
+                <Text style={ss.dim}>Issuing…</Text>
+              ) : expired ? (
+                <View style={{ alignItems: 'center', gap: 10 }}>
+                  <Icon name="schedule" size={40} color={palette.zinc[400]} />
+                  <Text style={ss.dim}>QR expired</Text>
+                </View>
+              ) : (
+                // 디자인 QR — 중앙 브랜드 로고 + 고보정(ecl H, 로고 가림 복원)
+                <QRCode
+                  value={issue?.qr_token ?? 'x'}
+                  size={200}
+                  backgroundColor="#fff"
+                  color="#1C1917"
+                  ecl="H"
+                  logo={require('../assets/icon.png')}
+                  logoSize={44}
+                  logoBackgroundColor="#fff"
+                  logoBorderRadius={10}
+                  logoMargin={3}
+                />
+              )}
+            </View>
+          )}
 
-          {!loading && !expired && (
+          {!loading && !expired && !used && (
             <View style={ss.timer}>
               <Icon name="schedule" size={14} color={palette.coral[50]} />
               <Text style={ss.timerText}>
@@ -318,6 +381,15 @@ const ss = StyleSheet.create({
     letterSpacing: -0.5,
     marginBottom: 16,
   },
+  ratingBox: {
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: '#fff',
+    borderRadius: 20,
+    paddingVertical: 26,
+    paddingHorizontal: 18,
+  },
+  ratingTitle: { fontSize: 15, fontWeight: '800', color: palette.zinc[900], textAlign: 'center' },
   qrBox: {
     width: 232,
     height: 232,
