@@ -7,6 +7,8 @@ import { Pressable, StyleSheet, Text, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 
 import { SheetHeader } from '@/components/SheetHeader'
+import { useSubmitScore } from '@/features/game/queries'
+import { shareGameResult } from '@/features/game/share'
 import { useT } from '@/lib/i18n'
 import { supabase } from '@/lib/supabase'
 import { palette, shadows } from '@/theme/tokens'
@@ -79,6 +81,8 @@ export default function TetrisScreen() {
   const t = useT()
   const [board, setBoard] = useState<Cell[][]>(emptyBoard)
   const [piece, setPiece] = useState<Piece>(randomPiece)
+  const submitScore = useSubmitScore()
+  const submittedRef = useRef(false)
   const [score, setScore] = useState(0)
   const [lines, setLines] = useState(0)
   const [over, setOver] = useState(false)
@@ -157,6 +161,14 @@ export default function TetrisScreen() {
     }
   }, [lines])
 
+  // 게임 종료 시 점수 1회 기록 (REQ-GM-2 랭킹·뱃지) — 게스트는 내부에서 무시
+  useEffect(() => {
+    if (!over || submittedRef.current) return
+    submittedRef.current = true
+    submitScore.mutate({ game: 'tetris', score })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [over])
+
   // 하드드롭 — 바닥까지 즉시 하강 후 고정
   const hardDrop = () => {
     if (overRef.current) return
@@ -178,6 +190,7 @@ export default function TetrisScreen() {
     setOver(false)
     setEarned(null)
     rewardedRef.current = false
+    submittedRef.current = false
   }
 
   // 렌더 보드 = 고정 블록 + 현재 피스 오버레이
@@ -220,6 +233,12 @@ export default function TetrisScreen() {
               {earned != null && <Text style={ss.earned}>+{earned}P</Text>}
               <Pressable onPress={restart} style={ss.restartBtn}>
                 <Text style={ss.restartText}>{t('game.retry')}</Text>
+              </Pressable>
+              {/* 결과 공유 (REQ-GM-4) — 설치 링크에 채널 파라미터가 붙어 유입이 계측된다 */}
+              <Pressable
+                onPress={() => shareGameResult(t('game.tetris'), score, t)}
+                style={ss.shareBtn}>
+                <Text style={ss.restartText}>{t('game.share')}</Text>
               </Pressable>
               <Pressable onPress={() => router.back()} hitSlop={8}>
                 <Text style={ss.exitText}>{t('game.exit')}</Text>
@@ -284,6 +303,13 @@ const ss = StyleSheet.create({
   overTitle: { color: '#fff', fontSize: 20, fontWeight: '800' },
   overScore: { color: '#CBD5E1', fontSize: 14, fontWeight: '700' },
   earned: { color: '#FCD34D', fontSize: 16, fontWeight: '800' },
+  shareBtn: {
+    backgroundColor: palette.teal[40],
+    borderRadius: 999,
+    paddingVertical: 9,
+    paddingHorizontal: 20,
+    marginTop: 6,
+  },
   restartBtn: {
     marginTop: 8,
     backgroundColor: palette.blue[50],

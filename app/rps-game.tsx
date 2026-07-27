@@ -11,6 +11,8 @@ import { SafeAreaView } from 'react-native-safe-area-context'
 
 import { Icon } from '@/components/brand'
 import { SheetHeader } from '@/components/SheetHeader'
+import { useGameBadges, useGameRank, useSubmitScore } from '@/features/game/queries'
+import { useOnboardingStore } from '@/features/onboarding/store'
 import { useT } from '@/lib/i18n'
 import { supabase } from '@/lib/supabase'
 import { palette, shadows } from '@/theme/tokens'
@@ -40,6 +42,7 @@ export default function RpsGameScreen() {
   const [unknownHand, setUnknownHand] = useState(false)
   const [earned, setEarned] = useState<number | null>(null)
 
+  const submitScore = useSubmitScore()
   const finished = myScore >= WIN_TARGET || aiScore >= WIN_TARGET
   const won = myScore >= WIN_TARGET
 
@@ -51,8 +54,9 @@ export default function RpsGameScreen() {
     const nextMy = myScore + (result === 1 ? 1 : 0)
     if (result === 1) setMyScore(nextMy)
     if (result === -1) setAiScore((s) => s + 1)
-    // 3승 달성 — 포인트 적립(로그인 시, 실패 무시)
+    // 3승 달성 — 포인트 적립(로그인 시, 실패 무시) + 승리 기록(뱃지 rps_master 근거)
     if (nextMy >= WIN_TARGET && result === 1) {
+      submitScore.mutate({ game: 'rps', score: nextMy })
       try {
         const { data } = await supabase.functions.invoke('points', {
           body: { action: 'earn_game' },
@@ -266,12 +270,104 @@ export default function RpsGameScreen() {
             </View>
           </View>
         )}
+
+        {/* 플레이어 랭킹·뱃지 (REQ-GM-2) — 여행 맥락(같은 지역 플레이어)이 경쟁 동기를 만든다 */}
+        <GameRankCard />
       </ScrollView>
     </SafeAreaView>
   )
 }
 
+function GameRankCard() {
+  const t = useT()
+  const region = useOnboardingStore((s) => s.region)
+  const [regionOnly, setRegionOnly] = useState(false)
+  const { data: rank } = useGameRank('tetris', 7, regionOnly ? region : null)
+  const { data: badges } = useGameBadges()
+
+  return (
+    <View style={[ss.rankCard, shadows.card]}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+        <Text style={ss.rankTitle}>🏆 {t('game.rank')}</Text>
+        {!!region && (
+          <Pressable
+            onPress={() => setRegionOnly((v) => !v)}
+            style={[ss.regionChip, regionOnly && ss.regionChipOn]}>
+            <Text style={[ss.regionChipText, regionOnly && { color: '#fff' }]}>
+              {t('game.rankRegion')}
+            </Text>
+          </Pressable>
+        )}
+      </View>
+      <Text style={ss.rankSub}>{t('game.rankSub')}</Text>
+
+      {(rank?.length ?? 0) === 0 ? (
+        <Text style={ss.rankEmpty}>{t('game.rankEmpty')}</Text>
+      ) : (
+        <View style={{ marginTop: 8, gap: 6 }}>
+          {(rank ?? []).slice(0, 5).map((r) => (
+            <View key={`${r.rank}-${r.display_name}`} style={ss.rankRow}>
+              <Text style={ss.rankNum}>{r.rank}</Text>
+              <Text style={[ss.rankName, r.is_me && { color: palette.blue[50] }]}>
+                {r.is_me ? t('points.me') : r.display_name}
+              </Text>
+              <Text style={ss.rankScore}>{r.best_score.toLocaleString()}</Text>
+            </View>
+          ))}
+          {/* 내가 Top 5 밖이면 내 순위를 따로 보여준다 */}
+          {(rank ?? [])
+            .filter((r) => r.is_me && r.rank > 5)
+            .map((r) => (
+              <View key="me" style={ss.rankRow}>
+                <Text style={ss.rankNum}>{r.rank}</Text>
+                <Text style={[ss.rankName, { color: palette.blue[50] }]}>{t('points.me')}</Text>
+                <Text style={ss.rankScore}>{r.best_score.toLocaleString()}</Text>
+              </View>
+            ))}
+        </View>
+      )}
+
+      {(badges?.badges?.length ?? 0) > 0 && (
+        <>
+          <Text style={[ss.rankSub, { marginTop: 10 }]}>{t('game.badges')}</Text>
+          <View style={ss.badgeRow}>
+            {(badges?.badges ?? []).map((b) => (
+              <View key={b} style={ss.badge}>
+                <Text style={ss.badgeText}>{t(`badge.${b}`)}</Text>
+              </View>
+            ))}
+          </View>
+        </>
+      )}
+    </View>
+  )
+}
+
 const ss = StyleSheet.create({
+  rankCard: { backgroundColor: '#fff', borderRadius: 18, padding: 16 },
+  rankTitle: { fontSize: 14, fontWeight: '800', color: palette.zinc[900] },
+  rankSub: { fontSize: 11, color: palette.zinc[500] },
+  rankEmpty: { fontSize: 12, color: palette.zinc[400], marginTop: 10, fontStyle: 'italic' },
+  rankRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  rankNum: { width: 20, fontSize: 12, fontWeight: '800', color: palette.zinc[500] },
+  rankName: { flex: 1, fontSize: 12, fontWeight: '700', color: palette.zinc[800] },
+  rankScore: { fontSize: 12, fontWeight: '800', color: palette.zinc[700] },
+  regionChip: {
+    borderRadius: 999,
+    paddingHorizontal: 9,
+    paddingVertical: 3,
+    backgroundColor: palette.zinc[100],
+  },
+  regionChipOn: { backgroundColor: palette.blue[50] },
+  regionChipText: { fontSize: 10, fontWeight: '800', color: palette.zinc[600] },
+  badgeRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 6 },
+  badge: {
+    backgroundColor: palette.blue[95],
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+  },
+  badgeText: { fontSize: 11, fontWeight: '700', color: palette.blue[50] },
   container: { flex: 1, backgroundColor: palette.zinc[50] },
   segWrap: {
     flexDirection: 'row',
