@@ -27,10 +27,22 @@ export function useCurrentLocation() {
         return null
       }
       setGranted(true)
-      const pos = await Location.getCurrentPositionAsync({
-        accuracy: Location.Accuracy.High,
-      })
+      // 마지막으로 알려진 위치를 먼저 반영(거리 정렬 등 즉시 사용) — 지도 센터링은
+      // 아래 고정밀 측정이 끝난 뒤(loading=false) 이뤄지므로 이 값으로 고정되지 않는다
+      const known = await Location.getLastKnownPositionAsync()
       if (!aliveRef.current) return null
+      if (known) setCoords({ latitude: known.coords.latitude, longitude: known.coords.longitude })
+      // 고정밀 측정이 실내 등에서 오래 걸릴 수 있어 8초 타임아웃 — 실패 시 last known/폴백 유지
+      const pos = await Promise.race([
+        Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.High }),
+        new Promise<null>((r) => setTimeout(() => r(null), 8000)),
+      ])
+      if (!aliveRef.current) return null
+      if (!pos) {
+        if (known) return { latitude: known.coords.latitude, longitude: known.coords.longitude }
+        setCoords((c) => c ?? BUSAN_FALLBACK)
+        return null
+      }
       const next = { latitude: pos.coords.latitude, longitude: pos.coords.longitude }
       setCoords(next)
       return next
