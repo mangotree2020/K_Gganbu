@@ -83,7 +83,7 @@
 > ✅ 파트너 Admin(`web/admin.html`)·QR 랜딩(`web/landing.html`) — **Supabase가 HTML 렌더 차단(플랫폼 제약 발견)** → 정적 파일+외부 호스팅 체제로 전환.
 > 🟡 만보기 홈 위젯(REQ-PD-3 선행) — 걸음수+예상 포인트 표시, 적립은 R2 원장에서.
 > ✅ R1 잔여 마감(07-03 저녁, release 빌드 실기기 검증) — ① AI 이벤트 적재 확인 + analytics flush 경합 유실 버그 수정(REQ-AI-3 ✅) ② **일일 사용량 상한 서버 강제**(REQ-TR-3 ✅): `usage_counters`+`bump_usage` RPC(원자적·KST), gganbu(게스트 20/로그인 200회)·gemini-live-token(5/30세션), 429→앱 언어 안내, 미식별 호출 401. 스트리밍 XHR이 anon key 대신 세션 토큰 전송하도록 수정.
-> 🔶 잔여 외부 설정: 정적 호스팅+`LANDING_URL`/`ADMIN_WEB_URL` · `ADMIN_API_KEY` · `FCM_SERVICE_ACCOUNT` (SETUP_EXTERNAL).
+> 🔶 잔여 외부 설정: 정적 호스팅+`LANDING_URL`/`ADMIN_WEB_URL` · `ADMIN_API_KEY` · `FCM_SERVICE_ACCOUNT` (SETUP_EXTERNAL) → **07-16 전부 해소**(아래 07-16 진행 참조).
 >
 > **📌 07-06 진행(R2 착수 — 포인트 경제 v1)**:
 > ✅ **포인트 원장(REQ-PT-1·2)** — `points_ledger` 로트(FIFO) 회계·멱등키·RPC 4종(service role 전용)·`points_balance` 뷰, 일 상한 KST 서버 강제(steps 100/stamp 150/challenge·game 공유 30), pg_cron 소멸 배치(매일 KST 00:10). 실 DB 시나리오 검증 완료(클램프·멱등·FIFO·원복·소멸).
@@ -94,6 +94,24 @@
 > **📌 07-07 진행**:
 > ✅ **도보 길찾기 운영화** — Tmap 보행자 경로 1순위(키 설정·실검증 4,653m/62분), Google WALK 한국 미제공 확인, 폴백 체인(Tmap→Naver→mock)+타임아웃, 무료 쿼터(일 1,000건) 사용량 관측·종량제 전환 기준 문서화.
 > ✅ **이동 트래킹·걷기 랭킹(REQ-LOC-1~4, 신규 EPIC)** — 길찾기 중 위치 마커 4초/5m 갱신, 경로 MMKV→`walk_journeys` 업로드(GPS 튐·차량 필터, 속도 DB check), 10분 위치 핑(`location_pings`, 90일 자동 삭제, foreground 전용), 주간 랭킹 `walk_rank()`(마스킹)+포인트 세그먼트 랭킹 카드. DB 검증 완료, 실기기 검증 잔여. LBS 법무는 O-9.
+>
+> **📌 07-08 진행**:
+> ✅ **스탬프 투어 착수(REQ-ST-1·3)** — QR 규격(`KGBSTAMP:{partner}:{secret}`)·`stamp` EF(시크릿 검증·일 1회/매장·150P)·`stamp_visits` 방문 로그. 보상 UI(ST-2)는 미착수.
+> ✅ **걷기 랭킹 주간 보상(REQ-LOC-5)** — `award_walk_rank()` pg_cron 주간 배치(월 KST 00:20, 상위 3명 30/20/10P, 주차 멱등).
+>
+> **📌 07-16 진행 — 외부 설정 해소(🔶 3건 종결)**:
+> ✅ **Admin·QR 랜딩 호스팅(REQ-ADM-1·3, REQ-CR-4)** — GitHub Pages `gh-pages` 브랜치 배포 + `LANDING_URL`·`ADMIN_WEB_URL`·`ADMIN_API_KEY` 시크릿 설정, `landing`/`admin-web` 302 실검증. 잔여: 호스팅 페이지에서 쿠폰 발급→QR 스캔 E2E 1회(REQ-ADM-2).
+> ✅ **Admin 인가 확장** — 공유 키 단독 → `ADMIN_EMAILS` JWT(Google 로그인) 또는 `ADMIN_API_KEY`.
+> ✅ **FCM 실 전송(REQ-NT-1)** — `FCM_SERVICE_ACCOUNT` 등록·OAuth 인증 검증, Admin 웹 푸시 발송 탭(`push-send` targets 조회→대상 선택), 고중요도 채널(`kgb-default`)·헤드업·포그라운드 배너로 가시성 확보.
+>
+> **📌 07-21~22 진행 — 여행자 후기 피드(REQ-UGC-1 신규 EPIC)**:
+> ✅ 홈 "From travelers"를 인스타형 피드로 구현(`src/features/travelers/`) — 이미지·영상 캐러셀, 좋아요·댓글(대댓글 1단계, MMKV persist), 무한 스크롤·맨 위로 버튼, 키보드 가림·정렬 수정. **데이터는 mock-first**(실 TourAPI POI 합성) — 실 UGC 연동(REQ-UGC-2)과 신고·차단(REQ-UGC-3)은 미착수.
+> ✅ 홈 플로팅 버튼 정비(지도 추가·아이콘 원형 통일·네비 연동 표시), 크루즈 모드 미설정 시 크루즈 코스 카드 숨김, 이미지 로딩 캐시(`CachedImage`).
+>
+> **📌 07-28 진행 — 지도 UX·위치 정확도**:
+> ✅ 지도 바텀시트 3스냅 재설계(FULL=화면 실측, Blend 바가 드래그 핸들) + 리뷰 영역 제스처(gesture-handler pan + 터치 폴백), 탭바 자동숨김 시 시트 높이 보정, 지도 컨테이너 높이 고정으로 WebView 떨림 제거.
+> ✅ 초기 센터링 버그 수정 — 지도 ready + GPS 확정 동시 충족 시에만 센터링(폴백 좌표 고착), 탭 재진입 시 현위치 재측정, 두 지도 초기 축척 통일(zoom 17).
+> ✅ 현재위치 측정 — `getLastKnownPositionAsync` 선반영 + 고정밀 8초 타임아웃 폴백.
 >
 > **🔜 프로덕션 준비 TODO(비차단, 나중에 처리)**:
 > ① Apple provider 설정(D-U-N-S 발급 후) ② Twilio 실 SMS 운영(업그레이드 완료, 발신 정책 점검) ③ **Auth 커스텀 SMTP** — 회사 Google Workspace(유료 구글메일) 보유 → SMTP relay로 이메일 가입/재설정 메일 전달률·상한 확보(내장 2/h는 dev용). 상세: `docs/SETUP_EXTERNAL.md` #9 "Auth 이메일 발송". ④ OTP 봇 남용 관측 시 CAPTCHA(OTP 전용 게이트웨이). ⑤ 노출 시크릿 로테이션(Twilio Auth Token·LINE Channel Secret). ⑥ **Tmap 도보 경로 종량제 전환** — 무료 일 1,000건, `usage_counters(kind='tmap_route')` 일 집계가 600~700건 근접 시 SK오픈API 유료 플랜 전환(폴백 체인 Tmap→Naver→mock으로 초과 시에도 무중단, 상세: SETUP_EXTERNAL #19).
