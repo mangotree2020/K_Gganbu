@@ -179,6 +179,12 @@
 > **📌 07-28 진행(16) — 걸음 적립 마스코트 피드백(REQ-PD-3 완료)**:
 > ✅ 숫자만 바뀌면 "적립됐다"는 실감이 없어 적립 성공 시에만 마스코트가 튀어오르는 축하 오버레이 추가(1.5초 후 자동 소멸, `pointerEvents='none'`으로 조작 방해 없음). 중복 적립·상한 도달 시에는 기존 안내 문구만 유지.
 >
+> **📌 07-28 진행(17) — 보안·성능 하드닝 + 테스트 보강**:
+> 🔒 **어드바이저 전수 점검 후 6건 수정** — `partners` 시크릿/정산정보 컬럼 노출(스탬프 QR 위조 가능), `feed_likes` 행 전체 공개("누가 무엇을 좋아했는지" 열거 가능), `feed_counts`가 차단을 무시한 집계, `for all` 정책의 SELECT 중복 평가, FK 인덱스 8건 누락, `users` RLS InitPlan. 수용 결정과 이유는 `SETUP_EXTERNAL.md` "보안·성능 어드바이저 점검"에 기록.
+> ✅ **테스트 78개** — 포인트 발행 규칙(걸음→P·등급별 기프티콘 상한·레벨), 딜 매칭(좌표 근접·이름 폴백·먼 동명 매장 오매칭 방지), 실 후기→피드 변환, 데일리 챌린지 출제 결정론, IP 금칙어 자동 검사, **i18n 5개 언어 키 일치**(누락·잉여·중복).
+> ♻️ 테스트를 위해 발행 규칙·레벨 계산을 순수 모듈로 분리(`points/rules.ts`·`challenge/level.ts`) — 기존 import 경로는 재노출로 유지해 호출부 변경 없음.
+> 🔜 코드로 불가한 잔여: Auth 대시보드 토글 2건(유출 비밀번호 차단·MFA).
+>
 > **🔜 프로덕션 준비 TODO(비차단, 나중에 처리)**:
 > ① Apple provider 설정(D-U-N-S 발급 후) ② Twilio 실 SMS 운영(업그레이드 완료, 발신 정책 점검) ③ **Auth 커스텀 SMTP** — 회사 Google Workspace(유료 구글메일) 보유 → SMTP relay로 이메일 가입/재설정 메일 전달률·상한 확보(내장 2/h는 dev용). 상세: `docs/SETUP_EXTERNAL.md` #9 "Auth 이메일 발송". ④ OTP 봇 남용 관측 시 CAPTCHA(OTP 전용 게이트웨이). ⑤ 노출 시크릿 로테이션(Twilio Auth Token·LINE Channel Secret). ⑥ **Tmap 도보 경로 종량제 전환** — 무료 일 1,000건, `usage_counters(kind='tmap_route')` 일 집계가 600~700건 근접 시 SK오픈API 유료 플랜 전환(폴백 체인 Tmap→Naver→mock으로 초과 시에도 무중단, 상세: SETUP_EXTERNAL #19).
 
