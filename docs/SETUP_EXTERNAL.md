@@ -243,6 +243,32 @@ SMS 실비(~160원/건) 방어. **Auth → Rate Limits**로 총량 상한:
 **검증**: 프로필 알림 opt-in → `device_tokens`에 실 토큰 행 생성 확인 →
 `curl -X POST .../push-send -H "x-admin-key: $ADMIN_API_KEY" -d '{"user_id":"<uuid>","title":"Test","body":"Hello"}'` → 기기 알림 도착.
 
+## Android 걸음수 정확도 — Health Connect (REQ-PD-1, 코드 준비 완료·설치 대기)
+
+**문제**: `expo-sensors`는 Android에서 일일 걸음 조회를 지원하지 않아(`watchStepCount`만) **앱을 켜 둔
+동안만** 누적된다. 여행자는 앱을 계속 켜 두지 않으므로 실제 걸음의 일부만 잡히고, 그만큼 적립 포인트도
+과소 계상된다. Health Connect는 OS가 집계한 하루 총 걸음을 돌려주므로 이 격차를 없앤다.
+
+**코드 상태**: `src/features/points/healthConnect.ts`가 지연 로드 + 폴백으로 준비돼 있다.
+패키지가 없거나 네이티브 미포함 빌드면 조용히 null을 반환하고 기존 누적 방식이 그대로 동작하므로,
+**지금 빌드가 깨지지 않는다**. 아래 절차를 밟으면 자동으로 1순위 경로가 활성화된다.
+
+```bash
+npm i react-native-health-connect
+npm run prebuild        # 네이티브 폴더 재생성
+npm run android         # 실기기 설치 (Health Connect 앱이 설치된 Android 9+ 필요)
+```
+
+추가 설정:
+
+1. `app.json`의 Android `permissions`에 `android.permission.health.READ_STEPS` 추가
+   (패키지가 config plugin을 제공하면 `plugins`에 등록하는 편이 안전 — 패키지 README 확인).
+2. Android 14 미만은 별도 **Health Connect 앱** 설치가 필요(그 이상은 OS 내장).
+3. 검증: 실기기에서 걷고 앱을 완전히 종료 → 재실행 시 홈 걸음 배지가 **앱 밖에서 걸은 수까지** 반영되면 성공.
+   반영되지 않으면 폴백(앱 사용 중 누적)이 동작 중이므로 권한·설치 상태를 확인한다.
+
+> 미도입 시 영향: 기능은 정상 동작하되 Android 걸음수가 과소 집계된다(적립 손해는 사용자 쪽).
+
 ## 배포 후 점검 체크리스트
 
 - [ ] `supabase functions deploy` 11종 완료
