@@ -7,7 +7,7 @@ import { useAuthStore } from '@/features/auth/store'
 import { useOnboardingStore } from '@/features/onboarding/store'
 import { supabase } from '@/lib/supabase'
 
-export type GameKind = 'tetris' | 'rps'
+export type GameKind = 'tetris' | 'rps' | 'ddakji'
 
 export type GameRankRow = {
   rank: number

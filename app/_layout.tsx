@@ -94,6 +94,7 @@ function RootLayoutNav() {
         <Stack.Screen name="settings" options={{ presentation: 'modal' }} />
         <Stack.Screen name="rps-game" options={{ presentation: 'modal' }} />
         <Stack.Screen name="tetris" options={{ presentation: 'modal' }} />
+        <Stack.Screen name="ddakji" options={{ presentation: 'modal' }} />
         <Stack.Screen name="stamp-scan" options={{ presentation: 'modal' }} />
         <Stack.Screen name="stamp-cards" options={{ presentation: 'modal' }} />
         <Stack.Screen name="challenge" options={{ presentation: 'modal' }} />

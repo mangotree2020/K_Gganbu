@@ -217,11 +217,19 @@ export default function RpsGameScreen() {
             <Text style={ss.finishTitle}>{won ? t('game.win') : t('game.lose')}</Text>
             {won && earned != null && <Text style={ss.earned}>+{earned}P</Text>}
             {won && (
-              <Pressable
-                onPress={() => router.push('/tetris' as never)}
-                style={[ss.retryBtn, { backgroundColor: palette.amber[50] }]}>
-                <Text style={ss.retryText}>🐱 {t('game.enterTetris')}</Text>
-              </Pressable>
+              <>
+                <Pressable
+                  onPress={() => router.push('/tetris' as never)}
+                  style={[ss.retryBtn, { backgroundColor: palette.amber[50] }]}>
+                  <Text style={ss.retryText}>🐱 {t('game.enterTetris')}</Text>
+                </Pressable>
+                {/* 전통놀이 본게임 (REQ-GM-1) */}
+                <Pressable
+                  onPress={() => router.push('/ddakji' as never)}
+                  style={[ss.retryBtn, { backgroundColor: palette.teal[40] }]}>
+                  <Text style={ss.retryText}>🟨 {t('game.ddakji')}</Text>
+                </Pressable>
+              </>
             )}
             <Pressable onPress={reset} style={ss.retryBtn}>
               <Icon name="refresh" size={15} color="#fff" />

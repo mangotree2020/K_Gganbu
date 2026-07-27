@@ -23,6 +23,7 @@ const TARGETS = [
   'src/lib/i18n.ts', // 사용자 노출 문자열 전체
   'app/rps-game.tsx',
   'app/tetris.tsx',
+  'app/ddakji.tsx', // 전통놀이 본게임 — 드라마 연상 요소가 가장 들어오기 쉬운 화면
   'src/features/game/share.ts', // 공유 문구(SNS로 나가는 텍스트라 특히 중요)
 ]
 
