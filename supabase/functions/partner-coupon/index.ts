@@ -42,7 +42,7 @@ async function geocode(q: string): Promise<{ lat: number; lng: number; address: 
 }
 
 type RegisterBody = {
-  action: 'register' | 'list' | 'partners' | 'partner_create' | 'stats'
+  action: 'register' | 'list' | 'partners' | 'partner_create' | 'stats' | 'reports'
   partner_id?: string
   name?: string
   contact?: string
@@ -127,6 +127,18 @@ Deno.serve(async (req) => {
         .single()
       if (error) return json({ error: error.message }, 500)
       return json({ id: data.id, lat: geo?.lat ?? null, lng: geo?.lng ?? null }, 201)
+    }
+
+    // ── 신고 큐 (REQ-UGC-3) — 운영 대응용. 파트너와 무관하지만 Admin 백엔드 primitive 를 공유한다.
+    //    신고자 식별자는 내보내지 않는다(대응에 필요한 건 대상·사유·시각).
+    if (action === 'reports') {
+      const { data, error } = await admin
+        .from('content_reports')
+        .select('id, target_type, target_id, reason, note, status, created_at')
+        .order('created_at', { ascending: false })
+        .limit(50)
+      if (error) return json({ error: error.message }, 500)
+      return json({ reports: data ?? [] })
     }
 
     if (!partner_id) return json({ error: 'partner_id는 필수입니다' }, 400)

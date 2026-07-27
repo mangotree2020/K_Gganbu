@@ -116,6 +116,12 @@
     <div class="card"><h2>최근 사용</h2><div id="recentList" class="muted">-</div></div>
     <!-- 스탬프 송객 리포트 (REQ-ST-3) — 파트너 방문 증명 데이터 -->
     <div class="card"><h2>스탬프 방문 (송객)</h2><div id="stampStats" class="muted">-</div></div>
+    <!-- 신고 큐 (REQ-UGC-3) — 콘텐츠 신고 대응 -->
+    <div class="card">
+      <h2>콘텐츠 신고</h2>
+      <button onclick="loadReports()">신고 목록 불러오기</button>
+      <div id="reportList" class="muted" style="margin-top:8px">-</div>
+    </div>
   </section>
 
   <section id="sec-push" style="display:none">
@@ -300,6 +306,20 @@ async function loadStats() {
             : '<div class="item"><span>방문 기록 없음</span></div>')
       : '데이터 없음';
   } catch (e) { $('statsList').textContent = '조회 실패: ' + e.message; }
+}
+
+// 신고 큐 (REQ-UGC-3) — 대상·사유·시각만 표시(신고자 식별자는 서버가 내보내지 않음)
+async function loadReports() {
+  const box = $('reportList');
+  try {
+    const { reports } = await api('partner-coupon', { action: 'reports' });
+    box.innerHTML = reports.length
+      ? reports.map((r) =>
+          '<div class="item"><span>' + r.target_type + ' · ' + r.target_id + '</span><span>'
+          + r.reason + ' · ' + new Date(r.created_at).toLocaleString('ko-KR') + '</span></div>'
+        ).join('')
+      : '신고 없음';
+  } catch (e) { box.textContent = '조회 실패: ' + e.message; }
 }
 
 let scanner = null;
