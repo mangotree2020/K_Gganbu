@@ -162,7 +162,8 @@
 > ✅ 1탭 리뷰로 쌓인 실후기를 피드 앞에 노출(뒤는 합성 포스트로 채워 빈 피드 방지). **공개는 명시 동의가 있을 때만** — `is_public` 기본 false, 별점 카드에 공유 토글(기본 꺼짐). 쿠폰 사용 직후 별점은 "가게에 남기는 평가"에 가까워 기본 공개로 두면 본인도 모르게 동선이 드러난다.
 > ✅ 작성자는 스냅샷(`author_name`)으로 저장 — auth 메타데이터 조인을 피하고 닉네임 변경의 소급 반영을 막는다. 공개 읽기 정책이 차단 목록을 함께 걸러 조회자 기준으로 숨긴다. 실 DB 검증.
 > ✅ 좋아요·댓글 서버 저장 — `feed_likes`·`feed_comments` + `feed_counts(post_ids[])` 일괄 집계(카드별 쿼리는 스크롤 중 요청 폭증). post_id를 text로 둬 실 후기(`rv:<uuid>`)와 합성 포스트를 함께 담는다. 로컬 MMKV는 즉시 반응용으로 유지, 댓글 조회는 차단 목록을 RLS에서 제외. 실 DB 검증(집계·공백 댓글 거부).
-> 🔜 잔여: 사진 업로드, 대댓글 서버 구조(현재 로컬만).
+> ✅ 사진 업로드 — 공개 버킷 `review-photos`(5MB·이미지 MIME, 본인 폴더만 쓰기/삭제) + `reviews.photos`, 별점 카드에서 공유 토글이 켜졌을 때만 첨부 노출. 업로드 실패해도 후기는 저장(사진은 부가 정보).
+> 🔜 잔여: 대댓글 서버 구조(현재 로컬만).
 >
 > **🔜 프로덕션 준비 TODO(비차단, 나중에 처리)**:
 > ① Apple provider 설정(D-U-N-S 발급 후) ② Twilio 실 SMS 운영(업그레이드 완료, 발신 정책 점검) ③ **Auth 커스텀 SMTP** — 회사 Google Workspace(유료 구글메일) 보유 → SMTP relay로 이메일 가입/재설정 메일 전달률·상한 확보(내장 2/h는 dev용). 상세: `docs/SETUP_EXTERNAL.md` #9 "Auth 이메일 발송". ④ OTP 봇 남용 관측 시 CAPTCHA(OTP 전용 게이트웨이). ⑤ 노출 시크릿 로테이션(Twilio Auth Token·LINE Channel Secret). ⑥ **Tmap 도보 경로 종량제 전환** — 무료 일 1,000건, `usage_counters(kind='tmap_route')` 일 집계가 600~700건 근접 시 SK오픈API 유료 플랜 전환(폴백 체인 Tmap→Naver→mock으로 초과 시에도 무중단, 상세: SETUP_EXTERNAL #19).
