@@ -269,6 +269,39 @@ npm run android         # 실기기 설치 (Health Connect 앱이 설치된 Andr
 
 > 미도입 시 영향: 기능은 정상 동작하되 Android 걸음수가 과소 집계된다(적립 손해는 사용자 쪽).
 
+## 보안·성능 어드바이저 점검 (2026-07-28)
+
+`get_advisors`(security/performance) 전수 점검 후 조치·수용 결정을 남긴다. 다음에 같은 경고를 볼 때
+다시 판단하지 않도록 **이유**를 함께 적는다.
+
+**수정한 것**
+
+| 항목                                      | 문제                                                                          | 조치                                                          |
+| ----------------------------------------- | ----------------------------------------------------------------------------- | ------------------------------------------------------------- |
+| `partners.stamp_secret`·`settlement_info` | 공개 읽기 정책 + RLS는 행 단위라 컬럼이 anon에 노출 → **스탬프 QR 위조 가능** | 테이블 select 회수 후 안전 컬럼만 재부여(42501 확인)          |
+| `feed_likes` 전체 공개                    | "누가 어떤 글을 좋아했는지" 열거 가능                                         | 행은 본인 것만, 개수는 `feed_counts` 집계로만                 |
+| `feed_counts`                             | security definer라 RLS 우회 → 차단한 작성자 댓글까지 집계                     | 집계에도 차단 적용(목록과 수치 일치)                          |
+| SELECT 정책 중복                          | `for all` 쓰기 정책이 SELECT에도 걸려 정책 2회 평가                           | INSERT/UPDATE/DELETE로 분리, reviews는 SELECT 정책 1개로 병합 |
+| FK 인덱스 누락 8건                        | cascade 삭제·조인 시 전체 스캔                                                | 커버링 인덱스 추가                                            |
+| `users` RLS InitPlan                      | `auth.uid()`를 행마다 재평가                                                  | `(select auth.uid())`로 쿼리당 1회                            |
+
+**수용(설계상 의도)**
+
+- `rls_enabled_no_policy` — `landing_events`·`place_review_insights`·`usage_counters`는 **service role 전용**
+  테이블이다. 정책이 없다는 건 곧 anon/authenticated 전면 차단이라 의도한 상태다.
+- `anon/authenticated_security_definer_function_executable` — `feed_counts`(개수만),
+  `game_rank`·`walk_rank`(마스킹 닉네임·집계만), `game_badges`·`challenge_stats`(내부에서
+  `current_user_id()` 고정 — 파라미터로 남의 데이터를 볼 수 없음). 노출값이 집계·본인 것뿐이라 유지.
+- `auth_allow_anonymous_sign_ins` — 이 앱은 **Guest(익명) 우선**이 기획 원칙(PLANNING §7)이다.
+  해당 정책들은 게스트 "본인 행"에만 적용된다.
+- `unused_index` — 신규 테이블이라 아직 트래픽이 없어서다. 운영 데이터가 쌓인 뒤 재평가.
+
+**남은 것 — 대시보드 토글(코드로 불가)**
+
+1. **Leaked password protection** 활성화 — Auth > Providers > Email에서 켠다(HaveIBeenPwned 대조).
+2. **MFA 옵션 추가** — Auth > Multi-Factor Authentication. 현재 옵션이 적다는 경고.
+   운영 계정(Admin) 보호 관점에서 우선 검토.
+
 ## 배포 후 점검 체크리스트
 
 - [ ] `supabase functions deploy` 11종 완료
