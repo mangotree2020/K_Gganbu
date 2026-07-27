@@ -124,6 +124,10 @@
 > ✅ 혜택 — 적립 부스트 0/5/10/20%(`earn_points` 내부 적용), 기프티콘 포인트 사용 상한 30/35/40/50%. **부스트는 일 상한을 올리지 않는다**: 클램프를 그대로 통과시켜 하루 발행 총량이 불변이므로 BM§3.5 발행 캡이 유지된다(상위 등급은 상한에 더 빨리 도달할 뿐).
 > ✅ `points` EF summary에 등급 동봉(v8) → CouTix 잔액 카드 등급 배지·다음 등급 진행바, 프로필 등급 칩, i18n 5개 언어. 실 DB 검증(승급·부스트 52P·상한 클램프 48P).
 >
+> **📌 07-28 진행(4) — 네이버 블로그 리뷰 개별 노출(REQ-REV-1 완료)**:
+> ✅ 블로그 글이 AI 요약 입력으로만 쓰여 "한국인 관점 리뷰" 목록이 비어 있던 문제 해소 — `{who,text,translated,link}`로 수집(`review-insights` v10), 앱 리뷰 목록에 🇰🇷 행(국기 탭 = 번역↔원문), 'foreign' 필터에서는 숨김. 검색 API 약관에 맞춰 출처 링크 표시·이동.
+> ✅ 번역은 기존 리뷰 번역 배치에 합류시켜 API 호출 수 불변. `place_review_insights.naver` 컬럼 추가(구 캐시 행 안전 처리). 실호출 검증(해운대·ja).
+>
 > **🔜 프로덕션 준비 TODO(비차단, 나중에 처리)**:
 > ① Apple provider 설정(D-U-N-S 발급 후) ② Twilio 실 SMS 운영(업그레이드 완료, 발신 정책 점검) ③ **Auth 커스텀 SMTP** — 회사 Google Workspace(유료 구글메일) 보유 → SMTP relay로 이메일 가입/재설정 메일 전달률·상한 확보(내장 2/h는 dev용). 상세: `docs/SETUP_EXTERNAL.md` #9 "Auth 이메일 발송". ④ OTP 봇 남용 관측 시 CAPTCHA(OTP 전용 게이트웨이). ⑤ 노출 시크릿 로테이션(Twilio Auth Token·LINE Channel Secret). ⑥ **Tmap 도보 경로 종량제 전환** — 무료 일 1,000건, `usage_counters(kind='tmap_route')` 일 집계가 600~700건 근접 시 SK오픈API 유료 플랜 전환(폴백 체인 Tmap→Naver→mock으로 초과 시에도 무중단, 상세: SETUP_EXTERNAL #19).
 
