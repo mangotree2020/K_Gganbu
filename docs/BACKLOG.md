@@ -132,6 +132,11 @@
 > ✅ `partner-coupon` stats에 스탬프 방문 집계 추가(v13) — 총 방문·순 방문자·최근 7/30일·최근 20건. 파트너에게 송객을 증명하는 데이터(수익원 2 과금 근거)이며, 개인 식별자 없이 방문 시각만 내보낸다. 쿠폰 없는 스탬프 전용 파트너도 집계.
 > ✅ `web/admin.html` 통계 탭에 카드 추가 — **gh-pages 재배포 필요**(정적 호스팅).
 >
+> **📌 07-28 진행(6) — 한국어 데일리 챌린지(REQ-KL, R4 착수)**:
+> ✅ 여행이 끝나면 앱을 열 이유가 사라지는 리텐션 단절(BM 스토리 C)을 메우는 장치. 상황별 회화 데이터를 그대로 재사용해 별도 콘텐츠 없이 출제(날짜+언어 시드 → 같은 날 재실행해도 동일 문제), 4지선다 5문제 + TTS 발음 듣기.
+> ✅ 보상 20P는 `points` EF `earn_challenge`(v9)가 하루 1회 멱등 지급, game과 공유하는 일 상한 30P는 원장이 강제. 정답 수는 지급액에 영향 없음(클라이언트 신고 값 불신). 실 DB 검증(20P → 멱등 0P → 게임 10P → 상한 0P).
+> 🟡 잔여: 진도 서버 동기화(현재 MMKV만), STT 채점(KL-3 2차), 귀국 후 자동 푸시(KL-5 후반 — 서버 배치 필요, 현재 Admin 수동 발송 가능).
+>
 > **🔜 프로덕션 준비 TODO(비차단, 나중에 처리)**:
 > ① Apple provider 설정(D-U-N-S 발급 후) ② Twilio 실 SMS 운영(업그레이드 완료, 발신 정책 점검) ③ **Auth 커스텀 SMTP** — 회사 Google Workspace(유료 구글메일) 보유 → SMTP relay로 이메일 가입/재설정 메일 전달률·상한 확보(내장 2/h는 dev용). 상세: `docs/SETUP_EXTERNAL.md` #9 "Auth 이메일 발송". ④ OTP 봇 남용 관측 시 CAPTCHA(OTP 전용 게이트웨이). ⑤ 노출 시크릿 로테이션(Twilio Auth Token·LINE Channel Secret). ⑥ **Tmap 도보 경로 종량제 전환** — 무료 일 1,000건, `usage_counters(kind='tmap_route')` 일 집계가 600~700건 근접 시 SK오픈API 유료 플랜 전환(폴백 체인 Tmap→Naver→mock으로 초과 시에도 무중단, 상세: SETUP_EXTERNAL #19).
 
