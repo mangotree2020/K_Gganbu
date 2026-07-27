@@ -6,9 +6,17 @@ import { USE_MOCK } from '@/lib/config'
 import type { PlaceReview, ReviewTarget } from './queries'
 
 export type InsightReview = PlaceReview & { translated: string | null }
+// 네이버 블로그 글(한국인 관점, REQ-REV-1·3) — 별점 없음, 출처 링크 필수
+export type NaverPost = {
+  who: string
+  text: string
+  translated: string | null
+  link: string
+}
 export type ReviewInsights = {
   summary: string
   reviews: InsightReview[]
+  naver?: NaverPost[]
   rating: number | null
   total: number
   provider: 'live' | 'cache' | 'mock'

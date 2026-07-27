@@ -7,7 +7,7 @@ import { Animated, Linking, Pressable, StyleSheet, Text, View } from 'react-nati
 
 import { Icon } from '@/components/brand'
 import { FallbackBadge } from '@/components/FallbackBadge'
-import { useReviewInsights } from '@/features/review/insights'
+import { useReviewInsights, type NaverPost } from '@/features/review/insights'
 import { usePlaceReviews, type PlaceReview, type ReviewTarget } from '@/features/review/queries'
 import { translateText } from '@/features/translate/services'
 import { appFlag, baseLang, flagFor } from '@/lib/flags'
@@ -115,6 +115,41 @@ function ReviewRow({
             </Text>
           </Pressable>
         )}
+      </View>
+    </View>
+  )
+}
+
+// 네이버 블로그 글 행 (REQ-REV-1) — 한국인 관점 리뷰. 별점이 없고 원문이 항상 한국어라
+// 국기 탭으로 번역↔원문을 토글한다(번역은 서버에서 미리 받아와 추가 API 호출 없음).
+// 약관상 출처 표기가 필요해 본문 탭 시 원문 블로그를 연다.
+function NaverPostRow({ post, appLang }: { post: NaverPost; appLang: string }) {
+  const t = useT()
+  const [showOriginal, setShowOriginal] = useState(false)
+  const hasTranslation = !!post.translated && baseLang(appLang) !== 'ko'
+  const showTranslated = hasTranslation && !showOriginal
+  return (
+    <View style={rs.reviewItem}>
+      <Pressable
+        onPress={() => hasTranslation && setShowOriginal((o) => !o)}
+        disabled={!hasTranslation}
+        hitSlop={8}
+        style={rs.reviewAvatar}>
+        <Text style={rs.reviewAvatarFlag}>{showTranslated ? appFlag(appLang) : '🇰🇷'}</Text>
+      </Pressable>
+      <View style={{ flex: 1 }}>
+        <View style={rs.reviewItemTop}>
+          <Text style={rs.reviewWho} numberOfLines={1}>
+            {post.who}
+          </Text>
+          <View style={[rs.platformBadge, { backgroundColor: '#03C75A' }]}>
+            <Text style={rs.platformBadgeText}>N</Text>
+          </View>
+          <Text style={rs.reviewTime}>{t('map.reviewKorean')}</Text>
+        </View>
+        <Pressable onPress={() => post.link && Linking.openURL(post.link).catch(() => {})}>
+          <Text style={rs.reviewItemText}>{showTranslated ? post.translated : post.text}</Text>
+        </Pressable>
       </View>
     </View>
   )
@@ -269,12 +304,20 @@ export function PlaceReviewsSection({ target }: { target: ReviewTarget }) {
         </Pressable>
       </View>
       {/* 개별 리뷰 — 선택된 출처 카드의 리뷰만(필터). 미선택 시 전체 */}
-      {shownReviews.length === 0 && reviewFilter ? (
+      {/* 빈 안내는 블로그 글까지 없을 때만 — 'korean' 필터는 블로그 글이 채울 수 있다 */}
+      {shownReviews.length === 0 &&
+      reviewFilter &&
+      !(reviewFilter === 'korean' && (insights?.naver?.length ?? 0) > 0) ? (
         <Text style={rs.reviewNone}>{t('map.reviewNone')}</Text>
       ) : null}
       {shownReviews.map((r, i) => (
         <ReviewRow key={i} review={r} appLang={lang} translatedHint={translatedFor(r)} />
       ))}
+      {/* 네이버 블로그 글(한국인 관점) — 'foreign' 필터에서는 숨긴다 */}
+      {reviewFilter !== 'foreign' &&
+        (insights?.naver ?? []).map((p, i) => (
+          <NaverPostRow key={`nv-${i}`} post={p} appLang={lang} />
+        ))}
     </View>
   )
 }

@@ -29,9 +29,18 @@ type Review = {
   time: string
   lang: string
 }
+// 네이버 블로그 글(한국인 관점, REQ-REV-1·3) — 별점이 없고 출처 링크가 필수라 별도 배열로 둔다.
+// 검색 API 약관상 원문 출처(link)를 함께 노출해야 하므로 link 는 항상 채운다.
+type NaverPost = {
+  who: string // 블로거명(있으면) — 없으면 'Naver blog'
+  text: string // 제목 — 요약 스니펫 (HTML 제거)
+  translated: string | null // 앱 언어 번역(ko 사용자면 null)
+  link: string // 원문 URL (출처 표기·이동)
+}
 type Insights = {
   summary: string
   reviews: Review[]
+  naver?: NaverPost[] // 개별 노출용 블로그 글 (요약 입력과 동일 소스)
   rating: number | null
   total: number
   provider: 'live' | 'cache' | 'mock'
@@ -134,7 +143,7 @@ function stripHtml(s: string): string {
 
 // 네이버 블로그 리뷰(한국인 관점) — 공식 검색 API 사용(REV-3 약관 준수 경로).
 // 키 미설정/실패 시 빈 배열(요약은 Google 리뷰만으로 진행).
-async function fetchNaverBlog(name: string): Promise<string[]> {
+async function fetchNaverBlog(name: string): Promise<NaverPost[]> {
   const id = Deno.env.get('NAVER_SEARCH_CLIENT_ID') ?? Deno.env.get('NAVER_CLIENT_ID')
   const secret = Deno.env.get('NAVER_SEARCH_CLIENT_SECRET') ?? Deno.env.get('NAVER_CLIENT_SECRET')
   if (!id || !secret) return []
@@ -144,9 +153,21 @@ async function fetchNaverBlog(name: string): Promise<string[]> {
       { headers: { 'X-Naver-Client-Id': id, 'X-Naver-Client-Secret': secret } },
     )
     const data = await res.json()
-    return ((data.items ?? []) as { title: string; description: string }[])
-      .map((it) => stripHtml(`${it.title} — ${it.description}`))
-      .filter((t) => t.length > 20 && !SPONSORED.test(t))
+    return (
+      (data.items ?? []) as {
+        title: string
+        description: string
+        link: string
+        bloggername?: string
+      }[]
+    )
+      .map((it) => ({
+        who: stripHtml(it.bloggername ?? '') || 'Naver blog',
+        text: stripHtml(`${it.title} — ${it.description}`),
+        translated: null,
+        link: it.link ?? '',
+      }))
+      .filter((p) => p.text.length > 20 && !SPONSORED.test(p.text))
       .slice(0, 6)
   } catch {
     return []
@@ -167,7 +188,7 @@ const LANG_NAME: Record<string, string> = {
 async function summarize(
   name: string,
   reviews: Review[],
-  naverPosts: string[],
+  naverPosts: NaverPost[],
   lang: string,
 ): Promise<string> {
   const apiKey = Deno.env.get('ANTHROPIC_API_KEY')
@@ -176,7 +197,7 @@ async function summarize(
     .slice(0, 10)
     .map((r) => `- (${r.score}/5) ${r.text}`)
     .join('\n')
-  const naverCorpus = naverPosts.map((t) => `- ${t}`).join('\n')
+  const naverCorpus = naverPosts.map((p) => `- ${p.text}`).join('\n')
   const corpus =
     (googleCorpus ? `[Google reviews — mostly travelers, with ratings]\n${googleCorpus}\n\n` : '') +
     (naverCorpus ? `[Naver blog posts — Korean locals' perspective]\n${naverCorpus}` : '')
@@ -255,15 +276,20 @@ async function generateAndStore(
     }
   })
 
-  // 비대상 언어 리뷰 일괄 번역 (1회 API 호출)
+  // 비대상 언어 리뷰 + 네이버 블로그(항상 한국어) 일괄 번역 — 1회 API 호출로 묶는다.
+  // 블로그 글은 개별 리뷰로도 노출되므로(REQ-REV-1) 요약뿐 아니라 본문 번역이 필요하다.
   const needIdx = reviews
     .map((r, i) => (base(r.lang) !== base(lang) ? i : -1))
     .filter((i) => i >= 0)
+  const naverNeeds = base(lang) !== 'ko' ? naverPosts.map((_, i) => i) : []
   const translations = await translateBatch(
-    needIdx.map((i) => reviews[i].text),
+    [...needIdx.map((i) => reviews[i].text), ...naverNeeds.map((i) => naverPosts[i].text)],
     lang,
   )
-  if (translations) needIdx.forEach((ri, j) => (reviews[ri].translated = translations[j]))
+  if (translations) {
+    needIdx.forEach((ri, j) => (reviews[ri].translated = translations[j]))
+    naverNeeds.forEach((ni, j) => (naverPosts[ni].translated = translations[needIdx.length + j]))
+  }
 
   // AI 요약 — Google+네이버 양쪽 소스 종합, 홍보성 제외
   const summary = await summarize(name, reviews, naverPosts, lang)
@@ -271,6 +297,7 @@ async function generateAndStore(
   const out: Insights = {
     summary,
     reviews,
+    naver: naverPosts,
     rating: koRes.rating ?? fgRes.rating,
     total: koRes.total || fgRes.total || reviews.length,
     provider: 'live',
@@ -286,6 +313,7 @@ async function generateAndStore(
         lang,
         summary: out.summary,
         reviews: out.reviews,
+        naver: out.naver,
         rating: out.rating,
         total: out.total,
         sources: out.sources,
@@ -322,7 +350,7 @@ Deno.serve(async (req) => {
     const admin = createClient(SUPABASE_URL, SERVICE_ROLE)
     const { data: cached } = await admin
       .from('place_review_insights')
-      .select('summary, reviews, rating, total, sources, updated_at')
+      .select('summary, reviews, naver, rating, total, sources, updated_at')
       .eq('place_key', placeId)
       .eq('lang', lang)
       .maybeSingle()
@@ -339,6 +367,7 @@ Deno.serve(async (req) => {
         return json({
           summary: cached.summary,
           reviews: cached.reviews,
+          naver: cached.naver ?? undefined, // 구 캐시 행에는 없는 필드
           rating: cached.rating,
           total: cached.total,
           provider: 'cache',
