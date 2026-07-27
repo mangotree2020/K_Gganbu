@@ -128,6 +128,10 @@
 > ✅ 블로그 글이 AI 요약 입력으로만 쓰여 "한국인 관점 리뷰" 목록이 비어 있던 문제 해소 — `{who,text,translated,link}`로 수집(`review-insights` v10), 앱 리뷰 목록에 🇰🇷 행(국기 탭 = 번역↔원문), 'foreign' 필터에서는 숨김. 검색 API 약관에 맞춰 출처 링크 표시·이동.
 > ✅ 번역은 기존 리뷰 번역 배치에 합류시켜 API 호출 수 불변. `place_review_insights.naver` 컬럼 추가(구 캐시 행 안전 처리). 실호출 검증(해운대·ja).
 >
+> **📌 07-28 진행(5) — Admin 스탬프 송객 리포트(REQ-ST-3 완료)**:
+> ✅ `partner-coupon` stats에 스탬프 방문 집계 추가(v13) — 총 방문·순 방문자·최근 7/30일·최근 20건. 파트너에게 송객을 증명하는 데이터(수익원 2 과금 근거)이며, 개인 식별자 없이 방문 시각만 내보낸다. 쿠폰 없는 스탬프 전용 파트너도 집계.
+> ✅ `web/admin.html` 통계 탭에 카드 추가 — **gh-pages 재배포 필요**(정적 호스팅).
+>
 > **🔜 프로덕션 준비 TODO(비차단, 나중에 처리)**:
 > ① Apple provider 설정(D-U-N-S 발급 후) ② Twilio 실 SMS 운영(업그레이드 완료, 발신 정책 점검) ③ **Auth 커스텀 SMTP** — 회사 Google Workspace(유료 구글메일) 보유 → SMTP relay로 이메일 가입/재설정 메일 전달률·상한 확보(내장 2/h는 dev용). 상세: `docs/SETUP_EXTERNAL.md` #9 "Auth 이메일 발송". ④ OTP 봇 남용 관측 시 CAPTCHA(OTP 전용 게이트웨이). ⑤ 노출 시크릿 로테이션(Twilio Auth Token·LINE Channel Secret). ⑥ **Tmap 도보 경로 종량제 전환** — 무료 일 1,000건, `usage_counters(kind='tmap_route')` 일 집계가 600~700건 근접 시 SK오픈API 유료 플랜 전환(폴백 체인 Tmap→Naver→mock으로 초과 시에도 무중단, 상세: SETUP_EXTERNAL #19).
 
