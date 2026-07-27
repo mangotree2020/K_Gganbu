@@ -1,7 +1,10 @@
-// stamp — 스탬프 투어 적립 (REQ-ST-1) — 매장 비치 QR 검증 → 방문당 50P
-// QR: KGBSTAMP:{partner_id}:{stamp_secret} — 시크릿 불일치·비활성 파트너 거부.
-// 하루 같은 매장 1회(멱등키), 일 상한 150P(=3개)는 earn_points 원장이 서버 강제.
-// 방문 로그(stamp_visits)는 파트너 송객 증명 데이터(ST-3).
+// stamp — 스탬프 투어 (REQ-ST-1·2)
+//   기본(액션 없음): 매장 비치 QR 검증 → 방문당 50P
+//     QR: KGBSTAMP:{partner_id}:{stamp_secret} — 시크릿 불일치·비활성 파트너 거부.
+//     하루 같은 매장 1회(멱등키), 일 상한 150P(=3개)는 earn_points 원장이 서버 강제.
+//     방문 로그(stamp_visits)는 파트너 송객 증명 데이터(ST-3).
+//   action:'claim_card': 테마 카드 완성 보너스 수령(REQ-ST-2)
+//     완성 판정은 서버(complete_stamp_card RPC)가 stamp_visits 로 재검증 — 클라이언트 신고 불신.
 import 'jsr:@supabase/functions-js/edge-runtime.d.ts'
 import { createClient } from 'jsr:@supabase/supabase-js@2'
 
@@ -30,12 +33,20 @@ function kstToday(): string {
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: cors })
   try {
-    const { code, lat, lng } = await req.json()
-    if (typeof code !== 'string' || !code.startsWith('KGBSTAMP:')) {
-      return json({ error: 'invalid_code' }, 400)
+    const { action, code, card_id: cardId, lat, lng } = await req.json()
+    const claiming = action === 'claim_card'
+
+    let partnerId = ''
+    let secret = ''
+    if (claiming) {
+      if (typeof cardId !== 'string' || !cardId) return json({ error: 'invalid_card' }, 400)
+    } else {
+      if (typeof code !== 'string' || !code.startsWith('KGBSTAMP:')) {
+        return json({ error: 'invalid_code' }, 400)
+      }
+      ;[, partnerId, secret] = code.split(':')
+      if (!partnerId || !secret) return json({ error: 'invalid_code' }, 400)
     }
-    const [, partnerId, secret] = code.split(':')
-    if (!partnerId || !secret) return json({ error: 'invalid_code' }, 400)
 
     // 인증 — 포인트는 계정 귀속, 게스트는 로그인 유도
     const authHeader = req.headers.get('Authorization') ?? ''
@@ -53,6 +64,16 @@ Deno.serve(async (req) => {
     const admin = createClient(SUPABASE_URL, SERVICE_ROLE)
     const { data: appUser } = await admin.from('users').select('id').eq('auth_id', user.id).single()
     if (!appUser) return json({ error: 'no_profile' }, 404)
+
+    // 테마 카드 완성 보너스 (REQ-ST-2) — 방문 수 재검증·중복 지급 차단은 RPC 책임
+    if (claiming) {
+      const { data: claim, error: claimErr } = await admin.rpc('complete_stamp_card', {
+        p_user: appUser.id,
+        p_card: cardId,
+      })
+      if (claimErr) return json({ error: claimErr.message }, 500)
+      return json(claim, claim?.ok === false ? 400 : 200)
+    }
 
     // 파트너 검증 — 시크릿 일치 + 활성 상태
     const { data: partner } = await admin

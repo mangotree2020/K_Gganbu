@@ -22,6 +22,7 @@ import {
 import { useWalkRank } from '@/features/journey/queries'
 import { usePointsSummary, type PointsEntry } from '@/features/points/queries'
 import { routePayment } from '@/features/payment/router'
+import { useStampCards } from '@/features/stamp/queries'
 import { getTickets, saveMyTicket, type Ticket } from '@/features/ticket/services'
 import { useAuthStore } from '@/features/auth/store'
 import { useLoginPrompt, useRequireAccount } from '@/features/auth/loginPrompt'
@@ -434,6 +435,9 @@ function PointsSection() {
   })
   // 걷기 랭킹 (REQ-LOC-4) — 길찾기 이동거리 최근 7일, 마스킹 닉네임 집계만
   const { data: walkRank } = useWalkRank(7)
+  // 스탬프 카드 (REQ-ST-2) — 수령 대기 중인 완성 보너스 개수만 배지로 사용
+  const { data: stampCards } = useStampCards()
+  const claimable = (stampCards ?? []).filter((c) => c.claimable).length
 
   // 게스트 — 포인트가 핵심 가입 트리거 (REQ-PT-4)
   if (isGuest) {
@@ -507,15 +511,21 @@ function PointsSection() {
         </View>
       )}
 
-      {/* 스탬프 투어 (REQ-ST-1) — 매장 QR 스캔 적립 진입 */}
+      {/* 스탬프 투어 (REQ-ST-1·2) — 테마 카드 진행도 화면(그 안에서 매장 QR 스캔) */}
       <Pressable
-        onPress={() => router.push('/stamp-scan' as never)}
+        onPress={() => router.push('/stamp-cards' as never)}
         style={[ps.stampBtn, shadows.card]}>
         <Text style={{ fontSize: 22 }}>🔖</Text>
         <View style={{ flex: 1 }}>
           <Text style={ps.stampTitle}>{t('stamp.title')}</Text>
-          <Text style={ps.giftSub}>{t('stamp.scanCta')}</Text>
+          <Text style={ps.giftSub}>{t('stamp.cardsCta')}</Text>
         </View>
+        {/* 받을 수 있는 보너스가 있으면 배지로 알린다(수령 누락 방지) */}
+        {claimable > 0 && (
+          <Pill tone="amber" size="xs">
+            {String(claimable)}
+          </Pill>
+        )}
         <Icon name="chevron_right" size={18} color={palette.zinc[400]} />
       </Pressable>
 

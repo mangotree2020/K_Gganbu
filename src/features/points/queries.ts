@@ -7,7 +7,7 @@ import { useAuthStore } from '@/features/auth/store'
 export type PointsEntry = {
   id: string
   kind: 'earn' | 'spend' | 'expire' | 'revert'
-  source: 'steps' | 'stamp' | 'challenge' | 'game' | 'gifticon' | 'admin'
+  source: 'steps' | 'stamp' | 'stamp_card' | 'challenge' | 'game' | 'gifticon' | 'admin'
   amount: number
   created_at: string
   expires_at: string | null

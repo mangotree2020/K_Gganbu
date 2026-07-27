@@ -1,5 +1,6 @@
 // 스탬프 스캔 (REQ-ST-1) — 제휴 매장 비치 QR 스캔 → 방문당 50P (일 3개 서버 캡)
 // 후면 카메라 스캔, 성공/중복/상한/무효 상태를 오버레이로 안내. 게스트는 로그인 유도.
+import { useQueryClient } from '@tanstack/react-query'
 import { CameraView, useCameraPermissions } from 'expo-camera'
 import { router } from 'expo-router'
 import { useRef, useState } from 'react'
@@ -29,6 +30,7 @@ export default function StampScanScreen() {
   const showLogin = useLoginPrompt((s) => s.show)
   const isGuest = !user || user.isGuest
   const { coords } = useCurrentLocation()
+  const qc = useQueryClient()
   const [state, setState] = useState<ScanState>({ kind: 'idle' })
   const busyRef = useRef(false)
 
@@ -41,9 +43,12 @@ export default function StampScanScreen() {
       const { data: res } = await supabase.functions.invoke('stamp', {
         body: { code: data, lat: coords?.latitude, lng: coords?.longitude },
       })
-      if (res?.granted > 0)
+      if (res?.granted > 0) {
         setState({ kind: 'success', partner: res.partnerName, granted: res.granted })
-      else if (res?.duplicate) setState({ kind: 'duplicate', partner: res.partnerName ?? '' })
+        // 스탬프 카드 진행도·잔액 즉시 반영 (REQ-ST-2)
+        qc.invalidateQueries({ queryKey: ['stamp-cards'] })
+        qc.invalidateQueries({ queryKey: ['points-summary'] })
+      } else if (res?.duplicate) setState({ kind: 'duplicate', partner: res.partnerName ?? '' })
       else if (res?.capped) setState({ kind: 'capped' })
       else setState({ kind: 'invalid' })
     } catch {
