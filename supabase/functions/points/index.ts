@@ -144,6 +144,12 @@ Deno.serve(async (req) => {
         .eq('auth_id', user.id)
         .single()
       if (!appUser) return json({ error: 'no_profile' }, 404)
+      // 완주일 기록 (REQ-KL-2) — 보상이 상한에 걸려 0P여도 학습은 한 것이므로 별도로 남긴다.
+      // 이 기록이 연속 출석(streak)의 서버 원장이다.
+      await admin
+        .from('challenge_days')
+        .upsert({ user_id: appUser.id, day: kstToday() }, { onConflict: 'user_id,day' })
+
       const { data, error } = await admin.rpc('earn_points', {
         p_user: appUser.id,
         p_source: 'challenge',

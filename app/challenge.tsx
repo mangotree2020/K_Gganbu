@@ -11,7 +11,7 @@ import { SheetHeader } from '@/components/SheetHeader'
 import { useLoginPrompt } from '@/features/auth/loginPrompt'
 import { useAuthStore } from '@/features/auth/store'
 import { dailyQuiz, todayKey } from '@/features/challenge/daily'
-import { useEarnChallenge } from '@/features/challenge/queries'
+import { useChallengeStats, useEarnChallenge } from '@/features/challenge/queries'
 import { levelOf, levelProgress, useChallengeStore } from '@/features/challenge/store'
 import { useLocaleStore, useT } from '@/lib/i18n'
 import { speakMessage } from '@/lib/speak'
@@ -25,7 +25,13 @@ export default function ChallengeScreen() {
   const isGuest = !user || user.isGuest
 
   const quiz = useMemo(() => dailyQuiz(lang), [lang])
-  const { lastDone, streak, totalDays, complete } = useChallengeStore()
+  const local = useChallengeStore()
+  // 서버 진도가 원장(REQ-KL-2) — 로그인 사용자는 서버 값, 게스트·오프라인은 로컬 값을 쓴다
+  const { data: server } = useChallengeStats()
+  const streak = server?.streak ?? local.streak
+  const totalDays = server?.total_days ?? local.totalDays
+  const lastDone = server?.last_done ?? local.lastDone
+  const complete = local.complete
   const doneToday = lastDone === todayKey()
   const earn = useEarnChallenge()
 
