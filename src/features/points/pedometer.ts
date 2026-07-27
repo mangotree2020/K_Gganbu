@@ -12,15 +12,11 @@ import { Platform } from 'react-native'
 import { storage } from '@/lib/mmkv'
 import { readTodaySteps } from './healthConnect'
 
-export const STEP_POINT_UNIT = 1000 // 1,000보당
-export const STEP_POINT_PER_UNIT = 10 // 10P 적립
-export const STEP_POINT_DAILY_CAP = 100 // 일 상한 100P
+// 발행 규칙은 순수 모듈(rules.ts)에 두고 여기서 재노출한다 — 기존 import 경로 유지 + 테스트 가능
+export { STEP_POINT_UNIT, STEP_POINT_PER_UNIT, STEP_POINT_DAILY_CAP, stepsToPoints } from './rules'
 
 // 분당 인정 걸음 상한 — 정상 보행/달리기 상단(연구 권고 220보/분) 초과분은 버림
 const MAX_STEPS_PER_MIN = 220
-
-export const stepsToPoints = (steps: number): number =>
-  Math.min(STEP_POINT_DAILY_CAP, Math.floor(steps / STEP_POINT_UNIT) * STEP_POINT_PER_UNIT)
 
 type PedometerModule = typeof import('expo-sensors').Pedometer
 

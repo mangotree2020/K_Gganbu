@@ -44,6 +44,5 @@ export const useChallengeStore = create<ChallengeState>()(
   ),
 )
 
-// 레벨 — 누적 완료 일수 기준(1레벨당 5일). 학습량을 한 숫자로 보여주는 용도.
-export const levelOf = (totalDays: number) => Math.floor(totalDays / 5) + 1
-export const levelProgress = (totalDays: number) => (totalDays % 5) / 5
+// 레벨 계산은 순수 모듈(level.ts)에 두고 재노출 — 기존 import 경로 유지 + 테스트 가능
+export { levelOf, levelProgress } from './level'
