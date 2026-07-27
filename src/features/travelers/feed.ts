@@ -187,3 +187,32 @@ export function ageLabel(ageMin: number, justNow: string): string {
   if (ageMin < 60 * 24) return `${Math.floor(ageMin / 60)}h`
   return `${Math.floor(ageMin / 60 / 24)}d`
 }
+
+// 실 공개 후기(REQ-UGC-2)를 피드 포스트로 변환 — 합성 포스트와 같은 모델로 맞춰 한 목록에 섞는다.
+// 사진 업로드는 아직 없으므로 media 는 비우고 카테고리 썸네일(PlaceThumb)로 대체된다.
+export function realReviewToPost(r: {
+  id: string
+  author: string
+  place: string
+  cat: string
+  rating: number
+  text: string
+  createdAt: string
+}): TravelerPost {
+  const ageMin = Math.max(0, Math.round((Date.now() - new Date(r.createdAt).getTime()) / 60000))
+  return {
+    id: `rv:${r.id}`,
+    author: r.author,
+    flag: '🧳', // 국적 정보를 저장하지 않으므로 중립 아이콘
+    text: r.text || '★'.repeat(r.rating),
+    media: [],
+    place: r.place,
+    cat: r.cat,
+    lat: null,
+    lng: null,
+    ageMin,
+    dist: Infinity,
+    likes: 0,
+    seedComments: 0,
+  }
+}

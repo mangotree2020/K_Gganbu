@@ -1,5 +1,6 @@
 // 홈 화면 — docs/K-Gganbu (standalone).html 의 HomeV2 "Daybreak" 디자인 충실 구현.
 // 디자인 기능(섹션 See all·카드·타일·코어액션)을 실제 라우트로 배선해 작동하도록 함.
+import { useQuery } from '@tanstack/react-query'
 import { LinearGradient } from 'expo-linear-gradient'
 import { router } from 'expo-router'
 import { useEffect, useMemo, useRef, useState } from 'react'
@@ -38,7 +39,8 @@ import { unreadCount, useInboxStore } from '@/features/notifications/inbox'
 import { stepsToPoints, useTodaySteps } from '@/features/points/pedometer'
 import { useEarnSteps } from '@/features/points/queries'
 import { TravelerFeed } from '@/features/travelers/TravelerFeed'
-import { buildTravelerFeed, feedPage } from '@/features/travelers/feed'
+import { buildTravelerFeed, feedPage, realReviewToPost } from '@/features/travelers/feed'
+import { getPublicReviews } from '@/features/review/services'
 import { conditionIcon, conditionLabelKey, useWeather } from '@/features/weather/queries'
 import { useCityLabel } from '@/features/weather/useCityLabel'
 import { useCurrentLocation } from '@/hooks/useCurrentLocation'
@@ -912,14 +914,24 @@ export default function HomeScreen() {
     [pois],
   )
 
-  // 여행자 후기 피드 — 시간+거리 순 정렬 후 무한 스크롤로 아래에 계속 추가.
+  // 실 공개 후기 (REQ-UGC-2) — 사용자가 공개에 동의한 후기만 서버가 내려준다(차단 작성자는 RLS 제외).
+  const { data: realReviews } = useQuery({
+    queryKey: ['public-reviews'],
+    queryFn: () => getPublicReviews(20),
+    staleTime: 5 * 60 * 1000,
+  })
+
+  // 여행자 후기 피드 — 실 후기를 맨 앞에 두고 그 뒤를 합성 포스트로 채운다.
+  // (실 후기가 쌓이기 전까지 빈 피드가 되지 않도록 mock-first 원칙 유지)
   const feedBase = useMemo(
-    () =>
-      buildTravelerFeed(feedData?.pois ?? [], {
+    () => [
+      ...(realReviews ?? []).map(realReviewToPost),
+      ...buildTravelerFeed(feedData?.pois ?? [], {
         latitude: coords.latitude,
         longitude: coords.longitude,
       }),
-    [feedData, coords.latitude, coords.longitude],
+    ],
+    [realReviews, feedData, coords.latitude, coords.longitude],
   )
   const FEED_STEP = 4
   const FEED_MAX = 40

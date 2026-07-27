@@ -17,6 +17,7 @@ import { getCachedIssue, issueCoupon, type CouponIssue } from '@/features/coupon
 import { addReview } from '@/features/review/services'
 import { storage } from '@/lib/mmkv'
 import { supabase } from '@/lib/supabase'
+import { useProfileStore } from '@/features/profile/store'
 import { useLocaleStore, useT } from '@/lib/i18n'
 import { palette, shadows } from '@/theme/tokens'
 
@@ -64,6 +65,9 @@ export default function CouponQrScreen() {
   // 그 순간이 후기를 받기 가장 좋은 시점이라 1탭 별점을 띄운다(실후기 축적 = UGC의 전제).
   const [used, setUsed] = useState(false)
   const [rated, setRated] = useState<number | null>(null)
+  // 피드 공개는 명시 동의가 있을 때만 — 기본은 비공개(가게에 남기는 평가에 가깝다)
+  const [sharePublic, setSharePublic] = useState(false)
+  const profileName = useProfileStore((s) => s.displayName) || 'Traveler'
 
   // 퍼널 계측(REQ-CP-4): 발급 성공 — 오프라인 폴백 여부 구분
   const trackIssued = (r: CouponIssue, reissued: boolean, cached = false) =>
@@ -136,6 +140,8 @@ export default function CouponQrScreen() {
         cat: merchant?.cat,
         placeKey: merchant?.placeId ?? null,
         refId: issue?.id ?? null,
+        isPublic: sharePublic,
+        authorName: profileName,
       })
     } catch {
       // 저장 실패해도 화면은 감사 상태로 둔다(재시도 유도는 과함)
@@ -235,13 +241,28 @@ export default function CouponQrScreen() {
               </Text>
               {!rated && <Text style={ss.dim}>{t('review.askSub')}</Text>}
               {!rated && (
-                <View style={{ flexDirection: 'row', gap: 6, marginTop: 6 }}>
-                  {[1, 2, 3, 4, 5].map((n) => (
-                    <Pressable key={n} onPress={() => rate(n)} hitSlop={6}>
-                      <Icon name="star" size={30} color={palette.amber[50]} />
-                    </Pressable>
-                  ))}
-                </View>
+                <>
+                  <View style={{ flexDirection: 'row', gap: 6, marginTop: 6 }}>
+                    {[1, 2, 3, 4, 5].map((n) => (
+                      <Pressable key={n} onPress={() => rate(n)} hitSlop={6}>
+                        <Icon name="star" size={30} color={palette.amber[50]} />
+                      </Pressable>
+                    ))}
+                  </View>
+                  {/* 피드 공개 동의 (REQ-UGC-2) — 끄면 나만 보는 기록으로 남는다 */}
+                  <Pressable
+                    onPress={() => setSharePublic((v) => !v)}
+                    hitSlop={6}
+                    style={ss.shareRow}>
+                    <Icon
+                      name={sharePublic ? 'check_circle' : 'circle'}
+                      size={16}
+                      color={sharePublic ? palette.success[50] : palette.zinc[400]}
+                      filled={sharePublic}
+                    />
+                    <Text style={ss.shareText}>{t('review.shareToFeed')}</Text>
+                  </Pressable>
+                </>
               )}
             </View>
           ) : (
@@ -381,6 +402,8 @@ const ss = StyleSheet.create({
     letterSpacing: -0.5,
     marginBottom: 16,
   },
+  shareRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 10 },
+  shareText: { fontSize: 12, color: palette.zinc[600] },
   ratingBox: {
     alignItems: 'center',
     gap: 6,

@@ -3,6 +3,16 @@ import { USE_MOCK } from '@/lib/config'
 import { supabase } from '@/lib/supabase'
 import { withRetry } from '@/lib/withRetry'
 
+type PublicRow = {
+  id: string
+  author_name: string | null
+  place_name: string
+  cat: string | null
+  rating: number
+  body: string | null
+  created_at: string
+}
+
 type ReviewRow = {
   id: string
   place_name: string
@@ -74,6 +84,8 @@ export async function addReview(input: {
   body?: string
   placeKey?: string | null
   refId?: string | null
+  isPublic?: boolean // 피드 공개 — 명시 동의가 있을 때만 true (기본 비공개)
+  authorName?: string | null // 공개 시 표시할 이름 스냅샷
 }): Promise<boolean> {
   const { data: me } = await supabase.rpc('current_user_id')
   if (!me) return false
@@ -86,6 +98,8 @@ export async function addReview(input: {
     body: input.body ?? null,
     source: input.refId ? 'coupon_redeem' : 'manual',
     ref_id: input.refId ?? null,
+    is_public: input.isPublic ?? false,
+    author_name: input.isPublic ? (input.authorName ?? 'Traveler') : null,
   })
   // 중복(같은 쿠폰 사용 건)은 성공으로 취급 — 사용자에게는 이미 남긴 것이므로 오류가 아니다
   if (error && !error.message.includes('duplicate')) throw error
@@ -100,4 +114,34 @@ export async function getMyReviews(): Promise<Review[]> {
   } catch {
     return MOCK
   }
+}
+
+// 공개 후기 (REQ-UGC-2) — 피드에 실 후기를 얹는다. 차단한 작성자의 글은 RLS 정책이 제외한다.
+export type PublicReview = {
+  id: string
+  author: string
+  place: string
+  cat: string
+  rating: number
+  text: string
+  createdAt: string
+}
+
+export async function getPublicReviews(limit = 20): Promise<PublicReview[]> {
+  const { data, error } = await supabase
+    .from('reviews')
+    .select('id, author_name, place_name, cat, rating, body, created_at')
+    .eq('is_public', true)
+    .order('created_at', { ascending: false })
+    .limit(limit)
+  if (error) throw error
+  return (data ?? []).map((r: PublicRow) => ({
+    id: r.id,
+    author: r.author_name ?? 'Traveler',
+    place: r.place_name,
+    cat: r.cat ?? 'sights',
+    rating: r.rating,
+    text: r.body ?? '',
+    createdAt: r.created_at,
+  }))
 }
