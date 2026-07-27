@@ -142,6 +142,11 @@
 > ✅ 결과 공유 — QR 랜딩 계측 리다이렉터 재사용(`ch=game_share`)이라 공유→설치 유입이 `landing_events`에 남는다.
 > ✅ **IP 가드레일 자동화** — 원칙을 문서에만 두면 실제로는 못 막으므로 `ipGuard.test.ts`가 i18n 전체·게임 화면·공유 문구를 검사(5개 언어 금칙어 변형 포함). 작성 중이던 주석의 금칙어를 이 가드가 실제로 잡아냈다.
 >
+> **📌 07-28 진행(8) — 챌린지 진도 서버화·복귀 유도(REQ-KL-2·5 완료)**:
+> ✅ `challenge_days` + `challenge_stats()` — 완주일을 포인트 원장과 분리해 기록한다(게임으로 일 상한 30P를 채운 날은 챌린지 적립이 0P라 원장에 행이 남지 않아 연속 기록이 끊기기 때문). 기록은 EF(service role) 전용이라 streak 조작 불가. 실 DB 검증(streak 2/best 3/total 5).
+> ✅ `reengage_targets`(3~60일 이탈 + 알림 기기 보유, 이메일·이름 미반환) + `push-send action:'reengage'`(v10) + Admin "복귀 유도 대상 불러오기" 버튼·문안 프리필.
+> ⚠️ **자동 발송 미채택** — 이 프로젝트에 `pg_net`이 설치돼 있지 않아 DB에서 push-send HTTP 호출이 불가능하고, 실사용자 알림은 초기엔 운영자가 문안·시점을 확인해 보내는 편이 안전하다. 자동화하려면 pg_net 설치 후 `cron.schedule`로 연결.
+>
 > **🔜 프로덕션 준비 TODO(비차단, 나중에 처리)**:
 > ① Apple provider 설정(D-U-N-S 발급 후) ② Twilio 실 SMS 운영(업그레이드 완료, 발신 정책 점검) ③ **Auth 커스텀 SMTP** — 회사 Google Workspace(유료 구글메일) 보유 → SMTP relay로 이메일 가입/재설정 메일 전달률·상한 확보(내장 2/h는 dev용). 상세: `docs/SETUP_EXTERNAL.md` #9 "Auth 이메일 발송". ④ OTP 봇 남용 관측 시 CAPTCHA(OTP 전용 게이트웨이). ⑤ 노출 시크릿 로테이션(Twilio Auth Token·LINE Channel Secret). ⑥ **Tmap 도보 경로 종량제 전환** — 무료 일 1,000건, `usage_counters(kind='tmap_route')` 일 집계가 600~700건 근접 시 SK오픈API 유료 플랜 전환(폴백 체인 Tmap→Naver→mock으로 초과 시에도 무중단, 상세: SETUP_EXTERNAL #19).
 
