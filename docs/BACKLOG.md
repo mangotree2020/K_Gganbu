@@ -137,6 +137,11 @@
 > ✅ 보상 20P는 `points` EF `earn_challenge`(v9)가 하루 1회 멱등 지급, game과 공유하는 일 상한 30P는 원장이 강제. 정답 수는 지급액에 영향 없음(클라이언트 신고 값 불신). 실 DB 검증(20P → 멱등 0P → 게임 10P → 상한 0P).
 > 🟡 잔여: 진도 서버 동기화(현재 MMKV만), STT 채점(KL-3 2차), 귀국 후 자동 푸시(KL-5 후반 — 서버 배치 필요, 현재 Admin 수동 발송 가능).
 >
+> **📌 07-28 진행(7) — 게임 랭킹·뱃지·공유·IP 가드(REQ-GM-2·3·4)**:
+> ✅ `game_scores` + `game_rank(게임·기간·지역)`·`game_badges()` — "부산에서 플레이한 사람끼리" 겨루는 여행 맥락 랭킹(마스킹·집계만 공개), 뱃지는 별도 테이블 없이 점수 집계로 산정. 테트리스 종료·RPS 3승 시 기록, 게임 화면에 Top5·내 순위·지역 필터·뱃지 표시. 실 DB 검증(순위·지역 필터·상한 차단).
+> ✅ 결과 공유 — QR 랜딩 계측 리다이렉터 재사용(`ch=game_share`)이라 공유→설치 유입이 `landing_events`에 남는다.
+> ✅ **IP 가드레일 자동화** — 원칙을 문서에만 두면 실제로는 못 막으므로 `ipGuard.test.ts`가 i18n 전체·게임 화면·공유 문구를 검사(5개 언어 금칙어 변형 포함). 작성 중이던 주석의 금칙어를 이 가드가 실제로 잡아냈다.
+>
 > **🔜 프로덕션 준비 TODO(비차단, 나중에 처리)**:
 > ① Apple provider 설정(D-U-N-S 발급 후) ② Twilio 실 SMS 운영(업그레이드 완료, 발신 정책 점검) ③ **Auth 커스텀 SMTP** — 회사 Google Workspace(유료 구글메일) 보유 → SMTP relay로 이메일 가입/재설정 메일 전달률·상한 확보(내장 2/h는 dev용). 상세: `docs/SETUP_EXTERNAL.md` #9 "Auth 이메일 발송". ④ OTP 봇 남용 관측 시 CAPTCHA(OTP 전용 게이트웨이). ⑤ 노출 시크릿 로테이션(Twilio Auth Token·LINE Channel Secret). ⑥ **Tmap 도보 경로 종량제 전환** — 무료 일 1,000건, `usage_counters(kind='tmap_route')` 일 집계가 600~700건 근접 시 SK오픈API 유료 플랜 전환(폴백 체인 Tmap→Naver→mock으로 초과 시에도 무중단, 상세: SETUP_EXTERNAL #19).
 
