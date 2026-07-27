@@ -82,7 +82,7 @@ function buildHtml(lat: number, lng: number, markers: NaverMarker[], lang: Naver
       if(!window.naver || !naver.maps){ post({type:'auth_error',message:'naver.maps 미로딩'}); return; }
       map = new naver.maps.Map('map', {
         center: new naver.maps.LatLng(${lat}, ${lng}),
-        zoom: 16, // 도보 이동 기준 측척(거리 단위)
+        zoom: 17, // 도보 사용자 기준 초기 측척 (map.tsx WALK_ZOOM과 동일)
         logoControl: true,
         mapDataControl: false,
         scaleControl: true, // 측척 바 표시
@@ -136,7 +136,7 @@ function buildHtml(lat: number, lng: number, markers: NaverMarker[], lang: Naver
         position: new naver.maps.LatLng(lat, lng), map: map, zIndex: 1000,
         icon: myLocIcon(),
       });
-      map.morph(new naver.maps.LatLng(lat, lng), zoom || 16);
+      map.morph(new naver.maps.LatLng(lat, lng), zoom || 17);
     }
     function setHeading(deg){
       myHeading = deg;

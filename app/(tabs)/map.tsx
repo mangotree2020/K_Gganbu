@@ -12,9 +12,11 @@ import {
   StyleSheet,
   Text,
   TextInput,
+  useWindowDimensions,
   View,
 } from 'react-native'
-import { SafeAreaView } from 'react-native-safe-area-context'
+import { Gesture, GestureDetector, ScrollView as GHScrollView } from 'react-native-gesture-handler'
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 
 import { Icon } from '@/components/brand'
 import { CachedImage } from '@/components/CachedImage'
@@ -49,14 +51,16 @@ import { useTabBarAutoHide, useTabBarStore } from '@/hooks/useTabBarAutoHide'
 import { useLocaleStore, useT } from '@/lib/i18n'
 import { palette, shadows } from '@/theme/tokens'
 
-// 도보 이동 기준 줌(거리 단위) — 검색/내 위치/장소 선택 시 공통 사용
-const WALK_ZOOM = 16
+// 도보 사용자 기준 줌 — 골목·건물이 구분되는 축척(≈100m 스케일).
+// 검색/내 위치/장소 선택 시 공통 사용. Naver·Google 모두 동일 zoom 체계라 두 지도 축척이 일치한다
+// (각 WebView HTML의 초기 zoom 값도 동일하게 맞춰둘 것 — NaverMap.tsx / GoogleMap.tsx)
+const WALK_ZOOM = 17
 
 // 하단 시트 스냅 높이 — MINI(헤드만), HALF(헤드+카드 절반=초기), FULL(콘텐츠 다수)
-const SHEET_MINI = 134
-const SHEET_HALF = 230 // 헤드 + 가로 추천카드 절반 정도 보임
-const SHEET_FULL = 580
-const SHEET_SNAPS = [SHEET_MINI, SHEET_HALF, SHEET_FULL]
+// Blend 바가 시트 상단에 상주(grabber 대체)하므로 바 높이만큼만 여유를 더한다
+const SHEET_MINI = 152
+const SHEET_HALF = 248 // 헤드 + 가로 추천카드 절반 정도 보임
+// FULL 높이는 화면 크기에서 계산한다(지도 상단 검색바까지 덮는 거의 전체 화면) — 컴포넌트 내부 sheetFullH
 
 // 카테고리 필터 — 네이버/구글 지도 수준의 다양한 분류(TourAPI 콘텐츠 타입 기반)
 const CATS: { key: string; labelKey: string; icon: string; color: string }[] = [
@@ -160,7 +164,7 @@ const catGlyph = (cat: string) => CAT_GLYPH[cat] ?? '📍'
 // 화면에 보일 때 탭 유도를 위해 브르르 떨린다(주기적 wiggle).
 export default function MapScreen() {
   const t = useT()
-  // 시트 리뷰 영역 플릭 시에도 X식 하단 탭바 자동 숨김/표시
+  // 시트 리뷰 영역 스크롤 시 X식 하단 탭바 자동 숨김/표시
   const tabBarAutoHide = useTabBarAutoHide()
   const lang = useLocaleStore((s) => s.lang) // 지도 라벨·POI 언어
   // Blend 상시 — 슬라이더 0 = Naver 완전 표시(좌) ~ 1 = Google 완전 표시(우).
@@ -180,7 +184,7 @@ export default function MapScreen() {
   }, [neonPulse])
   const naverFull = blendPos <= 0.03
   const googleFull = blendPos >= 0.97
-  // 지도 첫 진입 시 Blend 1회 자동 시연 — Naver(0)→Google(1) 스윕 후 기본값(0.5) 정착.
+  // 지도 첫 진입 시 Blend 1회 자동 시연 — Naver(0)→Google(1) 스윕 후 Google에서 정지.
   // Blend는 바만 봐서는 발견이 어려운 고유 기능이라 로딩 직후 투명도 변화를 직접 보여준다.
   // 사용자가 슬라이더를 잡으면(onSlidingStart) 즉시 중단.
   const demoDoneRef = useRef(false)
@@ -203,12 +207,8 @@ export default function MapScreen() {
         setBlendPos(0) // 완전 Naver 잠시 유지
       else if (el < 2400)
         setBlendPos(ease((el - 600) / 1800)) // Naver→Google 스윕
-      else if (el < 3000)
-        setBlendPos(1) // 완전 Google 잠시 유지
-      else if (el < 3800)
-        setBlendPos(1 - ease((el - 3000) / 800) * 0.5) // 기본값 0.5로 복귀
       else {
-        setBlendPos(0.5)
+        setBlendPos(1) // 완전 Google에서 정지 (중앙 복귀 없음)
         cancelBlendDemo()
       }
     }, 40)
@@ -248,6 +248,28 @@ export default function MapScreen() {
   // 하단 시트 높이 — 초기 HALF(카드 절반 보임). sheetBaseRef는 현재 스냅 추적.
   const sheetH = useState(() => new Animated.Value(SHEET_HALF))[0]
   const sheetBaseRef = useRef(SHEET_HALF)
+  // 최대 확장 = 지도 상단 검색바까지 덮는 높이(상태바만 남김). 화면 높이에서 계산
+  const { height: winH } = useWindowDimensions()
+  // 시트가 최대(FULL)인지 — 이때만 리뷰 목록을 스크롤한다(그 전엔 스와이프 = 시트 확장).
+  // 제스처 콜백에서 최신값을 읽어야 해 ref를 함께 둔다.
+  const [sheetFull, setSheetFull] = useState(false)
+  const sheetFullRef = useRef(false)
+  const markFull = (v: boolean) => {
+    sheetFullRef.current = v
+    setSheetFull(v)
+  }
+  // 탭바 자동 숨김 보정 — 탭바가 접히며 생긴 여백을 지도(flex:1)가 가져가면 시트 상단이
+  // 내려앉아 리뷰 영역이 줄어 보인다. 같은 높이를 시트에 더해 시트 상단 위치를 유지한다.
+  // (몰입 모드는 시트를 0으로 접는 상태라 보정하지 않음)
+  const insets = useSafeAreaInsets()
+  const tabBarH = 56 + insets.bottom // (tabs)/_layout.tsx의 barH와 동일
+  const tabHidden = useTabBarStore((s) => s.hidden)
+  const tabPad = useState(() => new Animated.Value(0))[0]
+  // 최대 확장 높이 — 지도 검색 영역까지 덮되 폰 상태표시줄(insets.top)은 남긴다.
+  // 실제 컨테이너 높이를 onLayout으로 측정해 쓰고, 측정 전에는 화면 크기로 근사한다.
+  const [colH, setColH] = useState(0)
+  const sheetFullH = Math.max(SHEET_HALF + 120, Math.round((colH || winH - tabBarH) - insets.top))
+  const sheetSnaps = useMemo(() => [SHEET_MINI, SHEET_HALF, sheetFullH], [sheetFullH])
 
   // 몰입(전체 화면) 모드 — 시설 없는 빈 지면 탭으로 켜고, 몰입 중 아무 지점 탭으로 즉시 복귀.
   // 켜지면 검색바·Blend 바·FAB·하단 시트·탭바를 모두 숨겨 지도만 보인다.
@@ -265,10 +287,22 @@ export default function MapScreen() {
       useNativeDriver: false,
     }).start()
   }
+  // 탭바가 접히는 것과 같은 속도(200ms)로 시트 보정 높이를 키운다
+  useEffect(() => {
+    Animated.timing(tabPad, {
+      toValue: tabHidden && !immersive ? tabBarH : 0,
+      duration: 200,
+      useNativeDriver: false,
+    }).start()
+  }, [tabHidden, immersive, tabBarH, tabPad])
+  const sheetHeight = useMemo(() => Animated.add(sheetH, tabPad), [sheetH, tabPad])
+
   // 지도 탭을 벗어나면 몰입 해제(탭바가 숨은 채 다른 화면으로 가지 않도록)
   const focused = useIsFocused()
   useEffect(() => {
     if (!focused && immersiveRef.current) setImmersiveMode(false)
+    // 다른 화면에서 숨겨둔 탭바가 남아 있으면 시트 위치가 어긋나므로 진입 시 복구
+    if (focused && !immersiveRef.current) setTabHidden(false)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [focused])
 
@@ -328,39 +362,24 @@ export default function MapScreen() {
     setSelected(null)
   }
 
-  // 내 방향(나침반) 구독 — 위치 핀의 방향 빔을 두 지도에 동기 회전(8도 이상 변화 시만)
-  // + 방위 표시 FAB(나침반 바늘)도 같은 값으로 회전.
-  // 0°/360° 경계에서 긴 쪽으로 역회전하지 않도록 최단 경로 delta를 누적한 연속 각도로 애니메이션.
-  const compassAnim = useState(() => new Animated.Value(0))[0]
+  // 내 방향(나침반) 구독 — 위치 핀의 방향 빔을 두 지도에 동기 회전(8도 이상 변화 시만).
+  // 방위 표시 FAB는 제거했고, 방향은 지도 위 내 위치 핀으로만 표시한다.
   useEffect(() => {
     let sub: Location.LocationSubscription | undefined
     let last = -999
-    let accum = 0 // 누적 회전 각(경계 없는 연속값)
     Location.watchHeadingAsync((h) => {
       const deg = h.trueHeading >= 0 ? h.trueHeading : h.magHeading
-      if (last < 0) {
-        last = deg
-        accum = deg
-      } else {
-        const delta = ((deg - last + 540) % 360) - 180 // 최단 경로 차이(-180~180)
-        if (Math.abs(delta) < 8) return
-        last = deg
-        accum += delta
-      }
+      if (last >= 0 && Math.abs(((deg - last + 540) % 360) - 180) < 8) return
+      last = deg
       naverRef.current?.setHeading(deg)
       googleRef.current?.setHeading(deg)
-      Animated.timing(compassAnim, {
-        toValue: accum,
-        duration: 200,
-        useNativeDriver: true,
-      }).start()
     })
       .then((s) => {
         sub = s
       })
       .catch(() => {})
     return () => sub?.remove()
-  }, [compassAnim])
+  }, [])
 
   // 내 위치로 이동 + 파란 점 표시 — 탭할 때마다 GPS를 새로 측정한다.
   // (마운트 시 1회 좌표만 재사용하면 캐시·폴백 지점에 고정돼 잘못된 위치를 계속 가리킴)
@@ -381,33 +400,46 @@ export default function MapScreen() {
     googleRef.current?.setMapType(next)
   }
 
-  // 시트 드래그 — grabber(탭 토글 포함)와 장소 헤더(드래그만 — 버튼 탭은 통과) 두 영역.
+  // 시트 드래그 — Blend 바와 장소 헤더 두 영역(둘 다 드래그만, 버튼/슬라이더 탭은 통과).
   // ref는 제스처 콜백에서만 읽으므로(렌더 아님) refs 룰 비활성화.
   /* eslint-disable react-hooks/refs */
-  const makeSheetPan = (tapToggle: boolean) =>
+  // 지정 스냅으로 시트 이동 (제스처·스크롤 공용)
+  const snapSheetTo = (h: number) => {
+    if (sheetBaseRef.current === h) return
+    sheetBaseRef.current = h
+    markFull(h === sheetFullH)
+    Animated.spring(sheetH, {
+      toValue: h,
+      useNativeDriver: false,
+      bounciness: 2,
+      speed: 16,
+    }).start()
+  }
+  const makeSheetPan = (captureVertical = false) =>
     PanResponder.create({
-      // tapToggle 영역은 탭도 캡처(탭=스냅 순환), 헤더 영역은 움직일 때만 캡처
-      onStartShouldSetPanResponder: () => tapToggle,
-      onMoveShouldSetPanResponder: (_e, g) => Math.abs(g.dy) > (tapToggle ? 4 : 6),
+      onStartShouldSetPanResponder: () => false,
+      onMoveShouldSetPanResponder: (_e, g) => Math.abs(g.dy) > 6,
+      // Blend 바처럼 자식(Slider)이 가로 제스처를 먹는 영역 — 명확한 세로 드래그만 가로챈다
+      onMoveShouldSetPanResponderCapture: (_e, g) =>
+        captureVertical && Math.abs(g.dy) > 8 && Math.abs(g.dy) > Math.abs(g.dx) * 1.5,
       onPanResponderMove: (_e, g) => {
-        const h = Math.max(SHEET_MINI, Math.min(SHEET_FULL, sheetBaseRef.current - g.dy))
+        const h = Math.max(SHEET_MINI, Math.min(sheetFullH, sheetBaseRef.current - g.dy))
         sheetH.setValue(h)
       },
       onPanResponderRelease: (_e, g) => {
+        // 플릭(빠른 스와이프) — 위로 튕기면 최대(FULL), 아래로 튕기면 최소(MINI)
+        const target = sheetBaseRef.current - g.dy
         let snap: number
-        if (tapToggle && Math.abs(g.dy) < 5) {
-          // 탭 — 다음 스냅으로 순환(MINI→HALF→FULL→MINI)
-          const idx = SHEET_SNAPS.indexOf(sheetBaseRef.current)
-          snap = SHEET_SNAPS[(idx + 1) % SHEET_SNAPS.length]
-        } else {
-          // 드래그 — 끝 위치에서 최근접 스냅
-          const target = sheetBaseRef.current - g.dy
-          snap = SHEET_SNAPS.reduce(
+        if (g.vy < -0.5) snap = sheetFullH
+        else if (g.vy > 0.5) snap = SHEET_MINI
+        else
+          // 느린 드래그 — 끝 위치에서 최근접 스냅
+          snap = sheetSnaps.reduce(
             (best, s) => (Math.abs(s - target) < Math.abs(best - target) ? s : best),
-            SHEET_SNAPS[0],
+            sheetSnaps[0],
           )
-        }
         sheetBaseRef.current = snap
+        markFull(snap === sheetFullH) // 리뷰 스크롤 활성 여부
         Animated.spring(sheetH, {
           toValue: snap,
           useNativeDriver: false,
@@ -417,9 +449,84 @@ export default function MapScreen() {
       },
     })
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  const sheetPan = useMemo(() => makeSheetPan(true), [sheetH])
+  const sheetHeadPan = useMemo(() => makeSheetPan(), [sheetH, sheetFullH, sheetSnaps])
+  // Blend 바 영역 — 가로 드래그는 Slider(투명도), 세로 드래그는 시트 높이 조절
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  const sheetHeadPan = useMemo(() => makeSheetPan(false), [sheetH])
+  const blendBarPan = useMemo(() => makeSheetPan(true), [sheetH, sheetFullH, sheetSnaps])
+  // 리뷰 영역 제스처 — 접힌 상태에서는 방향과 무관하게 최대 확장(리뷰를 읽으려는 동작),
+  // 최대 상태에서는 목록 최상단에서 아래로 쓸 때만 초기 크기(HALF)로 축소한다.
+  // (목록 중간에서의 세로 제스처는 그대로 스크롤)
+  // 주변 추천(고정) 영역 — 세로 스와이프 방향으로 즉시 스냅 전환(위=최대, 아래=초기 크기).
+  // 시트를 손가락에 붙여 끌지 않으므로 지도·시트가 매 프레임 리레이아웃되지 않는다(떨림 방지).
+
+  const nearbyDoneRef = useRef(false)
+  const nearbyPan = useMemo(() => {
+    const vertical = (dx: number, dy: number) =>
+      Math.abs(dy) > 8 && Math.abs(dy) > Math.abs(dx) * 1.5
+    return PanResponder.create({
+      onStartShouldSetPanResponder: () => false,
+      onMoveShouldSetPanResponder: (_e, g) => vertical(g.dx, g.dy),
+      onMoveShouldSetPanResponderCapture: (_e, g) => vertical(g.dx, g.dy),
+      onPanResponderGrant: () => {
+        nearbyDoneRef.current = false
+      },
+      onPanResponderMove: (_e, g) => {
+        if (nearbyDoneRef.current || Math.abs(g.dy) < 14) return
+        nearbyDoneRef.current = true
+        snapSheetTo(g.dy < 0 ? sheetFullH : SHEET_HALF)
+      },
+    })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sheetH, sheetFullH])
+
+  // 스크롤과 동시에 동작해야 해서 PanResponder 대신 gesture-handler를 쓴다.
+  // (RN 기본 responder는 네이티브 ScrollView가 터치를 가져가면 캡처가 실패해
+  //  "최상단에서 아래로 플릭 → 축소"가 먹지 않았다)
+  const reviewYRef = useRef(0)
+  const reviewScrollRef = useRef(null)
+  const TOP_EPS = 8 // 최상단 판정 여유(px)
+  // 리뷰 영역 제스처 판정 — gesture-handler pan과 raw 터치(폴백)가 같은 로직·같은 래치를 쓴다.
+  // 네이티브 ScrollView가 터치를 선점하면 pan이 취소되므로 onTouchMove 경로가 이를 커버하고,
+  // 한 제스처 안에서 두 경로가 중복 실행돼 "축소 직후 재확장"되는 일이 없도록 래치를 공유한다.
+  const touchStartYRef = useRef(0)
+  const gestureHandledRef = useRef(false)
+  const startedFullRef = useRef(false)
+  const startedAtTopRef = useRef(true)
+  const beginReviewGesture = (pageY: number) => {
+    touchStartYRef.current = pageY
+    gestureHandledRef.current = false
+    startedFullRef.current = sheetFullRef.current // 시작 시점 상태로만 방향을 해석
+    // 축소는 "AI 요약이 보이는 최상단에서 시작한 아래 플릭"에만 반응한다.
+    // 스크롤 도중 관성으로 최상단에 닿았다는 이유로 접히면 안 되므로 시작 시점으로 고정.
+    startedAtTopRef.current = reviewYRef.current <= TOP_EPS
+  }
+  const moveReviewGesture = (dy: number, dx = 0) => {
+    if (gestureHandledRef.current) return
+    if (Math.abs(dy) <= Math.abs(dx) * 1.5) return // 가로 우세 제스처는 무시
+    if (!startedFullRef.current) {
+      if (Math.abs(dy) > 14) {
+        gestureHandledRef.current = true
+        snapSheetTo(sheetFullH) // 접힘 상태의 세로 스와이프 → 최대 확장
+      }
+      return
+    }
+    if (dy > 40 && startedAtTopRef.current) {
+      gestureHandledRef.current = true
+      snapSheetTo(SHEET_HALF) // 최상단(AI 요약)에서 아래로 → 초기 크기로 축소
+    }
+  }
+  const reviewGesture = useMemo(
+    () =>
+      Gesture.Pan()
+        .runOnJS(true)
+        .simultaneousWithExternalGesture(reviewScrollRef)
+        // 터치 이벤트가 ScrollView에 먹혀 onTouchStart가 오지 않는 경우가 있어
+        // pan 시작에서도 동일하게 초기화한다(이전 제스처 상태가 남아 오작동하던 문제)
+        .onBegin((e) => beginReviewGesture(e.absoluteY))
+        .onUpdate((e) => moveReviewGesture(e.translationY, e.translationX)),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [sheetH, sheetFullH],
+  )
   /* eslint-enable react-hooks/refs */
 
   // 선택 장소의 오늘의 딜 — LBS 근접 매칭(REQ-CP-5, UX_REVIEW §4-1).
@@ -523,14 +630,31 @@ export default function MapScreen() {
     }
   /* eslint-enable react-hooks/refs */
 
-  // 초기 세팅: GPS 확정(또는 폴백) 시 1회 현위치를 양 지도 중앙에 배치
+  // 초기 세팅: 현위치를 양 지도 중앙에 배치.
+  // WebView 지도는 HTML 초기 좌표(첫 렌더 시점 = 폴백일 수 있음)로 뜨고, ready 이전의
+  // injectJavaScript는 그대로 유실된다. 그래서 "GPS 확정"과 "지도 ready"가 모두 충족된
+  // 시점에 센터링하도록 ready를 state로 두고 effect에서 함께 기다린다.
+  const [mapsReady, setMapsReady] = useState(false)
   const centeredOnceRef = useRef(false)
   useEffect(() => {
-    if (locLoading || centeredOnceRef.current) return
+    if (locLoading || !mapsReady || centeredOnceRef.current) return
     centeredOnceRef.current = true
     naverRef.current?.setMyLocation(coords.latitude, coords.longitude, WALK_ZOOM)
     googleRef.current?.setMyLocation(coords.latitude, coords.longitude, WALK_ZOOM)
-  }, [locLoading, coords.latitude, coords.longitude])
+  }, [locLoading, mapsReady, coords.latitude, coords.longitude])
+
+  // 지도 탭에 다시 들어올 때마다 현재 위치를 새로 측정해 중심을 잡는다.
+  // (탭 화면은 언마운트되지 않아 위 초기 센터링이 최초 1회만 동작하므로 별도 처리)
+  const firstFocusRef = useRef(true)
+  useEffect(() => {
+    if (!focused) return
+    if (firstFocusRef.current) {
+      firstFocusRef.current = false // 마운트 직후는 초기 센터링이 담당
+      return
+    }
+    void goToMyLocation()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [focused])
 
   const selectPlace = (p: Poi) => {
     setSelected(p.id)
@@ -720,9 +844,14 @@ export default function MapScreen() {
   // 외부 지도 앱 딥링크 (현지인=Naver / 외국인=Google)
   // Naver: 공식 앱 스킴 nmap://place(좌표+이름 → 정확한 장소 핀) → 미설치 시 웹 지도 검색 폴백
   return (
-    <View style={ss.container}>
-      {/* 지도 영역 */}
-      <View style={ss.mapArea}>
+    <View
+      style={ss.container}
+      // 첫 레이아웃에서 실제 사용 가능한 높이를 재둔다(FULL 스냅 = 이 높이 = 검색바까지 덮음).
+      // 탭바가 접힐 때의 변화는 tabPad 보정이 담당하므로 최초 1회만 기록한다.
+      onLayout={(e) => setColH((h) => h || Math.round(e.nativeEvent.layout.height))}>
+      {/* 지도 영역 — 최초 측정 높이로 고정. 시트 높이가 바뀌어도 리레이아웃되지 않아
+          WebView 지도가 떨리지 않는다(시트는 아래에 absolute로 겹친다) */}
+      <View style={[ss.mapArea, { height: colH || Math.round(winH - tabBarH) }]}>
         {/* Google (하단 레이어) — WebView + Maps JS API (라벨 언어 = 앱 설정) */}
         {showGoogle && (
           <GoogleMap
@@ -740,10 +869,12 @@ export default function MapScreen() {
             // Google 빈 지면 탭(placeId 없음) — 조회 없이 즉시 몰입 모드 토글
             onMapPress={() => setImmersiveMode(!immersiveRef.current)}
             onReady={() => {
+              setMapsReady(true) // 초기 센터링 effect의 트리거
               googleRef.current?.setMyLocation(coords.latitude, coords.longitude, WALK_ZOOM)
-              // 재마운트 시 마지막 뷰 복원(다른 지도와 위치·축척 일치)
+              // 재마운트 시 마지막 뷰 복원(다른 지도와 위치·축척 일치).
+              // 최초 센터링 전에는 복원하지 않는다 — 폴백 좌표로 뜬 초기 뷰가 내 위치를 덮어씀
               const v = lastViewRef.current
-              if (v) googleRef.current?.moveTo(v.lat, v.lng, v.zoom)
+              if (v && centeredOnceRef.current) googleRef.current?.moveTo(v.lat, v.lng, v.zoom)
               // 지도 전환으로 재마운트돼도 진행 중 경로 유지
               if (routePathRef.current) googleRef.current?.drawRoute(routePathRef.current)
             }}
@@ -770,10 +901,11 @@ export default function MapScreen() {
               }}
               onMapPress={onMapPoiTap}
               onReady={() => {
+                setMapsReady(true) // 초기 센터링 effect의 트리거
                 naverRef.current?.setMyLocation(coords.latitude, coords.longitude, WALK_ZOOM)
-                // 재마운트 시 마지막 뷰 복원(다른 지도와 위치·축척 일치)
+                // 재마운트 시 마지막 뷰 복원 — 최초 센터링 전에는 복원 금지(위 Google 주석 참조)
                 const v = lastViewRef.current
-                if (v) naverRef.current?.moveTo(v.lat, v.lng, v.zoom)
+                if (v && centeredOnceRef.current) naverRef.current?.moveTo(v.lat, v.lng, v.zoom)
                 // HTML 재생성(마커/언어 변경) 시 opacity가 초기화되므로 ready마다 재적용
                 naverRef.current?.setOpacity(naverOpacityRef.current)
                 // 지도 전환으로 재마운트돼도 진행 중 경로 유지
@@ -891,108 +1023,88 @@ export default function MapScreen() {
             {poisMock && <FallbackBadge label="Sample places" />}
           </SafeAreaView>
         )}
+      </View>
 
-        {/* Blend 투명도 슬라이더 — Naver(좌) ↔ Google(우), 상단 토글 순서와 동일.
-            양끝 Naver/Google 버튼 = 해당 지도 마커 표시 토글(끄면 흐려짐) */}
-        {isBlend && !immersive && (
-          <View style={ss.blendSlider} pointerEvents="box-none">
-            <View style={ss.blendSliderInner}>
-              <View>
-                <Pressable
-                  onPress={() => setNaverMarkersOn((v) => !v)}
-                  hitSlop={6}
-                  style={[
-                    ss.blendChip,
-                    { backgroundColor: '#03C75A' },
-                    !naverMarkersOn && ss.blendChipOff,
-                  ]}>
-                  <Text style={ss.blendChipText}>Naver</Text>
-                </Pressable>
-                {naverFull && (
-                  <Animated.View
-                    pointerEvents="none"
-                    style={[ss.neonRing, { borderColor: '#4ADE80', opacity: neonPulse }]}
-                  />
-                )}
-              </View>
-              <Slider
-                style={{ flex: 1, height: 36 }}
-                minimumValue={0}
-                maximumValue={1}
-                value={blendPos}
-                onSlidingStart={cancelBlendDemo}
-                onValueChange={setBlendPos}
-                minimumTrackTintColor="#03C75A"
-                maximumTrackTintColor="#4285F4"
-                thumbTintColor={palette.zinc[900]}
-              />
-              <View>
-                <Pressable
-                  onPress={() => setGoogleMarkersOn((v) => !v)}
-                  hitSlop={6}
-                  style={[
-                    ss.blendChip,
-                    { backgroundColor: '#4285F4' },
-                    !googleMarkersOn && ss.blendChipOff,
-                  ]}>
-                  <Text style={ss.blendChipText}>Google</Text>
-                </Pressable>
-                {googleFull && (
-                  <Animated.View
-                    pointerEvents="none"
-                    style={[ss.neonRing, { borderColor: '#93C5FD', opacity: neonPulse }]}
-                  />
-                )}
-              </View>
+      {/* 우측 FAB — 내 위치(GPS) / 지도 유형. 지도가 화면 전체를 차지하므로 시트에 가리지 않도록
+          시트 높이만큼 띄운다. 몰입 모드에서는 숨김 */}
+      {!immersive && (
+        <Animated.View
+          style={[ss.fabCol, { bottom: Animated.add(sheetHeight, 18) }]}
+          pointerEvents="box-none">
+          <Pressable style={ss.fab} onPress={goToMyLocation} hitSlop={6}>
+            {locating ? (
+              <ActivityIndicator size="small" color={palette.blue[50]} />
+            ) : (
+              <Icon name="my_location" size={20} color={palette.blue[50]} />
+            )}
+          </Pressable>
+          <Pressable style={ss.fab} onPress={cycleMapType} hitSlop={6}>
+            <Icon
+              name={MAP_TYPE_ICON[mapType]}
+              size={20}
+              color={mapType === 'normal' ? palette.zinc[700] : palette.blue[50]}
+              filled={mapType !== 'normal'}
+            />
+            <Text style={ss.fabLabel}>{t(`map.type.${mapType}`)}</Text>
+          </Pressable>
+        </Animated.View>
+      )}
+
+      {/* 하단 시트 — 선택 장소 (드래그로 접기/펼치기) */}
+      <Animated.View style={[ss.sheet, { height: sheetHeight }]}>
+        {/* Blend 투명도 바 — 시트 상단에 상주. 가로 드래그 = Naver(좌)↔Google(우) 투명도,
+            세로 드래그 = 시트(리뷰 박스) 높이 조절. 양끝 칩 = 각 지도 마커 표시 토글 */}
+        {isBlend && (
+          <View style={ss.blendBar} {...blendBarPan.panHandlers}>
+            <View>
+              <Pressable
+                onPress={() => setNaverMarkersOn((v) => !v)}
+                hitSlop={8}
+                style={[
+                  ss.blendChip,
+                  { backgroundColor: '#03C75A' },
+                  !naverMarkersOn && ss.blendChipOff,
+                ]}>
+                <Text style={ss.blendChipText}>Naver</Text>
+              </Pressable>
+              {naverFull && (
+                <Animated.View
+                  pointerEvents="none"
+                  style={[ss.neonRing, { borderColor: '#4ADE80', opacity: neonPulse }]}
+                />
+              )}
+            </View>
+            <Slider
+              style={{ flex: 1, height: 32 }}
+              minimumValue={0}
+              maximumValue={1}
+              value={blendPos}
+              onSlidingStart={cancelBlendDemo}
+              onValueChange={setBlendPos}
+              minimumTrackTintColor="#03C75A"
+              maximumTrackTintColor="#4285F4"
+              thumbTintColor={palette.zinc[900]}
+            />
+            <View>
+              <Pressable
+                onPress={() => setGoogleMarkersOn((v) => !v)}
+                hitSlop={8}
+                style={[
+                  ss.blendChip,
+                  { backgroundColor: '#4285F4' },
+                  !googleMarkersOn && ss.blendChipOff,
+                ]}>
+                <Text style={ss.blendChipText}>Google</Text>
+              </Pressable>
+              {googleFull && (
+                <Animated.View
+                  pointerEvents="none"
+                  style={[ss.neonRing, { borderColor: '#93C5FD', opacity: neonPulse }]}
+                />
+              )}
             </View>
           </View>
         )}
-
-        {/* 우측 FAB — 방위(나침반) / 내 위치(GPS) / 지도 유형. 몰입 모드에서는 숨김 */}
-        {!immersive && (
-          <View style={ss.fabCol} pointerEvents="box-none">
-            {/* 방위 표시 — 바늘이 내가 향한 방향으로 회전(지도는 항상 북쪽 고정), 탭 시 내 위치로.
-              글리프는 정북 화살표(navigation_2) — lucide navigation은 북동 45°라 방위가 틀어진다 */}
-            <Pressable style={ss.fab} onPress={goToMyLocation} hitSlop={6}>
-              <Animated.View
-                style={{
-                  transform: [
-                    {
-                      rotate: compassAnim.interpolate({
-                        inputRange: [0, 360],
-                        outputRange: ['0deg', '360deg'],
-                      }),
-                    },
-                  ],
-                }}>
-                <Icon name="navigation_2" size={20} color={palette.coral[50]} filled />
-              </Animated.View>
-            </Pressable>
-            <Pressable style={ss.fab} onPress={goToMyLocation} hitSlop={6}>
-              {locating ? (
-                <ActivityIndicator size="small" color={palette.blue[50]} />
-              ) : (
-                <Icon name="my_location" size={20} color={palette.blue[50]} />
-              )}
-            </Pressable>
-            <Pressable style={ss.fab} onPress={cycleMapType} hitSlop={6}>
-              <Icon
-                name={MAP_TYPE_ICON[mapType]}
-                size={20}
-                color={mapType === 'normal' ? palette.zinc[700] : palette.blue[50]}
-                filled={mapType !== 'normal'}
-              />
-              <Text style={ss.fabLabel}>{t(`map.type.${mapType}`)}</Text>
-            </Pressable>
-          </View>
-        )}
-      </View>
-
-      {/* 하단 시트 — 선택 장소 (드래그로 접기/펼치기) */}
-      <Animated.View style={[ss.sheet, { height: sheetH }]}>
-        <View style={ss.grabberZone} {...sheetPan.panHandlers}>
-          <View style={ss.grabber} />
-        </View>
         {place ? (
           <>
             {/* 컴팩트 선택 장소 헤드 — 시트 드래그 확장 영역(버튼 탭은 통과, 상하 드래그만 캡처) */}
@@ -1049,12 +1161,9 @@ export default function MapScreen() {
                 <Icon name="open_in_new" size={14} color={palette.coral[50]} />
               </Pressable>
             )}
-            <ScrollView
-              showsVerticalScrollIndicator
-              contentContainerStyle={{ paddingBottom: 28 }}
-              keyboardShouldPersistTaps="handled"
-              {...tabBarAutoHide}>
-              {/* 경로 요약 — 도보 기준 (Google 도보 경로 우선, PLANNING §17) */}
+            {/* 경로 요약 + 주변 추천 — 리뷰 스크롤과 분리된 고정 영역.
+                세로 플릭/스와이프는 시트 확장(가로 스와이프는 카드 목록에 그대로 전달) */}
+            <View {...nearbyPan.panHandlers}>
               {routeInfo && (
                 <View style={ss.routeBar}>
                   <Icon name="directions_walk" size={15} color={palette.blue[40]} filled />
@@ -1121,13 +1230,38 @@ export default function MapScreen() {
                   )
                 })}
               </ScrollView>
+            </View>
 
-              {/* 리뷰 — 공용 섹션(장소 상세와 동일 레이아웃). key로 장소 변경 시 필터 초기화 */}
-              <PlaceReviewsSection
-                key={place.id}
-                target={{ id: place.id, name: place.name, lat: place.lat, lng: place.lng }}
-              />
-            </ScrollView>
+            {/* 리뷰 — 시트가 최대일 때만 스크롤. 접힘 상태의 세로 스와이프는 최대 확장,
+                최대 상태에서 최상단을 아래로 쓸면 초기 크기로 축소(reviewGesture) */}
+            <GestureDetector gesture={reviewGesture}>
+              <View
+                style={{ flex: 1 }}
+                onTouchStart={(e) => beginReviewGesture(e.nativeEvent.pageY)}
+                onTouchMove={(e) =>
+                  moveReviewGesture(e.nativeEvent.pageY - touchStartYRef.current)
+                }>
+                <GHScrollView
+                  ref={reviewScrollRef}
+                  style={{ flex: 1 }}
+                  scrollEnabled={sheetFull}
+                  showsVerticalScrollIndicator
+                  contentContainerStyle={{ paddingBottom: 28 }}
+                  keyboardShouldPersistTaps="handled"
+                  // 스크롤 중에는 시트 크기를 건드리지 않는다(축소는 제스처 시작 위치로만 판정)
+                  scrollEventThrottle={16}
+                  onScroll={(e) => {
+                    reviewYRef.current = e.nativeEvent.contentOffset.y // 제스처 시작 시 최상단 판정용
+                    tabBarAutoHide.onScroll(e)
+                  }}>
+                  {/* 공용 섹션(장소 상세와 동일 레이아웃). key로 장소 변경 시 필터 초기화 */}
+                  <PlaceReviewsSection
+                    key={place.id}
+                    target={{ id: place.id, name: place.name, lat: place.lat, lng: place.lng }}
+                  />
+                </GHScrollView>
+              </View>
+            </GestureDetector>
           </>
         ) : (
           <View style={{ paddingVertical: 24, alignItems: 'center' }}>
@@ -1142,7 +1276,7 @@ export default function MapScreen() {
 
 const ss = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#E5ECF2' },
-  mapArea: { flex: 1, overflow: 'hidden' },
+  mapArea: { position: 'absolute', top: 0, left: 0, right: 0, overflow: 'hidden' },
   topControls: { position: 'absolute', top: 0, left: 12, right: 12, gap: 8 },
   searchBar: {
     flexDirection: 'row',
@@ -1198,7 +1332,7 @@ const ss = StyleSheet.create({
   },
 
   // 우측 FAB 컬럼 — 내 위치 / 지도 유형
-  fabCol: { position: 'absolute', right: 14, bottom: 18, gap: 10, alignItems: 'center' },
+  fabCol: { position: 'absolute', right: 14, gap: 10, alignItems: 'center' }, // bottom은 시트 높이에 맞춰 동적
   fab: {
     width: 46,
     height: 46,
@@ -1253,37 +1387,34 @@ const ss = StyleSheet.create({
     borderRadius: 999,
     borderWidth: 2.5,
   },
-  blendSlider: { position: 'absolute', left: 16, right: 72, bottom: 14 },
-  blendSliderInner: {
+  // 시트 상단 상주 바 — 투명도 조절 + 시트 높이 드래그 겸용
+  blendBar: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
-    backgroundColor: 'rgba(255,255,255,.96)',
+    backgroundColor: palette.zinc[100],
     borderRadius: 999,
     paddingHorizontal: 10,
-    paddingVertical: 4,
-    ...shadows.card,
+    paddingVertical: 2,
+    marginTop: 6, // grabber 제거 — 바 자체가 드래그 핸들
+    marginBottom: 6,
   },
   blendChip: { borderRadius: 999, paddingHorizontal: 8, paddingVertical: 3 },
   blendChipOff: { opacity: 0.35 },
   blendChipText: { color: '#fff', fontSize: 10, fontWeight: '800' },
 
   sheet: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
     backgroundColor: '#fff',
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
-    marginTop: -20,
     paddingHorizontal: 16,
     paddingBottom: 8,
     overflow: 'hidden', // 접힘 시 하단 콘텐츠 클리핑
     ...shadows.pop,
-  },
-  grabberZone: { paddingTop: 10, paddingBottom: 14, alignItems: 'center' }, // 드래그/탭 히트 영역
-  grabber: {
-    width: 44,
-    height: 5,
-    borderRadius: 5,
-    backgroundColor: palette.zinc[400],
   },
   placeHead: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 6 },
   placeThumb: { width: 46, height: 46, borderRadius: 12, overflow: 'hidden' },

@@ -63,7 +63,7 @@ function buildHtml(lat: number, lng: number, markers: GoogleMarker[], lang: stri
       if(!window.google || !google.maps){ post({type:'auth_error',message:'google.maps 미로딩'}); return; }
       map = new google.maps.Map(document.getElementById('map'), {
         center: { lat: ${lat}, lng: ${lng} },
-        zoom: 16, // 도보 이동 기준 측척
+        zoom: 17, // 도보 사용자 기준 초기 측척 (map.tsx WALK_ZOOM과 동일)
         disableDefaultUI: true,
         clickableIcons: true, // 베이스맵 POI 아이콘 탭 → 장소 정보 시트(RN에서 처리)
         gestureHandling: 'greedy',
@@ -128,7 +128,7 @@ function buildHtml(lat: number, lng: number, markers: GoogleMarker[], lang: stri
         icon: myLocIcon(),
       });
       map.panTo(pos);
-      map.setZoom(zoom || 16);
+      map.setZoom(zoom || 17);
     }
     function setHeading(deg){
       myHeading = deg;
