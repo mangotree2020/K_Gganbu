@@ -113,6 +113,12 @@
 > ✅ 초기 센터링 버그 수정 — 지도 ready + GPS 확정 동시 충족 시에만 센터링(폴백 좌표 고착), 탭 재진입 시 현위치 재측정, 두 지도 초기 축척 통일(zoom 17).
 > ✅ 현재위치 측정 — `getLastKnownPositionAsync` 선반영 + 고정밀 8초 타임아웃 폴백.
 >
+> **📌 07-28 진행(2) — 테마 스탬프 카드(REQ-ST-2 완료, R3)**:
+> ✅ `stamp_cards`/`stamp_card_items`/`stamp_card_completions` + `complete_stamp_card` RPC — 완성 판정은 서버 `stamp_visits` 재검증(클라이언트 신고 불신), 카드 유효기간 내 방문만 인정, 카드당 1회 지급(unique + 원장 멱등키 이중 차단). 실 DB 시나리오 검증(0/3·2/3 거부 → 3/3 +200P·보상 쿠폰 → 재수령 0P).
+> ✅ 원장 source `stamp_card` 신설(일 상한 200P) — 카드 완성은 카드당 1회뿐이라 방문 적립 캡(stamp 150P)에 합산하면 보너스가 상시 잘려 무의미해지므로 캡 분리(BM§3.5 발행 가드레일 유지).
+> ✅ 앱: `app/stamp-cards.tsx`(도장 그리드·진행바·수령·보상 쿠폰 연결) + CouTix 포인트 세그먼트 진입점·수령 대기 배지 + 지도 스탬프 매장 레이어(찍음=체크/남음=북마크, 탭 시 길찾기 연결) + i18n 5개 언어. `stamp` EF v5 배포.
+> 🔒 **보안 수정**: `partners`는 "활성 파트너 공개 읽기" 정책이라 RLS(행 단위)로 컬럼을 가릴 수 없어, 07-08에 추가한 `stamp_secret`이 anon 키로 그대로 조회됐다(스탬프 QR 위조 가능, `settlement_info` 동시 노출). 테이블 select 회수 후 안전 컬럼만 재부여 → anon 조회 42501 확인.
+>
 > **🔜 프로덕션 준비 TODO(비차단, 나중에 처리)**:
 > ① Apple provider 설정(D-U-N-S 발급 후) ② Twilio 실 SMS 운영(업그레이드 완료, 발신 정책 점검) ③ **Auth 커스텀 SMTP** — 회사 Google Workspace(유료 구글메일) 보유 → SMTP relay로 이메일 가입/재설정 메일 전달률·상한 확보(내장 2/h는 dev용). 상세: `docs/SETUP_EXTERNAL.md` #9 "Auth 이메일 발송". ④ OTP 봇 남용 관측 시 CAPTCHA(OTP 전용 게이트웨이). ⑤ 노출 시크릿 로테이션(Twilio Auth Token·LINE Channel Secret). ⑥ **Tmap 도보 경로 종량제 전환** — 무료 일 1,000건, `usage_counters(kind='tmap_route')` 일 집계가 600~700건 근접 시 SK오픈API 유료 플랜 전환(폴백 체인 Tmap→Naver→mock으로 초과 시에도 무중단, 상세: SETUP_EXTERNAL #19).
 
