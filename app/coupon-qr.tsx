@@ -14,7 +14,8 @@ import { FallbackBadge } from '@/components/FallbackBadge'
 import { PlaceThumb } from '@/components/PlaceThumb'
 import { track } from '@/features/analytics/service'
 import { getCachedIssue, issueCoupon, type CouponIssue } from '@/features/coupon/services'
-import { addReview } from '@/features/review/services'
+import * as ImagePicker from 'expo-image-picker'
+import { addReview, uploadReviewPhoto } from '@/features/review/services'
 import { storage } from '@/lib/mmkv'
 import { supabase } from '@/lib/supabase'
 import { useProfileStore } from '@/features/profile/store'
@@ -68,6 +69,14 @@ export default function CouponQrScreen() {
   // 피드 공개는 명시 동의가 있을 때만 — 기본은 비공개(가게에 남기는 평가에 가깝다)
   const [sharePublic, setSharePublic] = useState(false)
   const profileName = useProfileStore((s) => s.displayName) || 'Traveler'
+  // 사진 첨부(선택) — 공개 후기에만 의미가 있어 공유 토글이 켜졌을 때 노출한다
+  const [photoUri, setPhotoUri] = useState<string | null>(null)
+  const pickPhoto = async () => {
+    const perm = await ImagePicker.requestMediaLibraryPermissionsAsync()
+    if (!perm.granted) return
+    const r = await ImagePicker.launchImageLibraryAsync({ quality: 0.7, mediaTypes: ['images'] })
+    if (!r.canceled && r.assets[0]?.uri) setPhotoUri(r.assets[0].uri)
+  }
 
   // 퍼널 계측(REQ-CP-4): 발급 성공 — 오프라인 폴백 여부 구분
   const trackIssued = (r: CouponIssue, reissued: boolean, cached = false) =>
@@ -134,6 +143,8 @@ export default function CouponQrScreen() {
   const rate = async (n: number) => {
     setRated(n)
     try {
+      // 사진은 부가 정보 — 업로드가 실패해도 후기는 저장한다
+      const photoUrl = sharePublic && photoUri ? await uploadReviewPhoto(photoUri) : null
       await addReview({
         placeName: p.name ?? p.detail ?? 'Place',
         rating: n,
@@ -142,6 +153,7 @@ export default function CouponQrScreen() {
         refId: issue?.id ?? null,
         isPublic: sharePublic,
         authorName: profileName,
+        photos: photoUrl ? [photoUrl] : [],
       })
     } catch {
       // 저장 실패해도 화면은 감사 상태로 둔다(재시도 유도는 과함)
@@ -262,6 +274,14 @@ export default function CouponQrScreen() {
                     />
                     <Text style={ss.shareText}>{t('review.shareToFeed')}</Text>
                   </Pressable>
+                  {sharePublic && (
+                    <Pressable onPress={pickPhoto} hitSlop={6} style={ss.shareRow}>
+                      <Icon name="photo_camera" size={16} color={palette.blue[50]} />
+                      <Text style={[ss.shareText, { color: palette.blue[50] }]}>
+                        {photoUri ? t('review.photoAdded') : t('review.addPhoto')}
+                      </Text>
+                    </Pressable>
+                  )}
                 </>
               )}
             </View>

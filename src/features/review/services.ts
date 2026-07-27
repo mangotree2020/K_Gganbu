@@ -10,6 +10,7 @@ type PublicRow = {
   cat: string | null
   rating: number
   body: string | null
+  photos: string[] | null
   created_at: string
 }
 
@@ -86,6 +87,7 @@ export async function addReview(input: {
   refId?: string | null
   isPublic?: boolean // 피드 공개 — 명시 동의가 있을 때만 true (기본 비공개)
   authorName?: string | null // 공개 시 표시할 이름 스냅샷
+  photos?: string[] // 업로드된 사진 URL
 }): Promise<boolean> {
   const { data: me } = await supabase.rpc('current_user_id')
   if (!me) return false
@@ -100,6 +102,7 @@ export async function addReview(input: {
     ref_id: input.refId ?? null,
     is_public: input.isPublic ?? false,
     author_name: input.isPublic ? (input.authorName ?? 'Traveler') : null,
+    photos: input.photos ?? [],
   })
   // 중복(같은 쿠폰 사용 건)은 성공으로 취급 — 사용자에게는 이미 남긴 것이므로 오류가 아니다
   if (error && !error.message.includes('duplicate')) throw error
@@ -124,13 +127,14 @@ export type PublicReview = {
   cat: string
   rating: number
   text: string
+  photos: string[]
   createdAt: string
 }
 
 export async function getPublicReviews(limit = 20): Promise<PublicReview[]> {
   const { data, error } = await supabase
     .from('reviews')
-    .select('id, author_name, place_name, cat, rating, body, created_at')
+    .select('id, author_name, place_name, cat, rating, body, photos, created_at')
     .eq('is_public', true)
     .order('created_at', { ascending: false })
     .limit(limit)
@@ -142,6 +146,28 @@ export async function getPublicReviews(limit = 20): Promise<PublicReview[]> {
     cat: r.cat ?? 'sights',
     rating: r.rating,
     text: r.body ?? '',
+    photos: r.photos ?? [],
     createdAt: r.created_at,
   }))
+}
+
+// 후기 사진 업로드 (REQ-UGC-2) — 공개 버킷 `review-photos`, 경로는 {auth.uid}/{ts}.jpg.
+// 실패해도 후기 자체는 저장되도록 호출부에서 결과를 선택적으로 쓴다(사진은 부가 정보).
+export async function uploadReviewPhoto(uri: string): Promise<string | null> {
+  try {
+    const {
+      data: { user },
+    } = await supabase.auth.getUser()
+    if (!user) return null
+    const res = await fetch(uri)
+    const bytes = new Uint8Array(await res.arrayBuffer())
+    const path = `${user.id}/${Date.now()}.jpg`
+    const { error } = await supabase.storage
+      .from('review-photos')
+      .upload(path, bytes, { contentType: 'image/jpeg', upsert: false })
+    if (error) return null
+    return supabase.storage.from('review-photos').getPublicUrl(path).data.publicUrl
+  } catch {
+    return null
+  }
 }

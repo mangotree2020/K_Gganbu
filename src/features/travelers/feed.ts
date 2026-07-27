@@ -189,7 +189,7 @@ export function ageLabel(ageMin: number, justNow: string): string {
 }
 
 // 실 공개 후기(REQ-UGC-2)를 피드 포스트로 변환 — 합성 포스트와 같은 모델로 맞춰 한 목록에 섞는다.
-// 사진 업로드는 아직 없으므로 media 는 비우고 카테고리 썸네일(PlaceThumb)로 대체된다.
+// 사진이 없으면 media 를 비워 카테고리 썸네일(PlaceThumb)로 대체된다.
 export function realReviewToPost(r: {
   id: string
   author: string
@@ -197,6 +197,7 @@ export function realReviewToPost(r: {
   cat: string
   rating: number
   text: string
+  photos?: string[]
   createdAt: string
 }): TravelerPost {
   const ageMin = Math.max(0, Math.round((Date.now() - new Date(r.createdAt).getTime()) / 60000))
@@ -205,7 +206,7 @@ export function realReviewToPost(r: {
     author: r.author,
     flag: '🧳', // 국적 정보를 저장하지 않으므로 중립 아이콘
     text: r.text || '★'.repeat(r.rating),
-    media: [],
+    media: (r.photos ?? []).map((uri) => ({ type: 'image' as const, uri })),
     place: r.place,
     cat: r.cat,
     lat: null,
