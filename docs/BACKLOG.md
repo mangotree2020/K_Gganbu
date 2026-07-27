@@ -185,6 +185,14 @@
 > ♻️ 테스트를 위해 발행 규칙·레벨 계산을 순수 모듈로 분리(`points/rules.ts`·`challenge/level.ts`) — 기존 import 경로는 재노출로 유지해 호출부 변경 없음.
 > 🔜 코드로 불가한 잔여: Auth 대시보드 토글 2건(유출 비밀번호 차단·MFA).
 >
+> **📌 07-28 진행(18) — 3시스템 체계 구축(REQ-BO·REQ-PTL 신규 EPIC)**:
+> 📐 설계 확정 — `docs/SYSTEMS_DESIGN.md`: 앱(수요)·파트너 포털(공급)·백오피스(운영)의 존재 이유, 데이터 순환 3고리, 역할별 기능정의, UI/UX 원칙(PC=정보밀도 / 모바일=현장 업무 순서), 권한 모델.
+> ✅ **백오피스(PC)** `web/backoffice.html` + `backoffice` EF + `bo_*` 집계 6종 — 사장(북극성·포인트 부채)·PO(퍼널·기능 사용량)·MD(딜 성과·좌표 없는 파트너)·마케팅(채널)·데이터(시계열·CSV)·시스템(상한·신고). 위험 신호는 상단 고정 배너, 지표 정의를 화면에 병기.
+> ✅ **파트너 포털(모바일 우선)** `web/partner.html` + `partner-portal` EF — QR 검증(하단 고정 스캔 버튼·수동 폴백·3중 표기) / 오늘 요약 / 송객 리포트 / 내 쿠폰 등록·중지.
+> 🔒 **파트너 권한 분리** — `partner_access_codes`(해시 저장) + 서버가 코드→partner_id 강제. 관리자 키를 파트너에게 주지 않으므로 유출 반경이 매장 단위. Admin에 코드 발급 UI(원문 1회 표시).
+> ✅ **E2E 연결 검증** — 파트너 쿠폰 등록 → 앱(anon) 조회 노출 → QR 발급 → 파트너 검증(중복 재스캔 차단) → 파트너 오늘 요약 반영 → 백오피스 집계(사용률 100%)까지 한 고리로 확인. 검증 데이터 삭제.
+> 🔜 잔여: `gh-pages` 재배포(3개 파일), 파트너 실계정 온보딩.
+>
 > **🔜 프로덕션 준비 TODO(비차단, 나중에 처리)**:
 > ① Apple provider 설정(D-U-N-S 발급 후) ② Twilio 실 SMS 운영(업그레이드 완료, 발신 정책 점검) ③ **Auth 커스텀 SMTP** — 회사 Google Workspace(유료 구글메일) 보유 → SMTP relay로 이메일 가입/재설정 메일 전달률·상한 확보(내장 2/h는 dev용). 상세: `docs/SETUP_EXTERNAL.md` #9 "Auth 이메일 발송". ④ OTP 봇 남용 관측 시 CAPTCHA(OTP 전용 게이트웨이). ⑤ 노출 시크릿 로테이션(Twilio Auth Token·LINE Channel Secret). ⑥ **Tmap 도보 경로 종량제 전환** — 무료 일 1,000건, `usage_counters(kind='tmap_route')` 일 집계가 600~700건 근접 시 SK오픈API 유료 플랜 전환(폴백 체인 Tmap→Naver→mock으로 초과 시에도 무중단, 상세: SETUP_EXTERNAL #19).
 

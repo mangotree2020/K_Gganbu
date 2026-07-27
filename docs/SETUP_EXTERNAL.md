@@ -269,6 +269,31 @@ npm run android         # 실기기 설치 (Health Connect 앱이 설치된 Andr
 
 > 미도입 시 영향: 기능은 정상 동작하되 Android 걸음수가 과소 집계된다(적립 손해는 사용자 쪽).
 
+## 백오피스·파트너 포털 배포 (REQ-BO·REQ-PTL, 2026-07-28)
+
+`web/` 에 페이지가 3종이 됐다. 모두 같은 정적 호스팅(`gh-pages`)에 올린다.
+
+| 파일              | 대상                                         | 접근                                         |
+| ----------------- | -------------------------------------------- | -------------------------------------------- |
+| `backoffice.html` | 내부 팀(PC)                                  | Google 로그인(`ADMIN_EMAILS`) 또는 Admin Key |
+| `admin.html`      | 내부 운영(등록·검증·푸시·신고·**코드 발급**) | 동일                                         |
+| `partner.html`    | 제휴 매장(모바일)                            | **매장 접근 코드** (관리자 키 아님)          |
+
+```bash
+# gh-pages 브랜치에 3개 파일 배포 (기존 절차와 동일)
+git checkout gh-pages && git checkout master -- web/ && cp web/*.html . && git commit -am "deploy" && git push
+git checkout master
+```
+
+**파트너 온보딩 절차**
+
+1. `admin.html` → 파트너 선택 → **파트너 접근 코드 발급** (원문은 이 화면에서 한 번만 표시).
+2. 매장에 코드 + 포털 주소(`.../partner.html`)를 전달. 카운터 폰에 홈 화면 추가를 권장.
+3. 코드 분실 시 재발급(기존 코드는 `partner_access_codes.status='revoked'` 로 중지).
+
+> 코드에는 관리자 권한이 없다. 유출되더라도 그 매장 데이터로 반경이 제한되며,
+> 서버가 코드→partner_id 를 해석해 모든 쿼리에 강제한다.
+
 ## 보안·성능 어드바이저 점검 (2026-07-28)
 
 `get_advisors`(security/performance) 전수 점검 후 조치·수용 결정을 남긴다. 다음에 같은 경고를 볼 때
