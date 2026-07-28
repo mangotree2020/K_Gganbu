@@ -216,3 +216,7 @@ revoke all on function public.bo_merchandising(integer) from public, anon, authe
 revoke all on function public.bo_growth(integer) from public, anon, authenticated;
 revoke all on function public.bo_timeseries(integer) from public, anon, authenticated;
 revoke all on function public.bo_system() from public, anon, authenticated;
+
+-- 2026-07-28 보완: 앱 노출 조건(status active + 유효기간 내)을 백오피스가 그대로 판정한다.
+-- "파트너에겐 살아 있어 보이는데 앱엔 없는 쿠폰"을 운영자가 먼저 발견해야 한다 — 최신 정의는
+-- 마이그레이션 20260728020_bo_md_expiry.sql 참조.

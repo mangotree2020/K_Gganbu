@@ -161,6 +161,9 @@
         <select id="nCat"><option value="food">음식</option><option value="cafe">카페</option>
           <option value="beauty">뷰티</option><option value="activity">체험</option></select>
         <label>사용 조건 (선택)</label><input id="nCond" placeholder="예: 매장 이용 시" />
+        <label>유효기간 (선택 — 비우면 무기한)</label><input id="nUntil" type="date" />
+        <p class="muted" style="margin-top:6px">쿠폰명·조건은 등록 시 <b>5개 언어로 자동 번역</b>되어 앱에 노출됩니다.
+        유효기간이 지나면 앱 목록에서 자동으로 사라집니다.</p>
         <div style="height:12px"></div>
         <button class="btn" onclick="createCoupon()">등록</button>
         <div id="createMsg" class="muted" style="margin-top:8px"></div>
@@ -235,7 +238,12 @@ function show(d){
     ? d.coupons.map(c =>
         '<div style="display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid #F4F4F5">' +
         '<div style="flex:1"><b>' + c.title + '</b><div class="muted">' + (c.category || '-') +
-        ' · 발급 ' + c.issued + ' · 사용 ' + c.used + '</div></div>' +
+        ' · 발급 ' + c.issued + ' · 사용 ' + c.used +
+        (c.valid_until
+          ? (new Date(c.valid_until) < new Date()
+              ? ' · <span style="color:var(--err)">기간 만료 — 앱 미노출</span>'
+              : ' · ~' + new Date(c.valid_until).toLocaleDateString('ko-KR'))
+          : '') + '</div></div>' +
         (c.status === 'active'
           ? '<button class="tabs" style="border:1px solid var(--line);border-radius:8px;padding:8px 12px;background:#fff;cursor:pointer" onclick="stopCoupon(\'' + c.id + '\')">중지</button>'
           : '<span class="muted">중지됨</span>') +
@@ -292,9 +300,10 @@ async function createCoupon(){
     await api({ action:'coupon_create', title,
       discount_type: $('nType').value,
       discount_value: $('nValue').value ? Number($('nValue').value) : null,
-      category: $('nCat').value, condition: $('nCond').value.trim() || null });
+      category: $('nCat').value, condition: $('nCond').value.trim() || null,
+      valid_until: $('nUntil').value ? new Date($('nUntil').value + 'T23:59:59').toISOString() : null });
     $('createMsg').textContent = '등록되었습니다 — 앱에 노출됩니다';
-    $('nTitle').value = ''; $('nValue').value = ''; $('nCond').value = '';
+    $('nTitle').value = ''; $('nValue').value = ''; $('nCond').value = ''; $('nUntil').value = '';
     refresh();
   } catch (e) { $('createMsg').textContent = '실패: ' + e.message; }
 }

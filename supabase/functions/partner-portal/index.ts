@@ -23,6 +23,29 @@ function json(body: unknown, status = 200) {
 
 const kstToday = () => new Date(Date.now() + 9 * 3600_000).toISOString().slice(0, 10)
 
+// 파트너 입력(한국어) → 앱 5개 로케일 i18n jsonb.
+// 앱은 title_i18n[사용자언어] → en 순으로 읽는다. 한국어만 넣으면 일본·중화권 사용자에게
+// 한국어가 그대로 노출되므로(사실상 못 읽는 문자열), 등록 시점에 번역해 채운다.
+// 번역 실패는 등록을 막지 않는다 — 최소 ko/en 은 채워 앱이 빈칸을 그리지 않게 한다.
+async function toI18n(text: string): Promise<Record<string, string>> {
+  const fallback = { ko: text, en: text }
+  if (!text) return {}
+  try {
+    const res = await fetch(`${Deno.env.get('SUPABASE_URL')}/functions/v1/translate-content`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${Deno.env.get('SUPABASE_ANON_KEY')}`,
+      },
+      body: JSON.stringify({ text, source: 'ko' }),
+    })
+    const j = await res.json().catch(() => ({}))
+    return j?.i18n && Object.keys(j.i18n).length ? j.i18n : fallback
+  } catch {
+    return fallback
+  }
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: cors })
   if (req.method !== 'POST') return json({ error: 'method_not_allowed' }, 405)
@@ -118,6 +141,10 @@ Deno.serve(async (req) => {
             issued: mine.length,
             used,
             use_rate: mine.length ? Math.round((used * 1000) / mine.length) / 10 : 0,
+            // 앱과 동일한 판정 — 파트너가 "운영 중인데 왜 손님이 없지"를 겪지 않도록
+            visible_in_app:
+              c.status === 'active' &&
+              (!c.valid_until || new Date(c.valid_until).getTime() >= Date.now()),
           }
         }),
       })
@@ -165,15 +192,20 @@ Deno.serve(async (req) => {
       const title = String(body.title ?? '').trim()
       const discountType = body.discount_type
       if (!title || !discountType) return json({ error: 'title/discount_type required' }, 400)
+      // 앱이 읽는 형태(5개 로케일)로 맞춰 저장 — 앱이 기준이다
+      const [titleI18n, condI18n] = await Promise.all([
+        toI18n(title),
+        toI18n(String(body.condition ?? '').trim()),
+      ])
       const { data, error } = await admin
         .from('coupons')
         .insert({
           partner_id: partnerId, // 클라이언트 값이 아니라 코드에서 해석한 것
-          title_i18n: { ko: title, en: body.title_en ?? title },
+          title_i18n: titleI18n,
           discount_type: discountType,
           discount_value: body.discount_value ?? null,
           category: body.category ?? null,
-          usage_condition_i18n: body.condition ? { ko: body.condition } : {},
+          usage_condition_i18n: condI18n,
           valid_until: body.valid_until ?? null,
           status: 'active',
         })

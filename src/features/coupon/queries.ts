@@ -40,6 +40,7 @@ type Row = {
   discount_value: number | null
   usage_condition_i18n: Record<string, string> | null
   category: string | null
+  valid_until: string | null
   partners: { name: string; lat: number | null; lng: number | null } | null
 }
 
@@ -104,13 +105,20 @@ export function useCoupons() {
     queryKey: ['coupons', lang],
     staleTime: 5 * 60 * 1000,
     queryFn: async (): Promise<CouponCard[]> => {
+      // 유효기간이 지난 쿠폰은 앱에 노출하지 않는다.
+      // 파트너가 지정한 valid_until 을 앱이 무시하면, 손님이 만료된 딜을 보고 매장에 가서
+      // 거절당한다 — 앱·파트너·매장 셋 다 손해다. status 뿐 아니라 기간도 함께 본다.
+      const nowIso = new Date().toISOString()
       const { data, error } = await supabase
         .from('coupons')
         .select(
-          'id, title_i18n, discount_type, discount_value, usage_condition_i18n, category, partners(name, lat, lng)',
+          'id, title_i18n, discount_type, discount_value, usage_condition_i18n, category, valid_until, partners(name, lat, lng)',
         )
         .eq('status', 'active')
-        .order('created_at', { ascending: true })
+        .or(`valid_until.is.null,valid_until.gte.${nowIso}`)
+        // 새로 등록된 딜이 먼저 보이도록 최신순 — 파트너가 오늘 올린 쿠폰이 맨 끝에 묻히면
+        // 등록의 의미가 없다
+        .order('created_at', { ascending: false })
       if (error) throw error
       return ((data ?? []) as unknown as Row[]).map((c) => {
         const cat = c.category ?? 'food'

@@ -266,25 +266,41 @@ function renderProduct(d){
 }
 
 function renderMd(d){
-  $('risk').style.display = d.partners_without_coords ? '' : 'none';
-  if (d.partners_without_coords)
-    $('risk').textContent = '좌표 없는 파트너 ' + d.partners_without_coords + '곳 — 앱 딜 매칭(LBS)에서 제외된다. 주소 보정 필요';
+  // 앱에 실제로 뜨지 않는 쿠폰이 있으면 그게 1순위 문제다 — 파트너는 "운영 중"으로 알고 있다
+  const risks = [];
+  if (d.coupons_expired) risks.push('기간 만료 쿠폰 ' + d.coupons_expired + '건 — 파트너 화면엔 운영 중으로 보이나 앱에는 노출되지 않음');
+  if (d.partners_without_coords) risks.push('좌표 없는 파트너 ' + d.partners_without_coords + '곳 — 앱 딜 매칭(LBS) 제외');
+  $('risk').style.display = risks.length ? '' : 'none';
+  $('risk').textContent = risks.join('  ·  ');
+
   const cat = Object.entries(d.by_category).map(([k,v]) => k + ' ' + v).join(' · ') || '없음';
+  const EXPIRY = { ok:'', soon:'⏳ 7일 내 만료', expired:'⛔ 만료' };
+  const rows = (d.deals || []).map(x => ({ ...x,
+    app: x.visible ? '노출' : '미노출',
+    state: EXPIRY[x.expiry] || '' }));
   $('view').innerHTML =
-    '<h2>딜·인벤토리 (MD)</h2><p class="sub">무엇을 더 넣고 무엇을 뺄지 — 사용률로 판단한다.</p>' +
+    '<h2>딜·인벤토리 (MD)</h2><p class="sub">무엇을 더 넣고 무엇을 뺄지 — 사용률로 판단한다. 앱 노출 여부는 앱과 같은 기준으로 판정한다.</p>' +
+    '<div class="kpis">' +
+      kpi('앱 노출 중인 딜', num(d.coupons_visible), '활성 ' + num(d.coupons_active) + '건 중') +
+      kpi('기간 만료', num(d.coupons_expired), '앱 미노출', d.coupons_expired > 0) +
+      kpi('7일 내 만료', num(d.coupons_expiring_soon), '연장 협의 대상', d.coupons_expiring_soon > 0) +
+      kpi('좌표 없는 파트너', num(d.partners_without_coords), '딜 매칭 불가', d.partners_without_coords > 0) +
+    '</div>' +
     '<div class="kpis">' +
       kpi('활성 파트너', num(d.partners_total), '') +
       kpi('활성 쿠폰', num(d.coupons_active), cat) +
-      kpi('좌표 없는 파트너', num(d.partners_without_coords), '딜 매칭 불가', d.partners_without_coords > 0) +
-      kpi('딜 수', num((d.deals||[]).length), '노출 중') +
+      kpi('사용 합계', num((d.deals||[]).reduce((s,x)=>s+Number(x.used),0)), '기간 내') +
+      kpi('발급 합계', num((d.deals||[]).reduce((s,x)=>s+Number(x.issued),0)), '기간 내') +
     '</div>' +
     '<div class="card"><h3>딜 성과 (사용률 순)</h3>' +
       table('tblDeals', [
         {t:'쿠폰',k:'title'},{t:'파트너',k:'partner'},{t:'카테고리',k:'category'},
+        {t:'앱',k:'app'},{t:'상태',k:'state'},
         {t:'발급',k:'issued',num:true},{t:'사용',k:'used',num:true},{t:'사용률%',k:'use_rate',num:true},
-      ], d.deals || []) +
-      '<div class="defn">사용률이 낮은 딜은 조건이 매력적이지 않거나 노출 위치가 잘못됐다는 신호다. ' +
-      '교체·상위 노출 판단에 쓴다.</div></div>';
+      ], rows) +
+      '<div class="defn">‘앱’ 열은 <b>앱과 동일한 판정</b>(status=active 그리고 유효기간 내)이다. ' +
+      '미노출인데 파트너가 모르고 있으면 그게 가장 먼저 풀 문제다. ' +
+      '사용률이 낮은 딜은 조건이 매력적이지 않거나 노출 위치가 잘못됐다는 신호다.</div></div>';
 }
 
 function renderGrowth(d){
