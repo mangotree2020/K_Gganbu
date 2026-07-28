@@ -114,6 +114,22 @@
   <section id="sec-stats" style="display:none">
     <div class="card"><h2>쿠폰별 발급/사용</h2><div id="statsList" class="muted">파트너 선택 후 표시됩니다</div></div>
     <div class="card"><h2>최근 사용</h2><div id="recentList" class="muted">-</div></div>
+    <!-- 스탬프 송객 리포트 (REQ-ST-3) — 파트너 방문 증명 데이터 -->
+    <div class="card"><h2>스탬프 방문 (송객)</h2><div id="stampStats" class="muted">-</div></div>
+    <!-- 파트너 접근 코드 (REQ-PTL-1) — 파트너 포털 로그인 수단 -->
+    <div class="card">
+      <h2>파트너 접근 코드 발급</h2>
+      <p class="muted" style="font-size:12px">선택한 파트너의 포털 로그인 코드를 발급합니다. <b>원문은 이 화면에서 한 번만 표시</b>되며 DB에는 해시만 저장됩니다.</p>
+      <input id="codeLabel" placeholder="발급 메모 (예: 카운터1)" />
+      <button onclick="issueCode()">코드 발급</button>
+      <div id="codeResult" style="margin-top:8px"></div>
+    </div>
+    <!-- 신고 큐 (REQ-UGC-3) — 콘텐츠 신고 대응 -->
+    <div class="card">
+      <h2>콘텐츠 신고</h2>
+      <button onclick="loadReports()">신고 목록 불러오기</button>
+      <div id="reportList" class="muted" style="margin-top:8px">-</div>
+    </div>
   </section>
 
   <section id="sec-push" style="display:none">
@@ -123,6 +139,8 @@
       <label>대상 기기</label>
       <div class="row">
         <select id="pushTarget"><option value="">불러오기를 누르세요</option></select>
+        <!-- 복귀 유도 대상 (REQ-KL-5) — 챌린지를 하다 조용해진 사용자만 골라 담는다 -->
+        <button onclick="loadReengage()" style="margin-top:6px">복귀 유도 대상 불러오기</button>
         <button class="secondary" style="flex:0 0 90px" onclick="loadTargets()">불러오기</button>
       </div>
       <label>제목</label><input id="pushTitle" placeholder="예: K-Gganbu 알림 테스트" />
@@ -195,6 +213,25 @@ async function loadTargets() {
   } catch (e) { alert('대상 불러오기 실패: ' + e.message); }
 }
 
+// 복귀 유도 대상 (REQ-KL-5) — 며칠 조용해진 챌린지 사용자. 문안은 운영자가 확인 후 발송.
+async function loadReengage() {
+  const sel = $('pushTarget');
+  try {
+    const { targets } = await api('push-send', { action: 'reengage', min_days: 3, max_days: 60 });
+    sel.innerHTML = targets.length ? '' : '<option value="">복귀 유도 대상 없음</option>';
+    targets.filter((t) => t.token).forEach((t) => {
+      const o = document.createElement('option');
+      o.value = t.token;
+      o.textContent = t.days_since + '일 미접속 · ' + t.streak_days + '일 학습 · …' + t.token_tail;
+      sel.appendChild(o);
+    });
+    if (!$('pushTitle').value) $('pushTitle').value = '한국어 챌린지가 기다려요';
+    if (!$('pushBody').value) $('pushBody').value = '오늘 5문장만 풀고 연속 기록을 이어가세요!';
+  } catch (e) {
+    sel.innerHTML = '<option value="">조회 실패: ' + e.message + '</option>';
+  }
+}
+
 async function sendPush() {
   const token = $('pushTarget').value;
   const title = $('pushTitle').value.trim(), body = $('pushBody').value.trim();
@@ -261,14 +298,50 @@ async function loadCoupons() {
 async function loadStats() {
   const pid = $('partner').value; if (!pid) return;
   try {
-    const { stats, recent } = await api('partner-coupon', { action: 'stats', partner_id: pid });
+    const { stats, recent, stamp } = await api('partner-coupon', { action: 'stats', partner_id: pid });
     $('statsList').innerHTML = stats.length ? stats.map((s) =>
       '<div class="item"><span>' + s.title + '</span><span>발급 ' + s.issued + ' · <b style="color:var(--ok)">사용 ' + s.used + '</b></span></div>'
     ).join('') : '데이터 없음';
     $('recentList').innerHTML = recent.length ? recent.map((r) =>
       '<div class="item"><span>' + new Date(r.used_at).toLocaleString('ko-KR') + '</span></div>'
     ).join('') : '최근 사용 내역 없음';
+    // 스탬프 방문 — 총계·순 방문자·최근 7/30일 + 최근 방문 시각(개인 식별자 없음)
+    $('stampStats').innerHTML = stamp
+      ? '<div class="item"><span>총 방문</span><span><b>' + stamp.total + '</b>회 · 순 방문자 ' + stamp.unique_visitors + '명</span></div>'
+        + '<div class="item"><span>최근 7일 / 30일</span><span><b style="color:var(--ok)">' + stamp.last7 + '</b> / ' + stamp.last30 + '</span></div>'
+        + (stamp.recent.length
+            ? stamp.recent.map((t) => '<div class="item"><span>' + new Date(t).toLocaleString('ko-KR') + '</span></div>').join('')
+            : '<div class="item"><span>방문 기록 없음</span></div>')
+      : '데이터 없음';
   } catch (e) { $('statsList').textContent = '조회 실패: ' + e.message; }
+}
+
+// 파트너 접근 코드 발급 (REQ-PTL-1) — 파트너에게 관리자 키 대신 매장 코드를 준다
+async function issueCode() {
+  const pid = $('partner').value;
+  if (!pid) { alert('먼저 파트너를 선택하세요'); return; }
+  try {
+    const { code } = await api('partner-coupon', {
+      action: 'issue_code', partner_id: pid, label: $('codeLabel').value.trim() || null,
+    });
+    $('codeResult').innerHTML =
+      '<div class="item"><span>발급 코드</span><span><b style="font-size:16px;letter-spacing:1px">' + code + '</b></span></div>'
+      + '<div class="muted" style="font-size:12px">파트너에게 이 코드와 포털 주소(partner.html)를 전달하세요. 지금 화면을 벗어나면 다시 볼 수 없습니다.</div>';
+  } catch (e) { $('codeResult').textContent = '발급 실패: ' + e.message; }
+}
+
+// 신고 큐 (REQ-UGC-3) — 대상·사유·시각만 표시(신고자 식별자는 서버가 내보내지 않음)
+async function loadReports() {
+  const box = $('reportList');
+  try {
+    const { reports } = await api('partner-coupon', { action: 'reports' });
+    box.innerHTML = reports.length
+      ? reports.map((r) =>
+          '<div class="item"><span>' + r.target_type + ' · ' + r.target_id + '</span><span>'
+          + r.reason + ' · ' + new Date(r.created_at).toLocaleString('ko-KR') + '</span></div>'
+        ).join('')
+      : '신고 없음';
+  } catch (e) { box.textContent = '조회 실패: ' + e.message; }
 }
 
 let scanner = null;
