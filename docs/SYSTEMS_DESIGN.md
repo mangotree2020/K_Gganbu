@@ -165,3 +165,30 @@
 | 파트너 코드  | `partner_access_codes` 테이블       | 코드 해시 저장·회전 가능                                     |
 
 호스팅은 기존과 동일(GitHub Pages `gh-pages` 브랜치). 배포 절차는 `SETUP_EXTERNAL.md` 참조.
+배포됨(2026-07-28): `/backoffice.html` · `/partner.html` · `/admin.html`
+
+---
+
+## 8. 단일 판정식 — "앱이 기준"
+
+세 시스템이 같은 데이터를 봐도 **판정식이 다르면** 곧바로 어긋난다. 실제로 이런 일이 있었다:
+앱은 `status='active'`만 보고 유효기간을 무시해 만료 딜을 계속 보여줬고, 파트너 화면은
+`status`만 보고 "운영 중"이라고 표시했다. 손님은 만료된 딜을 들고 매장에 가고, 파트너는
+왜 손님이 없는지 몰랐다.
+
+그래서 **노출 판정은 앱의 정의를 원본으로 삼는다.**
+
+```
+쿠폰이 앱에 노출된다 ⟺ status = 'active' AND (valid_until IS NULL OR valid_until >= now())
+```
+
+- 앱: 이 조건으로 조회(`useCoupons`)
+- 파트너 포털: 같은 조건을 `visible_in_app` 으로 계산해 쿠폰마다 표시
+- 백오피스 MD: 같은 조건으로 `coupons_visible` / `expired` / `expiring_soon` 집계
+
+콘텐츠 형식도 앱이 기준이다 — 앱이 5개 로케일 jsonb(`{en,ko,ja,zh-CN,zh-TW}`)를 읽으므로,
+파트너가 한국어로 입력해도 등록 시점에 5개 언어를 채워 저장한다(`translate-content`).
+카테고리(food/cafe/beauty/activity)·할인 유형(percentage/fixed/freebie)도 앱 목록과 동일하게 맞춘다.
+
+> 새 필드를 추가할 때의 순서: **앱이 무엇을 읽는지 먼저 정하고**, 파트너 입력폼과 백오피스 집계를
+> 거기에 맞춘다. 반대로 하면 화면마다 다른 진실이 생긴다.
