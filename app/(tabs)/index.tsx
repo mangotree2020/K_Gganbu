@@ -394,9 +394,10 @@ function NearbyTrail({ km, idx, count }: { km: number | null; idx: number; count
         marginLeft: 8,
         height: 28,
       }}>
+      {/* nativeEvent 방어 — 풀링된 이벤트는 디스패치 후 null이 된다(map.tsx 주석 참조) */}
       <View
         style={{ flex: 1, height: 28, justifyContent: 'flex-end' }}
-        onLayout={(e) => setTrackW(e.nativeEvent.layout.width)}>
+        onLayout={(e) => e?.nativeEvent?.layout && setTrackW(e.nativeEvent.layout.width)}>
         {trackW > 60 && (
           <Animated.View
             style={{
@@ -964,7 +965,10 @@ export default function HomeScreen() {
   // 홈 스크롤 — 탭바 자동 숨김(기존) + 하단 근접 시 피드 추가 로드 + 맨 위로 버튼 토글
   const onHomeScroll = (e: NativeSyntheticEvent<NativeScrollEvent>) => {
     tabBarAutoHide.onScroll(e)
-    const { contentOffset, contentSize, layoutMeasurement } = e.nativeEvent
+    // nativeEvent 방어 — 풀링된 이벤트는 디스패치 후 null이 된다(map.tsx 주석 참조)
+    const ne = e?.nativeEvent
+    if (!ne?.contentOffset || !ne.contentSize || !ne.layoutMeasurement) return
+    const { contentOffset, contentSize, layoutMeasurement } = ne
     // 스크롤 위치에 따라 맨 위로 버튼 표시(상태 변경 시에만 setState)
     const next = contentOffset.y > 700
     if (next !== showToTopRef.current) {
@@ -1163,6 +1167,7 @@ export default function HomeScreen() {
               snapToInterval={SCREEN_W - 62}
               decelerationRate="fast"
               onMomentumScrollEnd={(e) =>
+                e?.nativeEvent?.contentOffset &&
                 setPickIdx(Math.round(e.nativeEvent.contentOffset.x / (SCREEN_W - 62)))
               }
               contentContainerStyle={{ paddingHorizontal: 16, gap: 10 }}>
@@ -1359,6 +1364,7 @@ export default function HomeScreen() {
             showsHorizontalScrollIndicator={false}
             scrollEventThrottle={32}
             onScroll={(e) =>
+              e?.nativeEvent?.contentOffset &&
               setNearbyIdx(Math.max(0, Math.round(e.nativeEvent.contentOffset.x / (156 + 12))))
             }
             onScrollBeginDrag={() => {
@@ -1366,6 +1372,7 @@ export default function HomeScreen() {
             }}
             onMomentumScrollEnd={(e) => {
               // 야옹은 사용자 플릭 1회당 1번 — 제스처로 카드가 실제 바뀌었을 때만
+              if (!e?.nativeEvent?.contentOffset) return
               const end = Math.max(0, Math.round(e.nativeEvent.contentOffset.x / (156 + 12)))
               if (end !== nearbyDragFromRef.current) playMeow()
             }}

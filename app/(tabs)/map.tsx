@@ -905,7 +905,14 @@ export default function MapScreen() {
       style={ss.container}
       // 첫 레이아웃에서 실제 사용 가능한 높이를 재둔다(FULL 스냅 = 이 높이 = 검색바까지 덮음).
       // 탭바가 접힐 때의 변화는 tabPad 보정이 담당하므로 최초 1회만 기록한다.
-      onLayout={(e) => setColH((h) => h || Math.round(e.nativeEvent.layout.height))}>
+      // [크래시 원인 확정] RN Fabric은 SyntheticEvent를 풀링한다 — 핸들러 반환 후 destructor가
+      // nativeEvent를 null로 비운다. 예전 코드는 setState updater 안에서 e.nativeEvent.layout을
+      // 읽어(지연 실행) 릴리스에서 "Cannot read property 'layout' of null"로 죽었다.
+      // 반드시 핸들러 안에서 동기적으로 값을 꺼내고, updater에는 원시값만 넘긴다.
+      onLayout={(e) => {
+        const h = e?.nativeEvent?.layout?.height
+        if (h) setColH((prev) => prev || Math.round(h))
+      }}>
       {/* 지도 영역 — 최초 측정 높이로 고정. 시트 높이가 바뀌어도 리레이아웃되지 않아
           WebView 지도가 떨리지 않는다(시트는 아래에 absolute로 겹친다) */}
       <View style={[ss.mapArea, { height: colH || Math.round(winH - tabBarH) }]}>
@@ -1296,9 +1303,9 @@ export default function MapScreen() {
             <GestureDetector gesture={reviewGesture}>
               <View
                 style={{ flex: 1 }}
-                onTouchStart={(e) => beginReviewGesture(e.nativeEvent.pageY)}
+                onTouchStart={(e) => e?.nativeEvent && beginReviewGesture(e.nativeEvent.pageY)}
                 onTouchMove={(e) =>
-                  moveReviewGesture(e.nativeEvent.pageY - touchStartYRef.current)
+                  e?.nativeEvent && moveReviewGesture(e.nativeEvent.pageY - touchStartYRef.current)
                 }>
                 <GHScrollView
                   ref={reviewScrollRef}
@@ -1310,7 +1317,9 @@ export default function MapScreen() {
                   // 스크롤 중에는 시트 크기를 건드리지 않는다(축소는 제스처 시작 위치로만 판정)
                   scrollEventThrottle={16}
                   onScroll={(e) => {
-                    reviewYRef.current = e.nativeEvent.contentOffset.y // 제스처 시작 시 최상단 판정용
+                    // 제스처 시작 시 최상단 판정용 (nativeEvent 방어 — 상단 주석 참조)
+                    if (e?.nativeEvent?.contentOffset)
+                      reviewYRef.current = e.nativeEvent.contentOffset.y
                     tabBarAutoHide.onScroll(e)
                   }}>
                   {/* 공용 섹션(장소 상세와 동일 레이아웃). key로 장소 변경 시 필터 초기화 */}

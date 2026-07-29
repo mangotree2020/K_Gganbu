@@ -120,7 +120,8 @@ export default function PlaceScreen() {
         style={{ height: insets.top, width: '100%' }}
       />
       <ScrollView showsVerticalScrollIndicator={false}>
-        <View onLayout={(e) => setHeroW(e.nativeEvent.layout.width)}>
+        {/* nativeEvent 방어 — 풀링된 이벤트는 디스패치 후 null이 된다(map.tsx 주석 참조) */}
+        <View onLayout={(e) => e?.nativeEvent?.layout && setHeroW(e.nativeEvent.layout.width)}>
           {heroImages.length > 0 ? (
             <>
               {/* 이미지 슬라이드 — 좌우 스와이프로 여러 장 (기존 180 높이 형식 유지) */}
@@ -129,7 +130,9 @@ export default function PlaceScreen() {
                 pagingEnabled
                 showsHorizontalScrollIndicator={false}
                 onMomentumScrollEnd={(e) =>
-                  heroW > 0 && setHeroIdx(Math.round(e.nativeEvent.contentOffset.x / heroW))
+                  heroW > 0 &&
+                  e?.nativeEvent?.contentOffset &&
+                  setHeroIdx(Math.round(e.nativeEvent.contentOffset.x / heroW))
                 }>
                 {heroImages.map((u) => (
                   <CachedImage

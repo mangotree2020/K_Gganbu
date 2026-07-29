@@ -117,7 +117,9 @@ function MediaCarousel({ media, cat }: { media: MediaItem[]; cat: string }) {
   const [w, setW] = useState(0)
   const [idx, setIdx] = useState(0)
   const onScrollEnd = (e: NativeSyntheticEvent<NativeScrollEvent>) => {
-    if (w > 0) setIdx(Math.round(e.nativeEvent.contentOffset.x / w))
+    // nativeEvent 방어 — 풀링된 이벤트는 디스패치 후 null이 된다(map.tsx 주석 참조)
+    if (w > 0 && e?.nativeEvent?.contentOffset)
+      setIdx(Math.round(e.nativeEvent.contentOffset.x / w))
   }
   if (media.length === 0) {
     return (
@@ -127,7 +129,10 @@ function MediaCarousel({ media, cat }: { media: MediaItem[]; cat: string }) {
     )
   }
   return (
-    <View style={ss.imageWrap} onLayout={(e) => setW(e.nativeEvent.layout.width)}>
+    // nativeEvent 방어 — 풀링된 이벤트는 디스패치 후 null이 된다(map.tsx 주석 참조)
+    <View
+      style={ss.imageWrap}
+      onLayout={(e) => e?.nativeEvent?.layout && setW(e.nativeEvent.layout.width)}>
       <ScrollView
         horizontal
         pagingEnabled
