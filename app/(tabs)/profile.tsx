@@ -3,6 +3,7 @@ import { router } from 'expo-router'
 import { useEffect, useState } from 'react'
 import {
   Animated,
+  Dimensions,
   Easing,
   Image,
   Modal,
@@ -32,7 +33,7 @@ import { usePassport } from '@/features/passport/queries'
 import { useAuthStore } from '@/features/auth/store'
 import { useCruiseStore } from '@/features/cruise/prefs'
 import { useTabBarAutoHide } from '@/hooks/useTabBarAutoHide'
-import { APP_LANGS, useLocaleStore, useT, type AppLang } from '@/lib/i18n'
+import { APP_LANGS, hasUiDict, useLocaleStore, useT, type AppLang } from '@/lib/i18n'
 import { palette, shadows } from '@/theme/tokens'
 
 type Row = { id: string; label: string; emoji: string; badge?: string; detail?: string }
@@ -352,23 +353,30 @@ export default function ProfileScreen() {
           <Pressable style={ss.langSheet} onPress={(e) => e.stopPropagation()}>
             <View style={ss.langHandle} />
             <Text style={ss.langTitle}>{t('common.language')}</Text>
-            {APP_LANGS.map((l) => {
-              const active = l.code === lang
-              return (
-                <TouchableOpacity
-                  key={l.code}
-                  activeOpacity={0.7}
-                  onPress={() => {
-                    setLang(l.code as AppLang)
-                    setLangOpen(false)
-                  }}
-                  style={[ss.langRow, active && ss.langRowActive]}>
-                  <Text style={{ fontSize: 22 }}>{l.flag}</Text>
-                  <Text style={[ss.langLabel, active && ss.langLabelActive]}>{l.label}</Text>
-                  {active && <Icon name="check_circle" size={20} color={palette.blue[50]} filled />}
-                </TouchableOpacity>
-              )
-            })}
+            {/* 27개 언어(방한 외래객 수 순) — 시트 높이를 넘으므로 내부 스크롤 */}
+            <ScrollView style={ss.langList} showsVerticalScrollIndicator={false}>
+              {APP_LANGS.map((l) => {
+                const active = l.code === lang
+                return (
+                  <TouchableOpacity
+                    key={l.code}
+                    activeOpacity={0.7}
+                    onPress={() => {
+                      setLang(l.code as AppLang)
+                      setLangOpen(false)
+                    }}
+                    style={[ss.langRow, active && ss.langRowActive]}>
+                    <Text style={{ fontSize: 22 }}>{l.flag}</Text>
+                    <Text style={[ss.langLabel, active && ss.langLabelActive]}>{l.label}</Text>
+                    {/* UI 사전이 없는 언어는 화면이 영어로 뜬다 — 선택 전에 알려준다 */}
+                    {!hasUiDict(l.code) && <Text style={ss.langFallbackBadge}>EN</Text>}
+                    {active && (
+                      <Icon name="check_circle" size={20} color={palette.blue[50]} filled />
+                    )}
+                  </TouchableOpacity>
+                )
+              })}
+            </ScrollView>
           </Pressable>
         </Pressable>
       </Modal>
@@ -679,6 +687,19 @@ const ss = StyleSheet.create({
   langRowActive: { backgroundColor: palette.blue[90] },
   langLabel: { flex: 1, fontSize: 15, fontWeight: '600', color: palette.zinc[800] },
   langLabelActive: { color: palette.blue[30], fontWeight: '800' },
+  // 언어 수가 27개라 시트 높이를 화면의 60%로 제한하고 내부 스크롤에 맡긴다
+  langList: { maxHeight: Dimensions.get('window').height * 0.6 },
+  // UI 사전 미보유 표시 — 해당 언어를 고르면 화면 문구는 영어로 나온다
+  langFallbackBadge: {
+    fontSize: 10,
+    fontWeight: '800',
+    color: palette.zinc[500],
+    backgroundColor: palette.zinc[100],
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 6,
+    overflow: 'hidden',
+  },
   // 캐릭터 오버레이
   charBackdrop: {
     flex: 1,

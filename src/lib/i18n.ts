@@ -1,20 +1,90 @@
-// 경량 i18n (PLANNING §6 1차: en/ko/ja/zh-CN/zh-TW)
-// 기기 locale 자동감지(Intl) + 수동 선택(MMKV persist). 외부 의존성 없음.
+// 경량 i18n — 선택 가능한 앱 언어는 통역 지원 언어 전체(langs.ts, 27개)이고,
+// UI 문자열 사전을 가진 언어는 en/ko/ja/zh-CN/zh-TW 5개다. 사전이 없는 언어는
+// lookupString이 en으로 폴백한다(회화·통역·긴급 문구는 27개 언어를 이미 지원하므로
+// UI가 영어여도 해당 언어권 사용자가 앱을 쓸 수 있다. 사전은 순차 확장).
+// 기기 locale 자동감지(Intl) + 수동 선택(MMKV persist).
 import { create } from 'zustand'
 import { persist, createJSONStorage } from 'zustand/middleware'
 import { zustandStorage } from '@/lib/mmkv'
 import { lookupString } from '@/lib/i18n-lookup'
+import { findLang, normalizeLang } from '@/features/translate/langs'
 
-export type AppLang = 'en' | 'ko' | 'ja' | 'zh-CN' | 'zh-TW'
-export const APP_LANGS: { code: AppLang; label: string; flag: string }[] = [
-  { code: 'en', label: 'English', flag: '🇺🇸' },
-  { code: 'ko', label: '한국어', flag: '🇰🇷' },
-  { code: 'ja', label: '日本語', flag: '🇯🇵' },
-  { code: 'zh-CN', label: '中文(简体)', flag: '🇨🇳' },
-  { code: 'zh-TW', label: '中文(繁體)', flag: '🇹🇼' },
+export type AppLang =
+  | 'zh-CN'
+  | 'ja'
+  | 'en'
+  | 'zh-TW'
+  | 'yue'
+  | 'vi'
+  | 'fil'
+  | 'th'
+  | 'ms'
+  | 'id'
+  | 'ru'
+  | 'hi'
+  | 'mn'
+  | 'de'
+  | 'fr'
+  | 'kk'
+  | 'uz'
+  | 'es'
+  | 'it'
+  | 'ar'
+  | 'ne'
+  | 'pt'
+  | 'tr'
+  | 'km'
+  | 'my'
+  | 'bn'
+  | 'ko'
+
+// 목록 순서 = 방한 외래객 수(한국관광공사 방한객 통계 2024년 기준, 국적별 입국자 수 근사).
+// 언어 단위로 합산한다 — 한 언어를 여러 국적이 쓰기 때문(en=미국·캐나다·호주·영국·싱가포르,
+// es=스페인+중남미, ar=중동, pt=포르투갈+브라질).
+// ko는 방한 통계 대상이 아닌 현지 언어라 맨 끝에 둔다.
+export const LANG_ORDER_BY_INBOUND: AppLang[] = [
+  'zh-CN', // 중국 약 460만
+  'ja', // 일본 약 322만
+  'en', // 미국 128만 + 캐나다·호주·영국·싱가포르 등 합산 약 210만
+  'zh-TW', // 대만 약 147만
+  'yue', // 홍콩·마카오 약 68만
+  'vi', // 베트남 약 59만
+  'fil', // 필리핀 약 56만
+  'th', // 태국 약 40만
+  'ms', // 말레이시아 약 33만
+  'id', // 인도네시아 약 29만
+  'ru', // 러시아 약 25만 (+CIS 러시아어 사용권)
+  'hi', // 인도 약 18만
+  'mn', // 몽골 약 13만
+  'de', // 독일 약 12만
+  'fr', // 프랑스 약 11만
+  'kk', // 카자흐스탄 약 11만
+  'uz', // 우즈베키스탄 약 10만
+  'es', // 스페인·중남미 약 9만
+  'it', // 이탈리아 약 5만
+  'ar', // 중동(사우디·UAE 등) 약 5만
+  'ne', // 네팔 약 5만
+  'pt', // 포르투갈·브라질 약 4만
+  'tr', // 튀르키예 약 4만
+  'km', // 캄보디아 약 4만
+  'my', // 미얀마 약 4만
+  'bn', // 방글라데시 약 3만
+  'ko', // 한국어 — 현지 언어(입국 통계 대상 아님)
 ]
 
-// 기기 locale → 지원 언어 매핑
+// 라벨·국기는 통역 언어 목록(langs.ts)을 단일 소스로 재사용한다(표기 이원화 방지).
+export const APP_LANGS: { code: AppLang; label: string; flag: string }[] =
+  LANG_ORDER_BY_INBOUND.map((code) => {
+    const l = findLang(code)
+    return { code, label: l?.label ?? code, flag: l?.flag ?? '🌐' }
+  })
+
+// UI 문자열 사전 보유 여부 — 미보유 언어는 화면에 영어로 뜬다(선택 UI에서 안내 배지 표시).
+export const hasUiDict = (code: string): boolean => code in STRINGS
+
+const APP_LANG_CODES = new Set<string>(LANG_ORDER_BY_INBOUND)
+
+// 기기 locale → 앱 언어. 정규화 규칙은 통역 언어와 동일한 것(langs.ts)을 재사용한다.
 export function detectDeviceLang(): AppLang {
   let loc = 'en'
   try {
@@ -22,18 +92,16 @@ export function detectDeviceLang(): AppLang {
   } catch {
     loc = 'en'
   }
+  // 기기 locale은 '표기 언어' 신호다. 홍콩·마카오 중국어(zh-Hant-HK 등)는 구어가 광둥어라도
+  // 화면 표기는 번체라 UI는 zh-TW로 잡는다 — 발화 감지용 normalizeLang(광둥어)과 판단이 다르다.
   const lower = loc.toLowerCase()
-  if (lower.startsWith('ko')) return 'ko'
-  if (lower.startsWith('ja')) return 'ja'
-  if (lower.startsWith('zh')) {
-    // zh-TW / zh-HK / zh-Hant → 번체, 그 외 zh → 간체
-    return /tw|hk|mo|hant/.test(lower) ? 'zh-TW' : 'zh-CN'
-  }
-  return 'en'
+  if (lower.startsWith('zh') && /hk|mo/.test(lower)) return 'zh-TW'
+  const code = normalizeLang(lower)
+  return APP_LANG_CODES.has(code) ? (code as AppLang) : 'en'
 }
 
 type Dict = Record<string, string>
-const STRINGS: Record<AppLang, Dict> = {
+const STRINGS: Partial<Record<AppLang, Dict>> = {
   en: {
     'tab.home': 'Home',
     'tab.translate': 'Translate',

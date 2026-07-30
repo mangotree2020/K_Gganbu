@@ -10,7 +10,7 @@ import { useCruiseStore } from '@/features/cruise/prefs'
 import { isPingsEnabled, setPingsEnabled } from '@/features/journey/pings'
 import { enablePush } from '@/features/notifications/services'
 import { usePushStore } from '@/features/notifications/store'
-import { APP_LANGS, useLocaleStore, useT } from '@/lib/i18n'
+import { APP_LANGS, hasUiDict, useLocaleStore, useT } from '@/lib/i18n'
 import { palette, shadows } from '@/theme/tokens'
 
 // 정적 호스팅 후 실 URL로 교체 (SETUP_EXTERNAL "QR 랜딩·Admin 호스팅"과 동일 체계)
@@ -82,14 +82,16 @@ export default function SettingsScreen() {
           </View>
         </View>
 
-        {/* 언어 선택 — My 목록에서 Settings로 일원화 */}
+        {/* 언어 선택 — My 목록에서 Settings로 일원화. 순서는 방한 외래객 수 기준(i18n.ts).
+            UI 사전이 없는 언어는 화면 문구가 영어로 나오므로 (EN)으로 표시한다. */}
         <View style={[ss.card, shadows.card]}>
           {APP_LANGS.map((l, i) => (
             <Text
               key={l.code}
               style={[ss.langRow, i > 0 && ss.rowBorderTop, l.code === lang && ss.langRowOn]}
               onPress={() => setLang(l.code)}>
-              {l.flag} {l.label} {l.code === lang ? '✓' : ''}
+              {l.flag} {l.label}
+              {hasUiDict(l.code) ? '' : ' (EN)'} {l.code === lang ? '✓' : ''}
             </Text>
           ))}
         </View>

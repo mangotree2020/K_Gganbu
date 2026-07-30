@@ -56,7 +56,8 @@ export const ZODIAC_LABEL: Record<ZodiacAnimal, string> = {
 }
 
 // 언어별 띠 동물 이름 (ko/ja/zh는 干支 한자·고유어)
-const ZODIAC_LABEL_I18N: Record<AppLang, Record<ZodiacAnimal, string>> = {
+// 사전이 있는 언어만 등재 — 나머지 앱 언어는 조회 시 영어(ZODIAC_LABEL)로 폴백한다
+const ZODIAC_LABEL_I18N: Partial<Record<AppLang, Record<ZodiacAnimal, string>>> = {
   en: ZODIAC_LABEL,
   ko: {
     mouse: '쥐',

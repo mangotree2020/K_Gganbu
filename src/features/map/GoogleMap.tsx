@@ -42,9 +42,13 @@ export type GoogleMapHandle = {
 
 const API_KEY = process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY ?? ''
 
-// Google Maps JS API는 BCP-47 언어코드를 그대로 받는다 (en/ko/ja/zh-CN/zh-TW)
+// Google Maps JS API는 BCP-47 언어코드를 그대로 받는다. 앱 언어 중 JS API 코드와
+// 다른 것만 보정한다(광둥어 yue → 홍콩 번체). 미지원 코드는 Google이 기본 언어로 폴백한다.
+const GOOGLE_LANG_ALIAS: Record<string, string> = { yue: 'zh-HK' }
+
 function buildHtml(lat: number, lng: number, markers: GoogleMarker[], lang: string) {
-  const src = `https://maps.googleapis.com/maps/api/js?key=${API_KEY}&language=${lang}&callback=initMap`
+  const code = GOOGLE_LANG_ALIAS[lang] ?? lang
+  const src = `https://maps.googleapis.com/maps/api/js?key=${API_KEY}&language=${code}&callback=initMap`
   return `<!DOCTYPE html>
 <html>
 <head>

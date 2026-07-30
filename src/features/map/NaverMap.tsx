@@ -56,6 +56,7 @@ const NAVER_LANG: Record<string, NaverLang> = {
   ja: 'ja',
   'zh-CN': 'zh',
   'zh-TW': 'zh',
+  yue: 'zh', // 광둥어(홍콩) — 표기는 한자라 중문 라벨이 영어보다 낫다
 }
 const toNaverLang = (lang?: string): NaverLang => NAVER_LANG[lang ?? ''] ?? 'en'
 
