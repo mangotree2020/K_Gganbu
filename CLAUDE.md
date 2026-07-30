@@ -27,7 +27,58 @@ npm run android    # Android 에뮬레이터
 # 코드 검사
 npm run lint       # ESLint
 npm run type-check # TypeScript
+npm test           # Jest
 ```
+
+## 검증 루틴 (필수)
+
+완료 정의(DoD)·검증 순서·타입/린트 기준·회귀 점검·최소 변경·AI 리뷰 가능성·환각 구현 금지·
+완료 보고 형식은 전역 `~/.claude/CLAUDE.md`의 "품질 보증·검증 정책"을 따른다.
+아래는 **이 프로젝트의 실제 명령어와 예외**만 적는다.
+
+```bash
+npm run type-check   # 1. 타입
+npm run lint         # 2. 린트
+npm test             # 3. 단위 테스트
+npx expo export --platform android           # 4. 번들 검증 (조건부, 아래 참조)
+codex exec --sandbox read-only "<검증 요청>"   # 5. Codex 교차 검증
+                     # 6. 수동 확인 체크리스트
+```
+
+**4. 번들·네이티브 빌드 검증(조건부)** — 이 저장소에는 `npm run build`가 없고 `tsc`는
+빌드 검증이 아니다. Metro 번들 단계에서만 드러나는 결함(모듈 해석 실패, 누락 에셋,
+플랫폼 전용 import, 신규 expo-router 라우트 등록)이 있으므로 아래 경우에는 반드시 실행한다.
+
+- 네이티브 의존성 추가·변경, `app.json`/config plugin 변경 → `npm run prebuild` 후 실기기 설치
+- 신규 라우트·에셋·동적 import 추가, 릴리스(TestFlight/내부트랙) 직전 → `npx expo export`
+- 그 외 순수 로직·UI 수정은 생략 가능. 생략했으면 보고서에 `SKIPPED(사유)`로 남긴다
+
+**5. Codex 교차 검증** — 실행 규칙은 전역 정책 참조. 실제로 이 단계에서만 잡힌 결함이 있었다
+(네팔어 `बदाम`=아몬드를 땅콩 알레르기 문구에 사용, 카자흐어 경찰 호출 문구의 대격 누락 등 —
+`docs/I18N_SEA_REVIEW.md`). 반영·유보 내역은 해당 검수 문서에 남긴다.
+
+**6. 수동 확인** — 전역 체크리스트에 더해 이 앱 특성: 위치·마이크·카메라 권한 거부 시 degrade,
+오프라인 QR·긴급 문장, 로밍·저속 네트워크, 언어별(zh·ja 장문) 레이아웃 깨짐,
+실기기(iPhone + 중저가 Android) 동일 동작.
+
+### 테스트 범위 (이 저장소)
+
+- **단위(Jest + ts-jest)**: 쿠폰 검증, i18n 포맷, 언어 매핑, 결제 라우팅 규칙 등 순수 로직
+- **모듈 간 흐름**: RNTL(react-native-testing-library)이 없어 컴포넌트 렌더 테스트가 불가하다.
+  화면-서비스-API-상태 연동은 Maestro E2E(`.maestro/`, `npm run test:e2e`) + 실기기 확인으로
+  검증한다. 필요하면 Maestro 플로우를 추가한다
+- 목킹은 외부 API(TourAPI·Naver·Google·Gemini·Supabase)·네이티브 모듈 경계까지만
+
+### 이 프로젝트의 회귀 점검 영향권
+
+공용 유틸(`src/utils`, `src/lib`), 공용 컴포넌트(`src/components`), Zustand store,
+라우팅(`app/_layout.tsx` Stack 등록), 인증 가드(`useAuth`), Edge Function 계약, i18n 키.
+외부 API 응답은 Zod로 검증(TourAPI·Naver·Gemini), 매직 값은 `@/theme/tokens` 재사용,
+Expo 코드는 SDK 56 문서(docs.expo.dev) 확인, 개선점은 `docs/BACKLOG.md`로 분리.
+
+번역·i18n 작업은 여기에 더해 `docs/I18N_SEA_REVIEW.md`(동남아·유럽 등 확장 언어)와
+`docs/I18N_JA_REVIEW.md`(일본어)의 검수 시트를 갱신한다. **LLM 교차 검증은 원어민 검수를
+대체하지 않는다** — 두 문서 모두 원어민 검수 상태를 별도로 추적한다.
 
 ## 환경변수 설정
 
