@@ -1,7 +1,7 @@
 // Naver 지도 — react-native-webview + Naver Maps JS API v3 (PLANNING §17)
 // Expo 공식 Naver 네이티브 SDK가 없어 WebView로 렌더링한다.
 // 마커 탭은 postMessage로 RN에 전달, 중심 이동은 injectJavaScript로 갱신한다.
-import { forwardRef, useImperativeHandle, useMemo, useRef } from 'react'
+import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef } from 'react'
 import { StyleSheet, View } from 'react-native'
 import { WebView, type WebViewMessageEvent } from 'react-native-webview'
 
@@ -250,12 +250,21 @@ export const NaverMap = forwardRef<NaverMapHandle, Props>(function NaverMap(
 ) {
   const webRef = useRef<WebView>(null)
   const naverLang = toNaverLang(language)
+  // 마커는 HTML 재생성이 아니라 setMarkers() 주입으로 갱신한다 — html이 마커에 의존하면
+  // POI 로드·필터 변경마다 WebView 전체가 리로드(타일 재요청 + 깜빡임)된다. (GoogleMap과 동일)
+  const markersJson = useMemo(() => JSON.stringify(markers), [markers])
+  const markersJsonRef = useRef(markersJson)
+  const readyRef = useRef(false)
   const html = useMemo(
     () => buildHtml(latitude, longitude, markers, naverLang),
-    // 마커/언어 변경 시에만 재생성 (좌표 변경은 moveTo로 처리)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [markers, naverLang],
+    [naverLang],
   )
+  useEffect(() => {
+    markersJsonRef.current = markersJson
+    // 지도 준비 전 변경분은 ready 수신 시 일괄 주입되므로 여기선 준비된 경우만
+    if (readyRef.current) webRef.current?.injectJavaScript(`setMarkers(${markersJson}); true;`)
+  }, [markersJson])
 
   useImperativeHandle(ref, () => ({
     moveTo: (lat, lng, zoom) => {
@@ -288,8 +297,12 @@ export const NaverMap = forwardRef<NaverMapHandle, Props>(function NaverMap(
       const msg = JSON.parse(e.nativeEvent.data)
       if (msg.type === 'marker' && msg.id) onMarkerPress?.(msg.id)
       else if (msg.type === 'mapclick') onMapPress?.({ lat: msg.lat, lng: msg.lng })
-      else if (msg.type === 'ready') onReady?.()
-      else if (msg.type === 'view') onViewChange?.({ lat: msg.lat, lng: msg.lng, zoom: msg.zoom })
+      else if (msg.type === 'ready') {
+        // 지도 준비 완료 — 준비 전에 바뀐 마커를 일괄 반영(초기값과 같아도 무해한 재설정)
+        readyRef.current = true
+        webRef.current?.injectJavaScript(`setMarkers(${markersJsonRef.current}); true;`)
+        onReady?.()
+      } else if (msg.type === 'view') onViewChange?.({ lat: msg.lat, lng: msg.lng, zoom: msg.zoom })
       else if (msg.type === 'auth_error') onAuthError?.(msg.message ?? 'Naver auth error')
     } catch {
       // ignore
@@ -303,6 +316,10 @@ export const NaverMap = forwardRef<NaverMapHandle, Props>(function NaverMap(
         originWhitelist={['*']}
         source={{ html, baseUrl: 'https://localhost' }}
         onMessage={onMessage}
+        // 언어 변경 등으로 문서가 다시 로드되면 ready를 되돌린다 — 초기화 전 주입 방지
+        onLoadStart={() => {
+          readyRef.current = false
+        }}
         javaScriptEnabled
         domStorageEnabled
         style={{ flex: 1, backgroundColor: 'transparent' }}

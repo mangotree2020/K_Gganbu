@@ -99,10 +99,33 @@ export function useTodaySteps(): TodaySteps {
 
           // Android 폴백: 구독 시작 이후 델타를 일자별로 누적 보관.
           // 분당 상한을 넘는 델타는 초과분을 버려(클램프) 흔들기·진동 폭증을 1차 차단.
-          const key = dayKey(now)
-          if (alive) setSteps(Number(storage.getString(key) ?? '0'))
+          // 걸음 콜백은 기기에 따라 걸음마다 올 수 있어 MMKV write·setState를 매번 하면
+          // 걷는 내내 지속 부하가 된다 → 누적은 로컬 변수, 반영은 1초 스로틀로 묶는다.
+          let key = dayKey(now)
+          let cur = Number(storage.getString(key) ?? '0')
+          if (alive) setSteps(cur)
           let last = 0
           let lastAt = Date.now()
+          let flushTimer: ReturnType<typeof setTimeout> | null = null
+          // 자정 경계 — 콜백마다 오늘 키를 재판정해, 넘어갔으면 전날 값을 저장하고 새 키로 전환
+          // (키를 구독 시작 시점에 고정하면 자정 이후 걸음이 전날에 계속 쌓인다)
+          const rollDayIfNeeded = () => {
+            const nowKey = dayKey(new Date())
+            if (nowKey !== key) {
+              storage.set(key, String(cur))
+              key = nowKey
+              cur = Number(storage.getString(key) ?? '0')
+            }
+          }
+          const flush = () => {
+            flushTimer = null
+            rollDayIfNeeded()
+            storage.set(key, String(cur))
+            if (alive) {
+              setSteps(cur)
+              markWalking()
+            }
+          }
           sub = Pedometer.watchStepCount((w) => {
             const t = Date.now()
             const rawDelta = w.steps - last
@@ -110,14 +133,21 @@ export function useTodaySteps(): TodaySteps {
             if (rawDelta <= 0) return
             const elapsedMin = Math.max((t - lastAt) / 60000, 1 / 60) // 최소 1초 창
             lastAt = t
-            const delta = Math.min(rawDelta, Math.ceil(MAX_STEPS_PER_MIN * elapsedMin))
-            const cur = Number(storage.getString(key) ?? '0') + delta
-            storage.set(key, String(cur))
-            if (alive) {
-              setSteps(cur)
-              markWalking()
-            }
+            rollDayIfNeeded()
+            cur += Math.min(rawDelta, Math.ceil(MAX_STEPS_PER_MIN * elapsedMin))
+            if (!flushTimer) flushTimer = setTimeout(flush, 1000)
           })
+          const baseRemove = sub.remove.bind(sub)
+          // 구독 해제 시 대기 중인 반영분을 즉시 저장(마지막 1초 유실 방지)
+          sub = {
+            remove: () => {
+              if (flushTimer) {
+                clearTimeout(flushTimer)
+                flush()
+              }
+              baseRemove()
+            },
+          }
         }
       } catch {
         // 미지원 기기 — 위젯 숨김 유지

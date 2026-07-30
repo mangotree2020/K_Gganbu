@@ -83,8 +83,9 @@ export default function ProfileScreen() {
   const setLang = useLocaleStore((s) => s.setLang)
   const [langOpen, setLangOpen] = useState(false)
   const [charOpen, setCharOpen] = useState(false)
-  // 프로필(로컬) — 아바타·성별·출생연도
-  const profile = useProfileStore()
+  // 프로필(로컬) — 이 화면 본문은 displayName만 쓴다. 전체 구독은 아바타 편집 등
+  // 무관한 필드 변경에도 756줄 화면 전체를 리렌더하므로 셀렉터로 좁힌다.
+  const displayName = useProfileStore((s) => s.displayName)
   const currentLang = APP_LANGS.find((l) => l.code === lang) ?? APP_LANGS[0]
   const { data: favorites } = useFavorites()
   const { data: savedCoupons } = useUserCoupons()
@@ -160,7 +161,7 @@ export default function ProfileScreen() {
             </Pressable>
             <View style={{ flex: 1 }}>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                <Text style={ss.name}>{profile.displayName || user?.fullName || 'Traveler'}</Text>
+                <Text style={ss.name}>{displayName || user?.fullName || 'Traveler'}</Text>
                 {/* 깐부 등급 (REQ-PT-3) — 탭 시 포인트 홈(등급 혜택·진행도) */}
                 <Pressable
                   style={ss.tierChip}
@@ -407,7 +408,10 @@ function CharacterOverlay({
 }) {
   const t = useT()
   const lang = useLocaleStore((s) => s.lang)
-  const { photoUri, gender, birthYear } = useProfileStore()
+  // 개별 셀렉터 구독 — 다른 필드 변경에 오버레이가 리렌더되지 않도록
+  const photoUri = useProfileStore((s) => s.photoUri)
+  const gender = useProfileStore((s) => s.gender)
+  const birthYear = useProfileStore((s) => s.birthYear)
   const [enter] = useState(() => new Animated.Value(0))
   const [float] = useState(() => new Animated.Value(0))
 

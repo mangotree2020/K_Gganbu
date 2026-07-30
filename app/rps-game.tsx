@@ -79,12 +79,16 @@ export default function RpsGameScreen() {
   useEffect(
     () => () => {
       timersRef.current.forEach(clearInterval)
+      timersRef.current = []
     },
     [],
   )
 
   const startDuel = () => {
     if (camPhase !== 'idle' || finished) return
+    // 이전 라운드 타이머 ID 정리 — 배열이 라운드마다 계속 자라는 것 방지
+    timersRef.current.forEach(clearInterval)
+    timersRef.current = []
     setUnknownHand(false)
     setRound(null)
     setCamPhase('count')

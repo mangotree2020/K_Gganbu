@@ -296,6 +296,13 @@ export default function VoiceInterpretScreen() {
   const persistedRef = useRef(false) // 중복 저장 방지(X 핸들러 + 언마운트)
   useEffect(() => {
     turnsRef.current = turns
+    // 다시 듣기 PCM 정리 — turns는 40개로 잘리지만 audioStoreRef Map은 스스로 줄지 않아
+    // 장시간 통역 시 24kHz PCM(초당 ~48KB)이 무한 누적된다. 탈락한 턴의 오디오는 즉시 해제.
+    // (조건 없이 매번 정리 — Set 구성은 최대 40개라 비용이 무시할 수준)
+    const aliveIds = new Set(turns.map((t) => t.id))
+    for (const id of audioStoreRef.current.keys()) {
+      if (!aliveIds.has(id)) audioStoreRef.current.delete(id)
+    }
   }, [turns])
   useEffect(() => {
     appLangRef.current = appLang

@@ -128,10 +128,17 @@ function frameToText(data: unknown): string {
   return ''
 }
 
+// 마이크 청크(100ms마다 3.2KB)마다 호출되는 핫패스 — 바이트별 문자열 결합(+=)은
+// Hermes에서 통역 중 프레임 드랍을 만들 수 있어 fromCharCode.apply 청크 배치로 처리한다.
+// (apply 인자 수 한계 때문에 8K 단위로 나눈다)
+const B64_CHUNK = 8192
 function toB64(bytes: Uint8Array): string {
-  let bin = ''
-  for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i])
-  return globalThis.btoa(bin)
+  const parts: string[] = []
+  for (let i = 0; i < bytes.length; i += B64_CHUNK) {
+    const sub = bytes.subarray(i, i + B64_CHUNK)
+    parts.push(String.fromCharCode.apply(null, sub as unknown as number[]))
+  }
+  return globalThis.btoa(parts.join(''))
 }
 
 function fromB64(b64: string): Uint8Array {

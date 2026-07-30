@@ -1,4 +1,5 @@
 import { LinearGradient } from 'expo-linear-gradient'
+import { ImageManipulator, SaveFormat } from 'expo-image-manipulator'
 import * as ImagePicker from 'expo-image-picker'
 import { router } from 'expo-router'
 import { useEffect, useState } from 'react'
@@ -181,18 +182,41 @@ export default function TranslateScreen() {
         : await ImagePicker.requestMediaLibraryPermissionsAsync()
     if (!perm.granted) return
 
-    const opts: ImagePicker.ImagePickerOptions = { base64: true, quality: 0.6 }
+    // base64는 picker에서 받지 않는다 — 12MP 원본을 그대로 문자열화하면 수십 MB가
+    // JS 힙에 올라와 GC 멈춤·OOM 위험. 리사이즈(장변 1600px) 후에 base64로 뽑는다.
+    // 1600px이면 메뉴판·간판 글자 OCR에 충분하고 payload도 1/10 이하로 준다.
+    const opts: ImagePicker.ImagePickerOptions = { quality: 1 }
     const res =
       from === 'camera'
         ? await ImagePicker.launchCameraAsync(opts)
         : await ImagePicker.launchImageLibraryAsync(opts)
-    if (res.canceled || !res.assets?.[0]?.base64) return
+    const asset = res.canceled ? null : res.assets?.[0]
+    if (!asset) return
 
-    setShotUri(res.assets[0].uri)
+    setShotUri(asset.uri)
     setOcrText('')
     setOcrOut('')
     setOcrLoading(true)
-    const { text, provider: ocrProvider } = await detectText(res.assets[0].base64)
+    let b64 = ''
+    try {
+      const ctx = ImageManipulator.manipulate(asset.uri)
+      // 세로 사진이 장변 기준을 넘도록 큰 쪽만 지정(비율 유지).
+      // picker가 치수를 못 주는 경우(0/undefined)에도 리사이즈를 걸어 대용량 원본 통과를 막는다
+      // (작은 이미지가 업스케일돼도 OCR 페이로드는 여전히 작다 — OOM 방지가 우선).
+      const w = asset.width ?? 0
+      const h = asset.height ?? 0
+      if (!w || !h || Math.max(w, h) > 1600) ctx.resize(w >= h ? { width: 1600 } : { height: 1600 })
+      const img = await ctx.renderAsync()
+      const saved = await img.saveAsync({ format: SaveFormat.JPEG, compress: 0.7, base64: true })
+      b64 = saved.base64 ?? ''
+    } catch {
+      b64 = ''
+    }
+    if (!b64) {
+      setOcrLoading(false)
+      return
+    }
+    const { text, provider: ocrProvider } = await detectText(b64)
     setOcrText(text)
     const outTgt = tgt === 'ko' ? 'en' : tgt
     const { translatedText, provider: trProvider } = await translateText({
