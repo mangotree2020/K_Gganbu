@@ -19,6 +19,7 @@ import { SafeAreaView } from 'react-native-safe-area-context'
 
 import { Icon } from '@/components/brand'
 import { FallbackBadge } from '@/components/FallbackBadge'
+import { INTERPRET_LANGS, langLabel as baseLangLabel } from '@/features/translate/langs'
 import { detectText } from '@/features/translate/ocr'
 import { translateText } from '@/features/translate/services'
 import { useT } from '@/lib/i18n'
@@ -26,17 +27,9 @@ import { palette } from '@/theme/tokens'
 
 type Mode = 'text' | 'camera' | 'voice'
 
-// PLANNING §6 1차 언어 (Google Translation 코드)
-type LangOpt = { code: string; label: string; flag: string }
-const LANG_LIST: LangOpt[] = [
-  { code: 'en', label: 'English', flag: '🇺🇸' },
-  { code: 'ko', label: '한국어', flag: '🇰🇷' },
-  { code: 'ja', label: '日本語', flag: '🇯🇵' },
-  { code: 'zh-CN', label: '中文(简体)', flag: '🇨🇳' },
-  { code: 'zh-TW', label: '中文(繁體)', flag: '🇹🇼' },
-]
-const LANGS: Record<string, string> = Object.fromEntries(LANG_LIST.map((l) => [l.code, l.label]))
-const langLabel = (code: string) => (code === 'auto' ? 'Auto detect' : (LANGS[code] ?? code))
+// 통역 지원 언어는 @/features/translate/langs 단일 소스 (Google Translation 코드)
+const LANG_LIST = INTERPRET_LANGS
+const langLabel = (code: string) => (code === 'auto' ? 'Auto detect' : baseLangLabel(code))
 
 const MOCK: Record<string, string> = {
   'Does this dish contain pork?': '이 음식에 돼지고기가 들어가나요?',
@@ -298,7 +291,7 @@ export default function TranslateScreen() {
 
               {/* 입력 */}
               <View style={ss.inputCard}>
-                <Text style={ss.fieldLabel}>{LANGS[src]}</Text>
+                <Text style={ss.fieldLabel}>{langLabel(src)}</Text>
                 <TextInput
                   value={input}
                   onChangeText={setInput}
@@ -467,21 +460,24 @@ export default function TranslateScreen() {
                   )}
                 </Pressable>
               )}
-              {LANG_LIST.map((l) => {
-                const cur = picker === 'src' ? src : tgt
-                return (
-                  <Pressable
-                    key={l.code}
-                    onPress={() => pickLang(l.code)}
-                    style={[ss.langOpt, cur === l.code && ss.langOptOn]}>
-                    <Text style={{ fontSize: 20 }}>{l.flag}</Text>
-                    <Text style={ss.langOptText}>{l.label}</Text>
-                    {cur === l.code && (
-                      <Icon name="check_circle" size={18} color={palette.teal[40]} filled />
-                    )}
-                  </Pressable>
-                )
-              })}
+              {/* 언어 10개 — 작은 화면에서 시트가 넘치므로 스크롤 */}
+              <ScrollView style={ss.langScroll} showsVerticalScrollIndicator={false}>
+                {LANG_LIST.map((l) => {
+                  const cur = picker === 'src' ? src : tgt
+                  return (
+                    <Pressable
+                      key={l.code}
+                      onPress={() => pickLang(l.code)}
+                      style={[ss.langOpt, cur === l.code && ss.langOptOn]}>
+                      <Text style={{ fontSize: 20 }}>{l.flag}</Text>
+                      <Text style={ss.langOptText}>{l.label}</Text>
+                      {cur === l.code && (
+                        <Icon name="check_circle" size={18} color={palette.teal[40]} filled />
+                      )}
+                    </Pressable>
+                  )
+                })}
+              </ScrollView>
             </View>
           </Pressable>
         </Modal>
@@ -537,6 +533,8 @@ const ss = StyleSheet.create({
     borderRadius: 14,
   },
   langOptOn: { backgroundColor: '#F0FDFA' },
+  // 시트가 화면을 다 덮지 않도록 상한(언어 10개) — 넘치면 스크롤
+  langScroll: { maxHeight: 380 },
   langOptText: { flex: 1, fontSize: 15, fontWeight: '600', color: '#18181B' },
   container: { flex: 1, backgroundColor: '#fff' },
   header: {

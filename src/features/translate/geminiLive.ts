@@ -2,6 +2,7 @@
 // 기기 ↔ Gemini Live(BidiGenerateContent WS) 직접 연결. 키는 ephemeral 토큰으로 보호.
 // 양방향 자동 통역: 외국인 발화→한국어, 한국어 발화→외국인 언어 (입력 언어 자동 감지).
 // 오디오 캡처/재생(네이티브 PCM)은 호출측에서 sendAudio/onAudio 로 연결한다.
+import { INTERPRET_LANGS } from '@/features/translate/langs'
 import { supabase } from '@/lib/supabase'
 
 export type LiveStatus = 'connecting' | 'open' | 'closed' | 'error' | 'limit'
@@ -56,14 +57,10 @@ function concatPcm(chunks: Uint8Array[]): Uint8Array {
   return out
 }
 
-// 언어 코드 → 영어 이름(systemInstruction용)
-const LANG_NAME: Record<string, string> = {
-  en: 'English',
-  ja: 'Japanese',
-  'zh-CN': 'Chinese (Simplified)',
-  'zh-TW': 'Chinese (Traditional)',
-  ko: 'Korean',
-}
+// 언어 코드 → 영어 이름(systemInstruction용) — 지원 언어 목록 단일 소스에서 가져온다
+const LANG_NAME: Record<string, string> = Object.fromEntries(
+  INTERPRET_LANGS.map((l) => [l.code, l.englishName]),
+)
 
 // 두 언어 간 통역 지시문 — myLang(앱 사용자/허브 언어)을 중심으로.
 // 규칙: 사용자 언어(mine) 발화 → 상대 언어(peer)로. 그 외 어떤 언어든(peer·중국어·일본어 등) → mine으로.

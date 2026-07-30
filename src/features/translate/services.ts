@@ -1,5 +1,6 @@
 // 번역 서비스 — Edge Function(Google Cloud Translation) 호출 + mock 폴백 (mock-first)
 // 서비스 레이어 패턴 예시 (BACKLOG #3): USE_MOCK 토글 + withRetry 네트워크 재시도.
+import { toTranslateCode } from '@/features/translate/langs'
 import { USE_MOCK } from '@/lib/config'
 import { supabase } from '@/lib/supabase'
 import { withRetry } from '@/lib/withRetry'
@@ -27,8 +28,14 @@ export async function translateText(input: TranslateInput): Promise<TranslateRes
   // 플래그가 켜지면 외부 호출 없이 mock (오프라인 데모/테스트)
   if (USE_MOCK) return mockTranslate(input)
   try {
+    // 앱 코드 → Google Translation 코드 (필리핀어 fil → tl 등)
+    const body: TranslateInput = {
+      ...input,
+      target: toTranslateCode(input.target),
+      ...(input.source ? { source: toTranslateCode(input.source) } : {}),
+    }
     const { data } = await withRetry(async () => {
-      const res = await supabase.functions.invoke('translate', { body: input })
+      const res = await supabase.functions.invoke('translate', { body })
       if (res.error) throw res.error
       return res
     })

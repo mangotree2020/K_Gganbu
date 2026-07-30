@@ -1,14 +1,14 @@
 // 텍스트 음성 변환 — 앱 지정 언어로 메시지를 읽어준다(expo-speech, 플랫폼 TTS 엔진).
 import * as Speech from 'expo-speech'
 
-// 앱 언어 → TTS BCP-47 로케일
-const TTS_LANG: Record<string, string> = {
-  en: 'en-US',
-  ko: 'ko-KR',
-  ja: 'ja-JP',
-  'zh-CN': 'zh-CN',
-  'zh-TW': 'zh-TW',
-}
+import { INTERPRET_LANGS } from '@/features/translate/langs'
+
+// 언어 코드 → TTS BCP-47 로케일 (통역 지원 언어 단일 소스에서)
+// 주: 로케일 실제 지원 여부는 기기 TTS 엔진에 달렸다. 미설치 언어는 무음일 수 있어
+// 호출측은 onDone 콜백으로만 흐름을 이어간다(발화 성공을 전제하지 않음).
+const TTS_LANG: Record<string, string> = Object.fromEntries(
+  INTERPRET_LANGS.map((l) => [l.code, l.ttsLocale]),
+)
 
 export type SpeakOpts = { rate?: number; pitch?: number; onDone?: () => void }
 

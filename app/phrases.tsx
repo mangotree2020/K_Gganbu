@@ -4,6 +4,7 @@ import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-nati
 import { SafeAreaView } from 'react-native-safe-area-context'
 
 import { Icon } from '@/components/brand'
+import { isRtlLang } from '@/features/translate/langs'
 import { findScenario, type Lang, type Phrase } from '@/features/translate/phrases'
 import { storage } from '@/lib/mmkv'
 import { palette } from '@/theme/tokens'
@@ -18,11 +19,35 @@ const loadFavs = (): string[] => {
   }
 }
 
+// 회화 대역 언어 칩 — 한국어(ko)는 상대에게 보여주는 원문이라 선택 대상이 아니다.
+// 칩은 좁은 라벨(EN/简体)을 쓰므로 langs.ts의 원어 라벨 대신 별도 표기.
 const UI_LANGS: { code: Lang; label: string }[] = [
   { code: 'en', label: 'EN' },
   { code: 'ja', label: '日本語' },
   { code: 'zh-CN', label: '简体' },
   { code: 'zh-TW', label: '繁體' },
+  { code: 'vi', label: 'Việt' },
+  { code: 'th', label: 'ไทย' },
+  { code: 'id', label: 'Indo' },
+  { code: 'ms', label: 'Melayu' },
+  { code: 'fil', label: 'Filipino' },
+  { code: 'hi', label: 'हिन्दी' },
+  { code: 'bn', label: 'বাংলা' },
+  { code: 'ne', label: 'नेपाली' },
+  { code: 'ar', label: 'العربية' },
+  { code: 'ru', label: 'Русский' },
+  { code: 'mn', label: 'Монгол' },
+  { code: 'uz', label: "O'zbek" },
+  { code: 'fr', label: 'Français' },
+  { code: 'de', label: 'Deutsch' },
+  { code: 'es', label: 'Español' },
+  { code: 'pt', label: 'Português' },
+  { code: 'it', label: 'Italiano' },
+  { code: 'yue', label: '廣東話' },
+  { code: 'tr', label: 'Türkçe' },
+  { code: 'km', label: 'ខ្មែរ' },
+  { code: 'my', label: 'မြန်မာ' },
+  { code: 'kk', label: 'Қазақша' },
 ]
 
 export default function PhrasesScreen() {
@@ -31,6 +56,7 @@ export default function PhrasesScreen() {
   const [lang, setLang] = useState<Lang>((p.lang as Lang) || 'en')
   const [show, setShow] = useState<Phrase | null>(null)
   const [favs, setFavs] = useState<string[]>(loadFavs)
+  const rtl = isRtlLang(lang) // 아랍어 — 우측 정렬
 
   const toggleFav = (ko: string) => {
     setFavs((prev) => {
@@ -57,8 +83,12 @@ export default function PhrasesScreen() {
           </Pressable>
         </View>
 
-        {/* 언어 선택 */}
-        <View style={ss.langRow}>
+        {/* 언어 선택 — 21개라 한 줄에 안 들어가므로 가로 스크롤 */}
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          style={ss.langScroll}
+          contentContainerStyle={ss.langRow}>
           {UI_LANGS.map((l) => {
             const on = l.code === lang
             return (
@@ -70,7 +100,7 @@ export default function PhrasesScreen() {
               </Pressable>
             )
           })}
-        </View>
+        </ScrollView>
 
         <ScrollView contentContainerStyle={{ padding: 16, paddingTop: 6, gap: 10 }}>
           {scenario.phrases.map((ph, i) => (
@@ -79,7 +109,7 @@ export default function PhrasesScreen() {
               onPress={() => setShow(ph)}
               style={({ pressed }) => [ss.card, { opacity: pressed ? 0.92 : 1 }]}>
               <View style={{ flex: 1 }}>
-                <Text style={ss.cardLang}>{ph[lang]}</Text>
+                <Text style={[ss.cardLang, rtl && ss.rtlText]}>{ph[lang]}</Text>
                 <Text style={ss.cardKo}>{ph.ko}</Text>
               </View>
               <Pressable onPress={() => toggleFav(ph.ko)} hitSlop={8} style={ss.starBtn}>
@@ -147,6 +177,8 @@ const ss = StyleSheet.create({
     justifyContent: 'center',
   },
 
+  // 가로 스크롤이 세로 공간을 먹지 않도록 flexGrow 차단
+  langScroll: { flexGrow: 0 },
   langRow: {
     flexDirection: 'row',
     gap: 6,
@@ -176,6 +208,8 @@ const ss = StyleSheet.create({
     borderColor: palette.zinc[200],
   },
   cardLang: { fontSize: 15, fontWeight: '700', color: palette.zinc[900], letterSpacing: -0.2 },
+  // RTL 언어(아랍어) — 문자 자체는 RN이 bidi로 처리하고, 정렬만 우측으로
+  rtlText: { textAlign: 'right', writingDirection: 'rtl' },
   cardKo: { fontSize: 13, color: palette.zinc[500], marginTop: 3 },
   starBtn: {
     width: 36,

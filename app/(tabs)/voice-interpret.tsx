@@ -42,7 +42,14 @@ import {
   type MicHandle,
   type Player,
 } from '@/features/translate/voiceAudio'
-import { APP_LANGS, useLocaleStore, useT, type AppLang } from '@/lib/i18n'
+import {
+  INTERPRET_LANGS,
+  detectLang,
+  langMeta,
+  langTone,
+  normalizeLang,
+} from '@/features/translate/langs'
+import { useLocaleStore, useT, type AppLang } from '@/lib/i18n'
 import { palette, shadows } from '@/theme/tokens'
 
 type VoiceStatus = 'idle' | 'connecting' | 'connected' | 'reconnecting' | 'error' | 'unavailable'
@@ -62,62 +69,9 @@ const SPEECH_RMS_GATE = 0.05
 // hasAudio: 통역 음성 보유 여부(다시 듣기 버튼 표시용. PCM은 audioStoreRef에 보관).
 type Turn = { id: number; original: string; translation: string; lang: string; hasAudio: boolean }
 
-// 발화 언어 감지 — Gemini 감지 코드(normalizeLang)가 없을 때만 쓰는 스크립트 기반 폴백.
-// 스크립트로 확실히 갈리는 언어만 처리한다. 라틴 세부 구분(en/id)·한자 번체 구분(zh-TW)은
-// 스크립트만으로는 불확실하므로 폴백에서 시도하지 않고 Gemini 코드에 맡긴다(en/zh-CN로 근사).
-const detectLang = (s: string): string => {
-  if (/[぀-ヿ]/.test(s)) return 'ja' // 가나(일본어) — 한자보다 먼저
-  if (/[฀-๿]/.test(s)) return 'th' // 태국 문자
-  if (/[đơưăĐƠƯĂ]|[Ạ-ỿ]/.test(s)) return 'vi' // 베트남 전용 발음부호
-  const han = (s.match(/[가-힣]/g) || []).length
-  const lat = (s.match(/[a-zA-Z]/g) || []).length
-  if (han && lat) return lat >= han * 2 ? 'en' : 'ko' // 라틴이 한글의 2배↑면 영어
-  if (han) return 'ko'
-  if (/[一-鿿]/.test(s)) return 'zh-CN' // 한자 → 중국어(번체 구분은 Gemini 코드로)
-  if (lat) return 'en' // 라틴 → 영어(인니어 구분은 Gemini 코드로)
-  return '' // 미상
-}
-
-// Gemini가 준 BCP-47 감지 코드(예: 'vi-VN','id-ID','cmn-Hant-TW','zh','en-US')를
-// 앱 내부 코드(en/ko/ja/zh-CN/zh-TW/th/vi/id)로 정규화. 미지원 코드는 ''(폴백 유도).
-const normalizeLang = (code?: string): string => {
-  if (!code) return ''
-  const c = code.toLowerCase()
-  if (c.startsWith('ko')) return 'ko'
-  if (c.startsWith('ja')) return 'ja'
-  if (c.startsWith('th')) return 'th'
-  if (c.startsWith('vi')) return 'vi'
-  if (c.startsWith('id') || c.startsWith('in')) return 'id' // 인니어 구표기 'in'
-  if (c.startsWith('en')) return 'en'
-  // 중국어 계열(zh/cmn/yue) — 번체 신호(hant/tw/hk/mo)면 대만, 아니면 간체
-  if (c.startsWith('zh') || c.startsWith('cmn') || c.startsWith('yue'))
-    return /hant|tw|hk|mo/.test(c) ? 'zh-TW' : 'zh-CN'
-  return ''
-}
-
-// 언어별 색상 톤 — 화자 구분용. accent: 칩·보더·내 말풍선 채움, tint: 상대 말풍선 배경
-const LANG_TONE: Record<string, { accent: string; tint: string }> = {
-  ko: { accent: palette.teal[40], tint: palette.teal[95] },
-  ja: { accent: palette.coral[40], tint: palette.coral[95] },
-  en: { accent: palette.blue[40], tint: palette.blue[95] },
-  'zh-CN': { accent: palette.amber[50], tint: palette.amber[90] },
-  'zh-TW': { accent: palette.rose[40], tint: palette.rose[95] }, // 간체(amber)와 구분
-  th: { accent: palette.violet[40], tint: palette.violet[95] },
-  vi: { accent: palette.success[50], tint: palette.success[90] },
-  id: { accent: palette.indigo[40], tint: palette.indigo[95] },
-}
-const toneOf = (lang: string) =>
-  LANG_TONE[lang] ?? { accent: palette.zinc[700], tint: palette.zinc[100] }
-// 통역 화자는 UI 5개 언어(APP_LANGS) 외에도 감지됨(Gemini Live 70+ 언어).
-// APP_LANGS에 없는 언어의 국기·라벨을 보강한다(미보강 시 detectLang 폴백으로 엉뚱한 국기 노출).
-const EXTRA_LANG_META: Record<string, { flag: string; label: string }> = {
-  th: { flag: '🇹🇭', label: 'ไทย' },
-  vi: { flag: '🇻🇳', label: 'Tiếng Việt' },
-  id: { flag: '🇮🇩', label: 'Bahasa' },
-}
-const langMeta = (code: string) =>
-  APP_LANGS.find((l) => l.code === code) ??
-  EXTRA_LANG_META[code] ?? { flag: '🌐', label: code || '?' }
+// 언어 감지·정규화·국기/라벨·화자 톤은 통역 언어 단일 소스(@/features/translate/langs)에서.
+// 화자 톤 — accent: 칩·보더·내 말풍선 채움, tint: 상대 말풍선 배경
+const toneOf = langTone
 
 // 대화 말풍선 — 화자(언어)별 색상·좌우 정렬. 언어 칩 + 원문 + 구분선 + 통역.
 // isMe: 앱 사용자(앱 언어) 발화 → 우측·진한 톤. 상대 → 좌측·언어별 연한 톤.
@@ -276,8 +230,9 @@ export default function VoiceInterpretScreen() {
   const appLang: AppLang = useLocaleStore((s) => s.lang)
   // 통역 두 언어(로컬) — Translate 화면과 동일하게 양쪽 자유 선택 + swap.
   // myLang = 내 언어(기본 앱 언어), peerLang = 상대 언어(기본 한국어, 내가 한국어면 영어).
-  const [myLang, setMyLang] = useState<AppLang>(appLang)
-  const [peerLang, setPeerLang] = useState<AppLang>(appLang === 'ko' ? 'en' : 'ko')
+  // 타입이 AppLang(UI 5개)이 아닌 string인 이유: 통역 언어는 UI 언어보다 넓다(langs.ts).
+  const [myLang, setMyLang] = useState<string>(appLang)
+  const [peerLang, setPeerLang] = useState<string>(appLang === 'ko' ? 'en' : 'ko')
   // 하단 언어 피커 대상(내/상대) 또는 닫힘 — Translate와 동일한 플래그 시트
   const [picker, setPicker] = useState<null | 'my' | 'peer'>(null)
   // Listening 바로 아래 인라인 패널 — 음성 설정/볼륨. 처음엔 둘 다 열림, 통역 시작 시 자동 닫힘.
@@ -758,7 +713,7 @@ export default function VoiceInterpretScreen() {
   }, [myLang, peerLang])
 
   // 언어 피커 선택 — 내/상대 측에 반영(effect가 재연결). 두 측이 같아지면 자동으로 스왑.
-  const pickLang = (code: AppLang) => {
+  const pickLang = (code: string) => {
     const side = picker
     setPicker(null)
     if (side === 'my') {
@@ -1099,21 +1054,24 @@ export default function VoiceInterpretScreen() {
               <Text style={ss.sheetTitle}>
                 {picker === 'my' ? t('voice.myLanguage') : t('voice.peerLanguage')}
               </Text>
-              {APP_LANGS.map((l) => {
-                const cur = picker === 'my' ? myLang : peerLang
-                return (
-                  <Pressable
-                    key={l.code}
-                    onPress={() => pickLang(l.code)}
-                    style={[ss.langOpt, cur === l.code && ss.langOptOn]}>
-                    <Text style={{ fontSize: 20 }}>{l.flag}</Text>
-                    <Text style={ss.langOptText}>{l.label}</Text>
-                    {cur === l.code && (
-                      <Icon name="check_circle" size={18} color={palette.teal[40]} filled />
-                    )}
-                  </Pressable>
-                )
-              })}
+              {/* 언어 10개 — 작은 화면에서 시트가 넘치므로 스크롤 */}
+              <ScrollView style={ss.langScroll} showsVerticalScrollIndicator={false}>
+                {INTERPRET_LANGS.map((l) => {
+                  const cur = picker === 'my' ? myLang : peerLang
+                  return (
+                    <Pressable
+                      key={l.code}
+                      onPress={() => pickLang(l.code)}
+                      style={[ss.langOpt, cur === l.code && ss.langOptOn]}>
+                      <Text style={{ fontSize: 20 }}>{l.flag}</Text>
+                      <Text style={ss.langOptText}>{l.label}</Text>
+                      {cur === l.code && (
+                        <Icon name="check_circle" size={18} color={palette.teal[40]} filled />
+                      )}
+                    </Pressable>
+                  )
+                })}
+              </ScrollView>
             </Pressable>
           </Pressable>
         </Modal>
@@ -1260,6 +1218,8 @@ const ss = StyleSheet.create({
     borderRadius: 14,
   },
   langOptOn: { backgroundColor: palette.teal[95] },
+  // 시트가 화면을 다 덮지 않도록 상한(언어 10개) — 넘치면 스크롤
+  langScroll: { maxHeight: 380 },
   langOptText: { flex: 1, fontSize: 15, fontWeight: '600', color: palette.zinc[900] },
   connectingRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 8 },
 

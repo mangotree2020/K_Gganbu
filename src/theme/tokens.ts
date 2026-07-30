@@ -64,6 +64,25 @@ export const palette = {
   violet: { 40: '#7C3AED', 95: '#F5F3FF' },
   rose: { 40: '#E11D48', 95: '#FFF1F2' },
   indigo: { 40: '#4F46E5', 95: '#EEF2FF' },
+  lime: { 40: '#4D7C0F', 95: '#F7FEE7' }, // 말레이어(ms)
+  fuchsia: { 40: '#A21CAF', 95: '#FDF4FF' }, // 필리핀어(fil)
+  orange: { 40: '#C2410C', 95: '#FFF7ED' }, // 힌디어(hi) — coral(ja)과 겹치지 않게 진한 톤
+  emerald: { 40: '#047857', 95: '#ECFDF5' }, // 벵골어(bn)
+  cyan: { 40: '#0891B2', 95: '#ECFEFF' }, // 프랑스어(fr)
+  slate: { 40: '#475569', 95: '#F8FAFC' }, // 독일어(de)
+  yellow: { 40: '#CA8A04', 95: '#FEFCE8' }, // 스페인어(es)
+  purple: { 40: '#7E22CE', 95: '#FAF5FF' }, // 몽골어(mn)
+  red: { 40: '#B91C1C', 95: '#FEF2F2' }, // 러시아어(ru)
+  brown: { 40: '#78350F', 95: '#FEF6EE' }, // 아랍어(ar)
+  green: { 40: '#15803D', 95: '#F0FDF4' }, // 포르투갈어(pt)
+  pink: { 40: '#BE185D', 95: '#FDF2F8' }, // 이탈리아어(it)
+  sky: { 40: '#0369A1', 95: '#F0F9FF' }, // 네팔어(ne)
+  stone: { 40: '#57534E', 95: '#FAFAF9' }, // 우즈베크어(uz)
+  maroon: { 40: '#9F1239', 95: '#FFF1F2' }, // 광둥어(yue) — 번체(rose)와 구분
+  bronze: { 40: '#B45309', 95: '#FFFBEB' }, // 터키어(tr)
+  olive: { 40: '#3F6212', 95: '#F7FEE7' }, // 크메르어(km)
+  plum: { 40: '#701A75', 95: '#FDF4FF' }, // 미얀마어(my)
+  navy: { 40: '#1E3A8A', 95: '#EFF6FF' }, // 카자흐어(kk)
 } as const
 
 // 그라데이션 — LinearGradient colors 배열 (start {x:0,y:0} → end 방향은 사용처에서 지정)
