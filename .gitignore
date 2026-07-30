@@ -26,6 +26,9 @@ npm-debug.*
 yarn-debug.*
 yarn-error.*
 
+# 빌드·배포 로그 (gradle assembleRelease 등 출력 리다이렉트)
+*.log
+
 # macOS
 .DS_Store
 *.pem
