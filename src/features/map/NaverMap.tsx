@@ -38,7 +38,8 @@ export type NaverMapHandle = {
   drawRoute: (path: { latitude: number; longitude: number }[]) => void
   clearRoute: () => void
   setMapType: (type: MapType) => void
-  setMyLocation: (lat: number, lng: number, zoom?: number) => void
+  // recenter=false: 마커만 갱신하고 카메라는 그대로 둔다(이동 추적 중 사용자의 시점 유지)
+  setMyLocation: (lat: number, lng: number, zoom?: number, recenter?: boolean) => void
   setHeading: (deg: number) => void // 내 방향(나침반) — 위치 핀의 방향 빔 회전
   // Blend 레이어 투명도 — RN View opacity는 Android WebView에서 무시되므로
   // WebView 내부 CSS(#map opacity)로 제어한다
@@ -130,13 +131,14 @@ function buildHtml(lat: number, lng: number, markers: NaverMarker[], lang: Naver
       // viewBox 좌표 (0,0)=핀 끝. 앵커 = SVG 내 (44, 87) 픽셀 지점
       return { content: myLocContent(), anchor: new naver.maps.Point(44, 87) };
     }
-    function setMyLocation(lat, lng, zoom){
+    function setMyLocation(lat, lng, zoom, recenter){
       if(!map) return;
       if(myLoc) myLoc.setMap(null);
       myLoc = new naver.maps.Marker({
         position: new naver.maps.LatLng(lat, lng), map: map, zIndex: 1000,
         icon: myLocIcon(),
       });
+      if(recenter === false) return;
       map.morph(new naver.maps.LatLng(lat, lng), zoom || 17);
     }
     function setHeading(deg){
@@ -279,9 +281,9 @@ export const NaverMap = forwardRef<NaverMapHandle, Props>(function NaverMap(
     setMapType: (type) => {
       webRef.current?.injectJavaScript(`setMapType(${JSON.stringify(type)}); true;`)
     },
-    setMyLocation: (lat, lng, zoom) => {
+    setMyLocation: (lat, lng, zoom, recenter) => {
       webRef.current?.injectJavaScript(
-        `setMyLocation(${lat}, ${lng}, ${zoom ?? 'undefined'}); true;`,
+        `setMyLocation(${lat}, ${lng}, ${zoom ?? 'undefined'}, ${recenter !== false}); true;`,
       )
     },
     setHeading: (deg) => {

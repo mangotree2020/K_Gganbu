@@ -26,6 +26,9 @@ import { track } from '@/features/analytics/service'
 import { useRequireAccount } from '@/features/auth/loginPrompt'
 import { matchDeal } from '@/features/coupon/matchDeal'
 import { useJourneyTracker } from '@/features/journey/tracker'
+import { ReviewSheet, type ReviewTargetPlace } from '@/features/review/ReviewSheet'
+import { markVisitReviewed, recordVisit } from '@/features/review/visits'
+import { isArrived } from '@/features/review/visitLog'
 import { useCoupons } from '@/features/coupon/queries'
 import { useFavorites, useToggleFavorite } from '@/features/favorites/queries'
 import { GoogleMap, type GoogleMapHandle } from '@/features/map/GoogleMap'
@@ -50,7 +53,7 @@ import { getTickets, type Ticket } from '@/features/ticket/services'
 import { useCurrentLocation } from '@/hooks/useCurrentLocation'
 import { useTabBarAutoHide, useTabBarStore } from '@/hooks/useTabBarAutoHide'
 import { useLocaleStore, useT } from '@/lib/i18n'
-import { palette, shadows } from '@/theme/tokens'
+import { palette, radius, shadows } from '@/theme/tokens'
 
 // 도보 사용자 기준 줌 — 골목·건물이 구분되는 축척(≈100m 스케일).
 // 검색/내 위치/장소 선택 시 공통 사용. Naver·Google 모두 동일 zoom 체계라 두 지도 축척이 일치한다
@@ -61,6 +64,9 @@ const WALK_ZOOM = 17
 // Blend 바가 시트 상단에 상주(grabber 대체)하므로 바 높이만큼만 여유를 더한다
 const SHEET_MINI = 152
 const SHEET_HALF = 248 // 헤드 + 가로 추천카드 절반 정도 보임
+// 몰입 모드 하단 Blend 바가 차지하는 높이 — 그 위로 FAB를 띄우기 위한 오프셋
+// (슬라이더 32 + blendBar 상하 여백 12 + 캡슐 여백)
+const BLEND_FLOAT_H = 52
 // FULL 높이는 화면 크기에서 계산한다(지도 상단 검색바까지 덮는 거의 전체 화면) — 컴포넌트 내부 sheetFullH
 
 // 카테고리 필터 — 네이버/구글 지도 수준의 다양한 분류(TourAPI 콘텐츠 타입 기반)
@@ -233,9 +239,45 @@ export default function MapScreen() {
   } | null>(null)
   const [routing, setRouting] = useState(false)
   // 길찾기 중 내 위치 마커 실시간 갱신(4초/5m) + 이동 경로 기록(REQ-LOC-1·2)
+  // 길찾기 목적지 — 도착 판정용(후기 요청). 경로를 지우면 함께 비운다.
+  // armed: 반경 밖에 있었던 적이 있는가. 목적지 바로 앞에서 길찾기를 눌러도 도착 이벤트가
+  // 즉시 뜨는 오탐을 막는다("이동해서 도착했다"만 방문으로 본다).
+  const navTargetRef = useRef<{
+    placeKey: string
+    name: string
+    cat: string
+    dst: LatLng
+    armed: boolean
+  } | null>(null)
+  // 도착한 장소 — 후기 배너로 노출(후기를 남기거나 닫으면 사라진다)
+  const [arrived, setArrived] = useState<ReviewTargetPlace | null>(null)
+  // 후기 작성 시트 대상
+  const [reviewFor, setReviewFor] = useState<ReviewTargetPlace | null>(null)
+
+  // 추적 중에는 마커만 옮긴다(recenter=false). 예전에는 4초마다 카메라를 내 위치로 되돌리고
+  // 줌까지 17로 강제해, 걷는 중 경로 앞쪽을 보려고 지도를 움직이면 곧바로 튕겨 돌아왔다.
   const journey = useJourneyTracker((lat, lng) => {
-    naverRef.current?.setMyLocation(lat, lng)
-    googleRef.current?.setMyLocation(lat, lng)
+    naverRef.current?.setMyLocation(lat, lng, undefined, false)
+    googleRef.current?.setMyLocation(lat, lng, undefined, false)
+    // 목적지 반경 안에 들어오면 "다녀왔다"로 보고 후기를 청한다(도착 판정 = 후기 자격).
+    const target = navTargetRef.current
+    if (!target) return
+    const inside = isArrived({ lat, lng }, { lat: target.dst.latitude, lng: target.dst.longitude })
+    if (!inside) {
+      target.armed = true // 반경 밖으로 나갔다 — 이제 도착을 인정할 수 있다
+      return
+    }
+    if (!target.armed) return
+    navTargetRef.current = null // 한 경로당 한 번만
+    recordVisit({
+      placeKey: target.placeKey,
+      name: target.name,
+      cat: target.cat,
+      lat: target.dst.latitude,
+      lng: target.dst.longitude,
+      source: 'arrival',
+    })
+    setArrived({ placeKey: target.placeKey, name: target.name, cat: target.cat })
   })
 
   // 검색 (Naver 지역검색 → 결과로 지도 이동)
@@ -388,13 +430,14 @@ export default function MapScreen() {
 
   // 내 위치로 이동 + 파란 점 표시 — 탭할 때마다 GPS를 새로 측정한다.
   // (마운트 시 1회 좌표만 재사용하면 캐시·폴백 지점에 고정돼 잘못된 위치를 계속 가리킴)
-  const goToMyLocation = async () => {
+  // recenter=false면 위치 마커만 갱신(탭 재진입 시 보던 경로·시점을 뺏지 않기 위함)
+  const goToMyLocation = async (recenter = true) => {
     if (locating) return
     setLocating(true)
     const fresh = await refreshLocation()
     const c = fresh ?? coords // 측정 실패 시 마지막 좌표로 이동
-    naverRef.current?.setMyLocation(c.latitude, c.longitude, WALK_ZOOM)
-    googleRef.current?.setMyLocation(c.latitude, c.longitude, WALK_ZOOM)
+    naverRef.current?.setMyLocation(c.latitude, c.longitude, WALK_ZOOM, recenter)
+    googleRef.current?.setMyLocation(c.latitude, c.longitude, WALK_ZOOM, recenter)
     setLocating(false)
   }
   // 지도 유형 순환 (일반→위성→하이브리드)
@@ -700,8 +743,10 @@ export default function MapScreen() {
     googleRef.current?.setMyLocation(coords.latitude, coords.longitude, WALK_ZOOM)
   }, [locLoading, mapsReady, coords.latitude, coords.longitude])
 
-  // 지도 탭에 다시 들어올 때마다 현재 위치를 새로 측정해 중심을 잡는다.
+  // 지도 탭에 다시 들어올 때마다 현재 위치를 새로 측정한다.
   // (탭 화면은 언마운트되지 않아 위 초기 센터링이 최초 1회만 동작하므로 별도 처리)
+  // 단, 경로를 그려둔 상태면 카메라는 옮기지 않는다 — 길찾기 결과를 보다 다른 탭을 다녀오면
+  // 경로 전체 뷰가 내 위치 줌으로 바뀌어 버리던 문제.
   const firstFocusRef = useRef(true)
   useEffect(() => {
     if (!focused) return
@@ -709,7 +754,9 @@ export default function MapScreen() {
       firstFocusRef.current = false // 마운트 직후는 초기 센터링이 담당
       return
     }
-    void goToMyLocation()
+    // 코스 전체 보기는 routeInfo 없이 경로만 그리므로(routePathRef) 둘 다 확인한다
+    const hasRoute = !!routeInfo || !!routePathRef.current
+    void goToMyLocation(!hasRoute)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [focused])
 
@@ -772,6 +819,20 @@ export default function MapScreen() {
     naverRef.current?.drawRoute(res.path)
     googleRef.current?.drawRoute(res.path)
     setRouting(false)
+    // 도착 판정 대상 등록 — 목적지 정보는 지금 시점의 선택 장소에서 가져온다
+    if (place) {
+      navTargetRef.current = {
+        placeKey: place.id,
+        name: place.name,
+        cat: place.cat ?? 'sights',
+        dst: goal,
+        // 출발 지점이 이미 반경 안이면 "다녀온 것"이 아니다 — 실제로 벗어났다 돌아와야 인정
+        armed: !isArrived(
+          { lat: start.latitude, lng: start.longitude },
+          { lat: goal.latitude, lng: goal.longitude },
+        ),
+      }
+    }
     // 이동 트래킹 시작 (REQ-LOC-1·2) — 4초/5m 간격으로 내 위치 마커 갱신 + 경로 기록
     journey.start()
   }
@@ -779,6 +840,7 @@ export default function MapScreen() {
   const clearRoute = () => {
     setRouteInfo(null)
     routePathRef.current = null
+    navTargetRef.current = null
     naverRef.current?.clearRoute()
     googleRef.current?.clearRoute()
     // 이동 트래킹 종료 — 유효 이동(100m+·도보 속도)이면 walk_journeys 업로드(랭킹 반영)
@@ -900,6 +962,61 @@ export default function MapScreen() {
 
   // 외부 지도 앱 딥링크 (현지인=Naver / 외국인=Google)
   // Naver: 공식 앱 스킴 nmap://place(좌표+이름 → 정확한 장소 핀) → 미설치 시 웹 지도 검색 폴백
+  // Blend 바 — 시트 안(일반)과 하단 플로팅(몰입) 두 자리에서 같은 컨트롤을 쓴다.
+  // draggable=false(몰입)에서는 세로 드래그 핸들러를 붙이지 않는다 — 시트가 접힌 상태라
+  // 드래그가 시트를 되살려 전체 화면이 풀리기 때문(슬라이더·칩 조작은 그대로 동작).
+  const renderBlendBar = (draggable: boolean) => (
+    <View style={ss.blendBar} {...(draggable ? blendBarPan.panHandlers : {})}>
+      <View>
+        <Pressable
+          onPress={() => setNaverMarkersOn((v) => !v)}
+          hitSlop={8}
+          style={[
+            ss.blendChip,
+            { backgroundColor: '#03C75A' },
+            !naverMarkersOn && ss.blendChipOff,
+          ]}>
+          <Text style={ss.blendChipText}>Naver</Text>
+        </Pressable>
+        {naverFull && (
+          <Animated.View
+            pointerEvents="none"
+            style={[ss.neonRing, { borderColor: '#4ADE80', opacity: neonPulse }]}
+          />
+        )}
+      </View>
+      <Slider
+        style={{ flex: 1, height: 32 }}
+        minimumValue={0}
+        maximumValue={1}
+        value={blendPos}
+        onSlidingStart={cancelBlendDemo}
+        onValueChange={setBlendPos}
+        minimumTrackTintColor="#03C75A"
+        maximumTrackTintColor="#4285F4"
+        thumbTintColor={palette.zinc[900]}
+      />
+      <View>
+        <Pressable
+          onPress={() => setGoogleMarkersOn((v) => !v)}
+          hitSlop={8}
+          style={[
+            ss.blendChip,
+            { backgroundColor: '#4285F4' },
+            !googleMarkersOn && ss.blendChipOff,
+          ]}>
+          <Text style={ss.blendChipText}>Google</Text>
+        </Pressable>
+        {googleFull && (
+          <Animated.View
+            pointerEvents="none"
+            style={[ss.neonRing, { borderColor: '#93C5FD', opacity: neonPulse }]}
+          />
+        )}
+      </View>
+    </View>
+  )
+
   return (
     <View
       style={ss.container}
@@ -1087,17 +1204,53 @@ export default function MapScreen() {
 
             {/* POI 마커가 샘플 데이터일 때 */}
             {poisMock && <FallbackBadge label="Sample places" />}
+
+            {/* 도착 배너 — 목적지 반경에 들어오면 그 자리에서 후기를 청한다.
+                모달을 바로 띄우면 걷는 중에 화면을 가로채므로 배너로 제안만 한다. */}
+            {arrived && (
+              <Pressable
+                style={[ss.arriveBar, shadows.card]}
+                onPress={() => {
+                  setReviewFor(arrived)
+                  setArrived(null)
+                }}>
+                <Icon name="star" size={16} color={palette.amber[50]} filled />
+                <Text style={ss.arriveText} numberOfLines={2}>
+                  {t('review.arrivedTitle').replace('{place}', arrived.name)}
+                </Text>
+                <Pressable onPress={() => setArrived(null)} hitSlop={8}>
+                  <Icon name="close" size={15} color={palette.zinc[400]} />
+                </Pressable>
+              </Pressable>
+            )}
           </SafeAreaView>
         )}
       </View>
 
-      {/* 우측 FAB — 내 위치(GPS) / 지도 유형. 지도가 화면 전체를 차지하므로 시트에 가리지 않도록
-          시트 높이만큼 띄운다. 몰입 모드에서는 숨김 */}
+      {/* 우측 FAB — 전체 화면 / 내 위치(GPS) / 지도 유형. 지도가 화면 전체를 차지하므로
+          시트에 가리지 않도록 시트 높이만큼 띄운다. */}
       {!immersive && (
         <Animated.View
           style={[ss.fabCol, { bottom: Animated.add(sheetHeight, 18) }]}
           pointerEvents="box-none">
-          <Pressable style={ss.fab} onPress={goToMyLocation} hitSlop={6}>
+          <Pressable
+            style={ss.fab}
+            onPress={() => {
+              // 진행 중인 지도 탭 조회를 무효화 — 늦게 실패한 조회가 몰입 모드를 되돌리지 않도록
+              lookupSeqRef.current += 1
+              setImmersiveMode(true)
+            }}
+            hitSlop={6}
+            accessibilityRole="button"
+            accessibilityLabel={t('map.fullscreen')}>
+            <Icon name="fullscreen" size={20} color={palette.zinc[700]} />
+          </Pressable>
+          <Pressable
+            style={ss.fab}
+            onPress={() => goToMyLocation()}
+            hitSlop={6}
+            accessibilityRole="button"
+            accessibilityLabel={t('map.myLocation')}>
             {locating ? (
               <ActivityIndicator size="small" color={palette.blue[50]} />
             ) : (
@@ -1116,61 +1269,40 @@ export default function MapScreen() {
         </Animated.View>
       )}
 
+      {/* 몰입(전체 화면) 중 — 복귀 버튼만 남긴다. 이전에는 지도 빈 곳 탭이 유일한 탈출구라
+          지도를 조작하다 갇힌 것처럼 느껴졌다. 시트가 없으므로 화면 하단 기준으로 배치. */}
+      {immersive && (
+        <View
+          style={[ss.fabCol, { bottom: insets.bottom + BLEND_FLOAT_H + 18 }]}
+          pointerEvents="box-none">
+          <Pressable
+            style={ss.fab}
+            onPress={() => {
+              lookupSeqRef.current += 1
+              setImmersiveMode(false)
+            }}
+            hitSlop={6}
+            accessibilityRole="button"
+            accessibilityLabel={t('map.fullscreenExit')}>
+            <Icon name="fullscreen_exit" size={20} color={palette.zinc[700]} />
+          </Pressable>
+        </View>
+      )}
+
+      {/* Blend 바 — 몰입(전체 화면)에서는 시트가 접혀도 이 컨트롤만은 남긴다.
+          두 지도를 섞어 보는 것이 K-Map의 핵심 조작이라, 지도를 키운 순간 사라지면
+          "지도를 크게 볼수록 지도를 못 다루는" 상태가 된다. 탭바가 비운 자리에 그대로 앉힌다. */}
+      {immersive && isBlend && (
+        <View style={[ss.blendFloat, { bottom: insets.bottom + 8 }]} pointerEvents="box-none">
+          {renderBlendBar(false)}
+        </View>
+      )}
+
       {/* 하단 시트 — 선택 장소 (드래그로 접기/펼치기) */}
       <Animated.View style={[ss.sheet, { height: sheetHeight }]}>
         {/* Blend 투명도 바 — 시트 상단에 상주. 가로 드래그 = Naver(좌)↔Google(우) 투명도,
             세로 드래그 = 시트(리뷰 박스) 높이 조절. 양끝 칩 = 각 지도 마커 표시 토글 */}
-        {isBlend && (
-          <View style={ss.blendBar} {...blendBarPan.panHandlers}>
-            <View>
-              <Pressable
-                onPress={() => setNaverMarkersOn((v) => !v)}
-                hitSlop={8}
-                style={[
-                  ss.blendChip,
-                  { backgroundColor: '#03C75A' },
-                  !naverMarkersOn && ss.blendChipOff,
-                ]}>
-                <Text style={ss.blendChipText}>Naver</Text>
-              </Pressable>
-              {naverFull && (
-                <Animated.View
-                  pointerEvents="none"
-                  style={[ss.neonRing, { borderColor: '#4ADE80', opacity: neonPulse }]}
-                />
-              )}
-            </View>
-            <Slider
-              style={{ flex: 1, height: 32 }}
-              minimumValue={0}
-              maximumValue={1}
-              value={blendPos}
-              onSlidingStart={cancelBlendDemo}
-              onValueChange={setBlendPos}
-              minimumTrackTintColor="#03C75A"
-              maximumTrackTintColor="#4285F4"
-              thumbTintColor={palette.zinc[900]}
-            />
-            <View>
-              <Pressable
-                onPress={() => setGoogleMarkersOn((v) => !v)}
-                hitSlop={8}
-                style={[
-                  ss.blendChip,
-                  { backgroundColor: '#4285F4' },
-                  !googleMarkersOn && ss.blendChipOff,
-                ]}>
-                <Text style={ss.blendChipText}>Google</Text>
-              </Pressable>
-              {googleFull && (
-                <Animated.View
-                  pointerEvents="none"
-                  style={[ss.neonRing, { borderColor: '#93C5FD', opacity: neonPulse }]}
-                />
-              )}
-            </View>
-          </View>
-        )}
+        {!immersive && isBlend && renderBlendBar(true)}
         {place ? (
           <>
             {/* 컴팩트 선택 장소 헤드 — 시트 드래그 확장 영역(버튼 탭은 통과, 상하 드래그만 캡처) */}
@@ -1338,6 +1470,14 @@ export default function MapScreen() {
           </View>
         )}
       </Animated.View>
+
+      {/* 후기 작성 시트 — 도착 배너에서 진입 */}
+      <ReviewSheet
+        visible={!!reviewFor}
+        place={reviewFor}
+        onClose={() => setReviewFor(null)}
+        onSaved={markVisitReviewed}
+      />
     </View>
   )
 }
@@ -1401,6 +1541,20 @@ const ss = StyleSheet.create({
 
   // 우측 FAB 컬럼 — 내 위치 / 지도 유형
   fabCol: { position: 'absolute', right: 14, gap: 10, alignItems: 'center' }, // bottom은 시트 높이에 맞춰 동적
+  // 도착 후기 배너 — 검색바 아래(상단 컨트롤 흐름 안), FAB·시트와 겹치지 않는 자리
+  arriveBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginTop: 8,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    borderRadius: radius.lg,
+    backgroundColor: '#fff',
+    borderWidth: 1,
+    borderColor: palette.amber[90],
+  },
+  arriveText: { flex: 1, fontSize: 13, fontWeight: '700', color: palette.zinc[700] },
   fab: {
     width: 46,
     height: 46,
@@ -1466,6 +1620,17 @@ const ss = StyleSheet.create({
     paddingVertical: 2,
     marginTop: 6, // grabber 제거 — 바 자체가 드래그 핸들
     marginBottom: 6,
+  },
+  // 몰입 모드의 Blend 바 자리 — 시트가 없으므로 화면 하단에 직접 띄운다.
+  // 지도 위에 뜨는 만큼 흰 배경 캡슐로 감싸 야외 시인성을 확보한다.
+  blendFloat: {
+    position: 'absolute',
+    left: 12,
+    right: 12,
+    backgroundColor: '#fff',
+    borderRadius: 999,
+    paddingHorizontal: 6,
+    ...shadows.pop,
   },
   blendChip: { borderRadius: 999, paddingHorizontal: 8, paddingVertical: 3 },
   blendChipOff: { opacity: 0.35 },

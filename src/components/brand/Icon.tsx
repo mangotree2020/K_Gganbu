@@ -107,6 +107,8 @@ import {
   RotateCw,
   Trash2,
   Wallet,
+  Maximize,
+  Minimize,
 } from 'lucide-react-native'
 
 const MAP: Record<string, LucideIcon> = {
@@ -184,6 +186,8 @@ const MAP: Record<string, LucideIcon> = {
   navigation_2: Navigation2,
   map: MapIcon,
   my_location: Crosshair,
+  fullscreen: Maximize,
+  fullscreen_exit: Minimize,
   nightlife: Moon,
   notifications: Bell,
   park: TreePine,

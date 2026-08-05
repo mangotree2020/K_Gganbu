@@ -36,7 +36,8 @@ export type GoogleMapHandle = {
   drawRoute: (path: { latitude: number; longitude: number }[]) => void
   clearRoute: () => void
   setMapType: (type: 'normal' | 'satellite' | 'hybrid') => void
-  setMyLocation: (lat: number, lng: number, zoom?: number) => void
+  // recenter=false: 마커만 갱신하고 카메라는 그대로 둔다(이동 추적 중 사용자의 시점 유지)
+  setMyLocation: (lat: number, lng: number, zoom?: number, recenter?: boolean) => void
   setHeading: (deg: number) => void // 내 방향(나침반) — 위치 핀의 방향 빔 회전
 }
 
@@ -123,7 +124,7 @@ function buildHtml(lat: number, lng: number, markers: GoogleMarker[], lang: stri
         anchor: new google.maps.Point(44, 87), // viewBox (0,0)=핀 끝
       };
     }
-    function setMyLocation(lat, lng, zoom){
+    function setMyLocation(lat, lng, zoom, recenter){
       if(!map) return;
       if(myLocPin) myLocPin.setMap(null);
       var pos = { lat: lat, lng: lng };
@@ -131,6 +132,7 @@ function buildHtml(lat: number, lng: number, markers: GoogleMarker[], lang: stri
         position: pos, map: map, zIndex: 1000, clickable: false,
         icon: myLocIcon(),
       });
+      if(recenter === false) return;
       map.panTo(pos);
       map.setZoom(zoom || 17);
     }
@@ -270,9 +272,9 @@ export const GoogleMap = forwardRef<GoogleMapHandle, Props>(function GoogleMap(
     setMapType: (type) => {
       webRef.current?.injectJavaScript(`setMapType(${JSON.stringify(type)}); true;`)
     },
-    setMyLocation: (lat, lng, zoom) => {
+    setMyLocation: (lat, lng, zoom, recenter) => {
       webRef.current?.injectJavaScript(
-        `setMyLocation(${lat}, ${lng}, ${zoom ?? 'undefined'}); true;`,
+        `setMyLocation(${lat}, ${lng}, ${zoom ?? 'undefined'}, ${recenter !== false}); true;`,
       )
     },
     setHeading: (deg) => {
