@@ -5,6 +5,7 @@
 export type RemoteComment = {
   id: string
   author: string
+  userId?: string | null // 작성자 계정 — 있으면 이걸로 내 댓글 여부를 판정한다
   parentId: string | null
   body: string
   createdAt: string
@@ -23,6 +24,7 @@ export type CommentRow = {
   id: string
   author: string
   mine: boolean
+  local: boolean // 로컬(게스트) 기록인지 — 수정·삭제를 서버가 아니라 스토어에서 처리
   body: string
   ageMin: number
   replyToName?: string
@@ -32,21 +34,26 @@ export type CommentRow = {
 const minsSince = (ms: number, now: number) => Math.max(0, Math.round((now - ms) / 60000))
 
 // 서버 + 로컬 → 시간순 단일 트리(원댓글 + 대댓글 1단계, 오래된 것부터).
-// mine 판정은 표시용(아바타·You 배지)이라 표시 이름 비교로 충분하다 —
-// 같은 이름을 쓰는 타인은 구분하지 못하지만, 이 값으로 권한을 나누지는 않는다.
+// mine 판정은 계정 id를 우선한다 — 표시 이름은 식별자가 아니라서 동명이인에게 수정·삭제
+// 버튼이 보일 수 있다(서버 RLS가 막긴 하지만 누를 수 있는 버튼을 보여줄 이유가 없다).
+// 계정 id가 없는 행(전송 대기·구버전 캐시)만 이름으로 대체 판정한다.
 export function mergeComments(
   remote: RemoteComment[],
   local: LocalComment[],
   myName: string,
   now: number,
+  myUserId?: string | null,
 ): CommentRow[] {
+  const isMine = (c: RemoteComment) =>
+    c.userId != null && myUserId != null ? c.userId === myUserId : c.author === myName
   const ids = new Set(remote.map((c) => c.id))
   // 부모가 조회 범위(최근 100건) 밖이면 답글이 통째로 사라진다 → 원댓글 자리에 올려 보존한다
   const isRoot = (c: RemoteComment) => !c.parentId || !ids.has(c.parentId)
   const roots: CommentRow[] = remote.filter(isRoot).map((c) => ({
     id: c.id,
     author: c.author,
-    mine: c.author === myName,
+    mine: isMine(c),
+    local: false,
     body: c.body,
     ageMin: minsSince(new Date(c.createdAt).getTime(), now),
     replies: remote
@@ -54,7 +61,8 @@ export function mergeComments(
       .map((r) => ({
         id: r.id,
         author: r.author,
-        mine: r.author === myName,
+        mine: isMine(r),
+        local: false,
         body: r.body,
         ageMin: minsSince(new Date(r.createdAt).getTime(), now),
         replies: [],
@@ -65,6 +73,7 @@ export function mergeComments(
     id: c.id,
     author: myName,
     mine: true,
+    local: true,
     body: c.text,
     ageMin: minsSince(c.ts, now),
     ...(c.replyToName ? { replyToName: c.replyToName } : {}),
@@ -72,6 +81,7 @@ export function mergeComments(
       id: r.id,
       author: myName,
       mine: true,
+      local: true,
       body: r.text,
       ageMin: minsSince(r.ts, now),
       replies: [],

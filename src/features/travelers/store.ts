@@ -29,6 +29,9 @@ interface FeedState {
   // 서버가 받아간 로컬 복사본 제거 — 같은 댓글이 "나"와 "내 이름"으로 두 번 보이던 원인
   removeComment: (postId: string, id: string) => void
   markCommented: (postId: string) => void
+  // 로컬(게스트) 댓글·답글 수정·삭제 — 서버 댓글은 RLS가 걸린 별도 경로로 처리한다
+  editLocalComment: (postId: string, id: string, text: string) => void
+  deleteLocalComment: (postId: string, id: string) => void
   // 서버에 이미 같은 본문이 올라간 로컬 댓글 정리(이전 버전에서 중복 저장된 기기 자가 복구)
   pruneSynced: (postId: string, synced: { body: string; ts: number }[]) => void
   blockAuthor: (author: string) => void
@@ -59,6 +62,27 @@ export const useFeedStore = create<FeedState>()(
         }),
       markCommented: (postId) =>
         set((s) => ({ commentedPosts: { ...s.commentedPosts, [postId]: true } })),
+      editLocalComment: (postId, id, text) =>
+        set((s) => {
+          const body = text.trim()
+          if (!body) return s
+          const list = s.comments[postId] ?? []
+          const next = list.map((c) =>
+            c.id === id
+              ? { ...c, text: body }
+              : { ...c, replies: c.replies?.map((r) => (r.id === id ? { ...r, text: body } : r)) },
+          )
+          return { comments: { ...s.comments, [postId]: next } }
+        }),
+      deleteLocalComment: (postId, id) =>
+        set((s) => {
+          const list = s.comments[postId] ?? []
+          // 원댓글을 지우면 그 아래 답글도 함께 사라진다(서버의 on delete cascade 와 같은 규칙)
+          const next = list
+            .filter((c) => c.id !== id)
+            .map((c) => ({ ...c, replies: c.replies?.filter((r) => r.id !== id) }))
+          return { comments: { ...s.comments, [postId]: next } }
+        }),
       removeComment: (postId, id) =>
         set((s) => ({
           comments: {

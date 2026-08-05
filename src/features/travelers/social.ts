@@ -17,6 +17,7 @@ export type FeedComment = {
   id: string
   postId: string
   author: string
+  userId: string | null // 작성자 계정 — 수정·삭제 버튼 노출 판정(표시 이름은 식별자가 아니다)
   parentId: string | null
   body: string
   createdAt: string
@@ -25,6 +26,17 @@ export type FeedComment = {
 async function myId(): Promise<string | null> {
   const { data } = await supabase.rpc('current_user_id')
   return (data as string | null) ?? null
+}
+
+// 내 계정 id — 댓글 수정·삭제 버튼 노출 판정용. 세션 동안 바뀌지 않아 오래 캐시한다.
+export function useMyUserId() {
+  const user = useAuthStore((s) => s.user)
+  return useQuery({
+    queryKey: ['my-user-id', user?.id ?? null],
+    enabled: !!user,
+    staleTime: 60 * 60 * 1000,
+    queryFn: myId,
+  })
 }
 
 // 화면에 보이는 포스트들의 좋아요·댓글 수를 한 번에 — 카드마다 쿼리하면 스크롤 중 요청이 폭증한다
@@ -52,7 +64,7 @@ export function usePostComments(postId: string | null) {
     queryFn: async (): Promise<FeedComment[]> => {
       const { data, error } = await supabase
         .from('feed_comments')
-        .select('id, post_id, author_name, parent_id, body, created_at')
+        .select('id, post_id, user_id, author_name, parent_id, body, created_at')
         .eq('post_id', postId!)
         .order('created_at', { ascending: true })
         .limit(100)
@@ -61,6 +73,7 @@ export function usePostComments(postId: string | null) {
         id: c.id,
         postId: c.post_id,
         author: c.author_name,
+        userId: c.user_id ?? null,
         parentId: c.parent_id,
         body: c.body,
         createdAt: c.created_at,
@@ -72,6 +85,7 @@ export function usePostComments(postId: string | null) {
 type CommentRow = {
   id: string
   post_id: string
+  user_id: string | null
   author_name: string
   parent_id: string | null
   body: string
@@ -119,6 +133,38 @@ export function useAddCommentRemote() {
         parent_id: input.parentId ?? null,
         body: input.body.trim(),
       })
+      if (error) throw error
+      return true
+    },
+    onSuccess: (_d, v) => {
+      qc.invalidateQueries({ queryKey: ['feed-comments', v.postId] })
+      qc.invalidateQueries({ queryKey: ['feed-counts'] })
+    },
+  })
+}
+
+// 댓글 수정 — 본인 행만(RLS). 다른 사람 댓글은 서버가 거부한다.
+export function useEditCommentRemote() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async ({ id, body }: { id: string; postId: string; body: string }) => {
+      const { error } = await supabase
+        .from('feed_comments')
+        .update({ body: body.trim() })
+        .eq('id', id)
+      if (error) throw error
+      return true
+    },
+    onSuccess: (_d, v) => qc.invalidateQueries({ queryKey: ['feed-comments', v.postId] }),
+  })
+}
+
+// 댓글 삭제 — 본인 행만(RLS). 대댓글은 FK on delete cascade 로 함께 사라진다.
+export function useDeleteCommentRemote() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async ({ id }: { id: string; postId: string }) => {
+      const { error } = await supabase.from('feed_comments').delete().eq('id', id)
       if (error) throw error
       return true
     },

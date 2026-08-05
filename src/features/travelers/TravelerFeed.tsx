@@ -1,8 +1,9 @@
 // 여행자 후기 인스타 스타일 피드 — 프로필 + 리뷰글 + 미디어(다중 이미지·영상) + 장소 링크 + 별/댓글/공유.
 // 정렬(시간+거리)과 무한 스크롤 로딩은 상위(홈)에서 posts/loadingMore로 주입한다.
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   ActivityIndicator,
+  Alert,
   Keyboard,
   Modal,
   type NativeScrollEvent,
@@ -30,7 +31,10 @@ import { ageLabel, type MediaItem, type TravelerPost } from './feed'
 import { blockAuthorRemote, reportContent } from './moderation'
 import {
   useAddCommentRemote,
+  useDeleteCommentRemote,
+  useEditCommentRemote,
   useFeedCounts,
+  useMyUserId,
   usePostComments,
   useToggleLikeRemote,
   type FeedCount,
@@ -327,21 +331,23 @@ function CommentAvatar({ name, size }: { name: string; size: number }) {
   )
 }
 
-// 댓글 한 줄 — 아바타 + 이름·시간 + 본문 + 답글. 출처와 무관하게 같은 모양이다.
+// 댓글 한 줄 — 아바타 + 이름·시간 + 본문 + 액션(답글/수정/삭제).
+// 액션은 아이콘으로 통일한다 — 27개 UI 언어에서 텍스트 버튼은 길이가 제각각이라
+// 줄이 밀리고, 파란 링크 텍스트는 눌러야 할 것으로 잘 읽히지도 않았다.
 function CommentRow({
   row,
   depth,
   onReply,
-  replyLabel,
-  youLabel,
-  justNow,
+  onEdit,
+  onDelete,
+  labels,
 }: {
   row: CRow
   depth: 0 | 1
   onReply?: (id: string, author: string) => void
-  replyLabel: string
-  youLabel: string
-  justNow: string
+  onEdit?: (row: CRow) => void
+  onDelete?: (row: CRow) => void
+  labels: { reply: string; edit: string; del: string; you: string; justNow: string }
 }) {
   const size = depth === 0 ? 34 : 26
   return (
@@ -354,23 +360,46 @@ function CommentRow({
           </Text>
           {row.mine && (
             <View style={ss.cYouPill}>
-              <Text style={ss.cYouText}>{youLabel}</Text>
+              <Text style={ss.cYouText}>{labels.you}</Text>
             </View>
           )}
-          <Text style={ss.cTime}>{ageLabel(row.ageMin, justNow)}</Text>
+          <Text style={ss.cTime}>{ageLabel(row.ageMin, labels.justNow)}</Text>
         </View>
         {!!row.replyToName && <Text style={ss.cReplyTo}>@{row.replyToName}</Text>}
         <Text style={ss.cBody}>{row.body}</Text>
-        {onReply && (
-          <Pressable
-            onPress={() => onReply(row.id, row.author)}
-            hitSlop={8}
-            style={ss.cReplyBtn}
-            accessibilityRole="button"
-            accessibilityLabel={replyLabel}>
-            <Text style={ss.cReplyText}>{replyLabel}</Text>
-          </Pressable>
-        )}
+        <View style={ss.cActions}>
+          {onReply && (
+            <Pressable
+              onPress={() => onReply(row.id, row.author)}
+              hitSlop={8}
+              style={ss.cActionBtn}
+              accessibilityRole="button"
+              accessibilityLabel={labels.reply}>
+              <Icon name="reply" size={15} color={palette.zinc[500]} />
+            </Pressable>
+          )}
+          {/* 수정·삭제는 내 댓글에만 — 남의 댓글에 눌리지 않을 버튼을 보여주지 않는다 */}
+          {row.mine && onEdit && (
+            <Pressable
+              onPress={() => onEdit(row)}
+              hitSlop={8}
+              style={ss.cActionBtn}
+              accessibilityRole="button"
+              accessibilityLabel={labels.edit}>
+              <Icon name="edit" size={15} color={palette.zinc[500]} />
+            </Pressable>
+          )}
+          {row.mine && onDelete && (
+            <Pressable
+              onPress={() => onDelete(row)}
+              hitSlop={8}
+              style={ss.cActionBtn}
+              accessibilityRole="button"
+              accessibilityLabel={labels.del}>
+              <Icon name="delete" size={15} color={palette.coral[50]} />
+            </Pressable>
+          )}
+        </View>
       </View>
     </View>
   )
@@ -397,15 +426,24 @@ function CommentSheet({ postId, onClose }: { postId: string | null; onClose: () 
   const markCommented = useFeedStore((s) => s.markCommented)
   const { data: remoteComments, isLoading, isError, refetch } = usePostComments(postId)
   const addRemote = useAddCommentRemote()
+  const editRemote = useEditCommentRemote()
+  const deleteRemote = useDeleteCommentRemote()
+  const { data: myUserId } = useMyUserId()
+  const editLocal = useFeedStore((s) => s.editLocalComment)
+  const deleteLocal = useFeedStore((s) => s.deleteLocalComment)
   const myName = useProfileStore((s) => s.displayName) || 'Traveler'
   const [text, setText] = useState('')
   const [replyTo, setReplyTo] = useState<{ id: string; author: string } | null>(null)
+  // 수정 중인 내 댓글 — 입력창이 수정 모드로 바뀐다(별도 화면 없이 같은 자리에서 고친다)
+  const [editing, setEditing] = useState<{ id: string; local: boolean } | null>(null)
   const [kbHeight, setKbHeight] = useState(0)
   // 경과 시간 기준 시각 — 렌더 중 Date.now()를 부르면 렌더가 비순수해진다(목록 갱신 때만 새로 잡는다)
   const [now, setNow] = useState(Date.now)
   // 전송했지만 아직 서버 목록에 안 잡힌 내 댓글 — 쿼리 캐시에 끼워 넣으면 다른 전송의
   // 재조회가 통째로 덮어써 사라진다. 시트가 직접 들고 있다가 서버에 나타나면 뺀다.
   const [pending, setPending] = useState<RemoteComment[]>([])
+  // 직전 전송(본문·시각) — 습관적 연타나 이벤트 중복으로 같은 댓글이 두 번 올라가지 않게 한다
+  const lastSentRef = useRef<{ body: string; at: number }>({ body: '', at: 0 })
 
   // 다음 틱으로 미뤄 실행(이펙트 내 동기 setState로 인한 연쇄 렌더 방지 — ai.tsx와 동일 패턴)
   useEffect(() => {
@@ -457,8 +495,9 @@ function CommentSheet({ postId, onClose }: { postId: string | null; onClose: () 
         localComments ?? [],
         myName,
         now,
+        myUserId,
       ),
-    [remoteComments, pending, localComments, myName, now],
+    [remoteComments, pending, localComments, myName, now, myUserId],
   )
   const total = useMemo(() => countRows(rows), [rows])
 
@@ -478,13 +517,67 @@ function CommentSheet({ postId, onClose }: { postId: string | null; onClose: () 
   const close = () => {
     setText('')
     setReplyTo(null)
+    setEditing(null)
     Keyboard.dismiss()
     onClose()
+  }
+
+  const labels = {
+    reply: t('travelers.reply'),
+    edit: t('travelers.edit'),
+    del: t('travelers.delete'),
+    you: t('travelers.you'),
+    justNow: t('travelers.justNow'),
+  }
+
+  // 수정 — 본문을 입력창에 채우고 모드를 바꾼다(답글 모드와 상호 배타)
+  const startEdit = (row: CRow) => {
+    setReplyTo(null)
+    setEditing({ id: row.id, local: row.local })
+    setText(row.body)
+  }
+
+  const cancelEdit = () => {
+    setEditing(null)
+    setText('')
+  }
+
+  // 삭제 — 되돌릴 수 없고 답글까지 사라지므로 반드시 확인을 받는다
+  const confirmDelete = (row: CRow) => {
+    if (!postId) return
+    Alert.alert(t('travelers.deleteTitle'), t('travelers.deleteBody'), [
+      { text: t('common.cancel'), style: 'cancel' },
+      {
+        text: t('travelers.delete'),
+        style: 'destructive',
+        onPress: () => {
+          if (editing?.id === row.id) cancelEdit()
+          if (row.local) deleteLocal(postId, row.id)
+          else {
+            setPending((p) => p.filter((c) => c.id !== row.id))
+            if (!row.id.startsWith('tmp:')) deleteRemote.mutate({ id: row.id, postId })
+          }
+        },
+      },
+    ])
   }
 
   const submit = () => {
     const body = text.trim()
     if (!postId || !body) return
+    // 수정 모드 — 새 댓글을 만들지 않고 기존 행을 고친다
+    if (editing) {
+      if (editing.local) editLocal(postId, editing.id, body)
+      else editRemote.mutate({ id: editing.id, postId, body })
+      setEditing(null)
+      setText('')
+      Keyboard.dismiss()
+      return
+    }
+    const nowMs = Date.now()
+    const last = lastSentRef.current
+    if (last.body === body && nowMs - last.at < 1000) return // 같은 내용 연타 방지
+    lastSentRef.current = { body, at: nowMs }
     const target = replyTo
     // 답글 대상이 로컬 댓글이면(게스트 시절 기록 등) 서버에 루트로 저장되지 않도록 로컬에 붙인다
     const localTarget = !!target && !UUID_RE.test(target.id)
@@ -578,32 +671,34 @@ function CommentSheet({ postId, onClose }: { postId: string | null; onClose: () 
                     row={r}
                     depth={0}
                     onReply={(id, author) => setReplyTo({ id, author })}
-                    replyLabel={t('travelers.reply')}
-                    youLabel={t('travelers.you')}
-                    justNow={t('travelers.justNow')}
+                    onEdit={startEdit}
+                    onDelete={confirmDelete}
+                    labels={labels}
                   />
                   {r.replies.map((rr) => (
                     <CommentRow
                       key={rr.id}
                       row={rr}
                       depth={1}
-                      replyLabel={t('travelers.reply')}
-                      youLabel={t('travelers.you')}
-                      justNow={t('travelers.justNow')}
+                      onEdit={startEdit}
+                      onDelete={confirmDelete}
+                      labels={labels}
                     />
                   ))}
                 </View>
               ))}
             </ScrollView>
           )}
-          {/* 답글 모드 배너 — 누구에게 답하는지 보여주고 취소 가능 */}
-          {replyTo && (
+          {/* 모드 배너 — 지금 무엇을 하는 중인지(답글/수정) 보여주고 취소 가능 */}
+          {(replyTo || editing) && (
             <View style={ss.replyBanner}>
               <Text style={ss.replyBannerText} numberOfLines={1}>
-                {t('travelers.replyingMode')} · @{replyTo.author}
+                {editing
+                  ? t('travelers.editingMode')
+                  : `${t('travelers.replyingMode')} · @${replyTo?.author ?? ''}`}
               </Text>
               <Pressable
-                onPress={() => setReplyTo(null)}
+                onPress={() => (editing ? cancelEdit() : setReplyTo(null))}
                 hitSlop={8}
                 accessibilityRole="button"
                 accessibilityLabel={t('common.cancel')}>
@@ -614,7 +709,13 @@ function CommentSheet({ postId, onClose }: { postId: string | null; onClose: () 
           <View style={ss.inputRow}>
             <TextInput
               style={ss.input}
-              placeholder={replyTo ? t('travelers.addReply') : t('travelers.addComment')}
+              placeholder={
+                editing
+                  ? t('travelers.editingMode')
+                  : replyTo
+                    ? t('travelers.addReply')
+                    : t('travelers.addComment')
+              }
               placeholderTextColor={palette.zinc[400]}
               value={text}
               onChangeText={(v) => setText(v.slice(0, MAX_COMMENT))}
@@ -625,15 +726,19 @@ function CommentSheet({ postId, onClose }: { postId: string | null; onClose: () 
               accessibilityLabel={replyTo ? t('travelers.addReply') : t('travelers.addComment')}
             />
             {/* 전송 전용 — 닫기는 헤더 X·배경 탭이 담당한다(한 버튼이 두 일을 하지 않게) */}
+            {/* 전송은 touch-down(onPressIn)에서 확정한다.
+                버튼을 누르면 입력이 blur되며 키보드가 내려가고, 그 순간 시트 padding이 줄어
+                버튼이 손가락 아래에서 밀려나 touch-up(onPress)이 빗나갔다 —
+                "등록하려면 두 번 눌러야 하는" 문제의 원인. */}
             <Pressable
               style={[ss.sendBtn, !text.trim() && ss.sendBtnOff]}
-              onPress={submit}
+              onPressIn={submit}
               disabled={!text.trim()}
               accessibilityRole="button"
               accessibilityLabel={t('travelers.addComment')}
               accessibilityState={{ disabled: !text.trim() }}>
               <Icon
-                name="arrow_upward"
+                name={editing ? 'check_circle' : 'arrow_upward'}
                 size={18}
                 color={text.trim() ? '#fff' : palette.zinc[400]}
               />
@@ -867,9 +972,9 @@ const ss = StyleSheet.create({
   cTime: { fontSize: 11, color: palette.zinc[400] },
   cReplyTo: { fontSize: 11.5, fontWeight: '700', color: palette.blue[50], marginTop: 2 },
   cBody: { fontSize: 13.5, color: palette.zinc[700], marginTop: 3, lineHeight: 19 },
-  // 답글 버튼 — 링크가 아니라 누를 것으로 보이게 여백을 준다(탭 영역 확보)
-  cReplyBtn: { alignSelf: 'flex-start', marginTop: 2, paddingVertical: 8, paddingRight: 14 },
-  cReplyText: { fontSize: 11.5, fontWeight: '800', color: palette.zinc[500] },
+  // 액션(답글·수정·삭제) — 아이콘 버튼. 최소 탭 영역을 확보한다
+  cActions: { flexDirection: 'row', alignItems: 'center', gap: 2, marginTop: 2 },
+  cActionBtn: { paddingVertical: 7, paddingHorizontal: 8 },
   // 스레드 사이 구분선 — 대댓글까지 한 덩어리로 읽히게
   cThread: { borderTopWidth: 1, borderTopColor: palette.zinc[100] },
   cLoading: { paddingVertical: 34, alignItems: 'center' },

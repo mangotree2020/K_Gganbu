@@ -87,6 +87,41 @@ describe('mergeComments', () => {
   })
 })
 
+describe('mergeComments — 내 댓글 판정', () => {
+  // 표시 이름은 계정 식별자가 아니다 — 동명이인에게 수정·삭제 버튼이 보이면 안 된다
+  it('계정 id가 있으면 이름이 같아도 남의 댓글로 본다', () => {
+    const rows = mergeComments(
+      [{ ...remote('a', 'Me', 'hi', 1), userId: 'other-uid' }],
+      [],
+      'Me',
+      NOW,
+      'my-uid',
+    )
+    expect(rows[0]!.mine).toBe(false)
+  })
+
+  it('계정 id가 같으면 이름이 달라도 내 댓글로 본다', () => {
+    const rows = mergeComments(
+      [{ ...remote('a', '옛이름', 'hi', 1), userId: 'my-uid' }],
+      [],
+      'Me',
+      NOW,
+      'my-uid',
+    )
+    expect(rows[0]!.mine).toBe(true)
+  })
+
+  it('계정 id가 없으면(전송 대기 행) 이름으로 판정한다', () => {
+    const rows = mergeComments([remote('tmp:1', 'Me', 'hi', 0)], [], 'Me', NOW, 'my-uid')
+    expect(rows[0]!.mine).toBe(true)
+  })
+
+  it('로컬 기록은 local=true 로 표시된다(수정·삭제를 스토어에서 처리)', () => {
+    const rows = mergeComments([remote('a', 'Mina', 'hi', 5)], [local('l1', '내글', 1)], 'Me', NOW)
+    expect(rows.map((r) => r.local)).toEqual([false, true])
+  })
+})
+
 describe('countRows', () => {
   it('원댓글과 대댓글을 모두 센다', () => {
     const rows = mergeComments(
