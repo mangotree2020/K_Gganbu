@@ -5,7 +5,6 @@ import {
   ActivityIndicator,
   Alert,
   Keyboard,
-  Modal,
   type NativeScrollEvent,
   type NativeSyntheticEvent,
   Pressable,
@@ -40,6 +39,7 @@ import {
   type FeedCount,
 } from './social'
 import { useProfileStore } from '@/features/profile/store'
+import { useCommentSheet } from './sheetStore'
 import { useFeedStore } from './store'
 import { useT } from '@/lib/i18n'
 import { palette, shadows } from '@/theme/tokens'
@@ -411,7 +411,19 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 // 입력 상한 — 제출 후 서버에서야 잘리는 것보다 입력 단계에서 막는 편이 낫다
 const MAX_COMMENT = 300
 
-function CommentSheet({ postId, onClose }: { postId: string | null; onClose: () => void }) {
+// 루트에 상주하는 댓글 시트. Modal 을 쓰지 않는 이유:
+// Android 에서 키보드가 떠 있는 동안 Modal(별도 dialog 창) 안의 첫 탭이 앱에 도달하지 않고
+// 키보드 내리기로 소비돼, 전송 버튼을 두 번 눌러야 했다(실기기 계측). 액티비티 창에 얹는
+// 오버레이로 바꾸면 windowSoftInputMode=adjustResize 가 그대로 적용돼 창이 키보드만큼
+// 줄고, 시트는 그 위에 붙으며 터치도 정상 동작한다.
+export function CommentSheetHost() {
+  const postId = useCommentSheet((s) => s.postId)
+  const closeSheet = useCommentSheet((s) => s.close)
+  if (!postId) return null
+  return <CommentSheet postId={postId} onClose={closeSheet} />
+}
+
+function CommentSheet({ postId, onClose }: { postId: string; onClose: () => void }) {
   const t = useT()
   const insets = useSafeAreaInsets()
   const { height: winH } = useWindowDimensions()
@@ -623,138 +635,136 @@ function CommentSheet({ postId, onClose }: { postId: string | null; onClose: () 
     keepFocus()
   }
 
-  // Modal 은 별도 창이라 액티비티의 adjustResize 가 적용되지 않는다(패딩을 빼면 시트가
-  // 키보드 뒤로 완전히 가려지는 것을 실기기로 확인). 키보드 높이만큼 직접 띄운다.
-  const KB_CLEARANCE = 96
-  const bottomPad = kbHeight > 0 ? kbHeight + KB_CLEARANCE : insets.bottom + 14
-  // 목록은 키보드가 뜨면 좁혀 입력 영역이 가리지 않게 한다(창 자체가 줄어든 상태)
-  const listMaxH = kbHeight > 0 ? Math.max(140, winH * 0.22) : winH * 0.5
+  // edge-to-edge 라 키보드가 떠도 창(뷰)이 줄지 않는다 → 키보드 높이만큼 직접 띄운다.
+  // Modal 이던 시절과 달리 액티비티 창 안이라 이렇게 올려도 터치가 그대로 따라온다.
+  // +96: keyboardDidShow 의 height 는 삼성 키보드 상단 툴바를 포함하지 않아 그만큼 더 띄운다
+  const bottomPad = kbHeight > 0 ? kbHeight + 96 : insets.bottom + 14
+  // 목록은 키보드가 뜨면 좁혀 입력 영역이 가리지 않게 한다
+  const listMaxH = kbHeight > 0 ? Math.max(140, winH * 0.28) : winH * 0.5
 
   return (
-    <Modal visible={!!postId} transparent animationType="slide" onRequestClose={close}>
-      <View style={ss.modalRoot}>
-        <Pressable style={ss.backdrop} onPress={close} />
-        <View style={[ss.sheet, { paddingBottom: bottomPad }]}>
-          <View style={ss.sheetGrab} />
-          <View style={ss.sheetHead}>
-            <Text style={ss.sheetTitle}>
-              {t('travelers.comments')}
-              {total > 0 ? ` ${total}` : ''}
-            </Text>
-            <Pressable
-              onPress={close}
-              hitSlop={10}
-              style={ss.sheetClose}
-              accessibilityRole="button"
-              accessibilityLabel={t('common.close')}>
-              <Icon name="close" size={16} color={palette.zinc[500]} />
+    <View style={ss.overlayRoot} pointerEvents="box-none">
+      <Pressable style={ss.backdrop} onPress={close} />
+      <View style={[ss.sheet, { paddingBottom: bottomPad }]}>
+        <View style={ss.sheetGrab} />
+        <View style={ss.sheetHead}>
+          <Text style={ss.sheetTitle}>
+            {t('travelers.comments')}
+            {total > 0 ? ` ${total}` : ''}
+          </Text>
+          <Pressable
+            onPress={close}
+            hitSlop={10}
+            style={ss.sheetClose}
+            accessibilityRole="button"
+            accessibilityLabel={t('common.close')}>
+            <Icon name="close" size={16} color={palette.zinc[500]} />
+          </Pressable>
+        </View>
+        {isLoading && rows.length === 0 ? (
+          <View style={ss.cLoading}>
+            <ActivityIndicator color={palette.blue[50]} />
+          </View>
+        ) : isError && rows.length === 0 ? (
+          // 오류를 "댓글 없음"으로 보여주면 사용자는 글이 없는 줄 안다 — 재시도를 준다
+          <View style={ss.cEmpty}>
+            <Icon name="wifi_off" size={26} color={palette.zinc[300]} />
+            <Text style={ss.noComments}>{t('common.loadFailed')}</Text>
+            <Pressable onPress={() => refetch()} style={ss.retryBtn} hitSlop={6}>
+              <Text style={ss.retryText}>{t('common.retry')}</Text>
             </Pressable>
           </View>
-          {isLoading && rows.length === 0 ? (
-            <View style={ss.cLoading}>
-              <ActivityIndicator color={palette.blue[50]} />
-            </View>
-          ) : isError && rows.length === 0 ? (
-            // 오류를 "댓글 없음"으로 보여주면 사용자는 글이 없는 줄 안다 — 재시도를 준다
-            <View style={ss.cEmpty}>
-              <Icon name="wifi_off" size={26} color={palette.zinc[300]} />
-              <Text style={ss.noComments}>{t('common.loadFailed')}</Text>
-              <Pressable onPress={() => refetch()} style={ss.retryBtn} hitSlop={6}>
-                <Text style={ss.retryText}>{t('common.retry')}</Text>
-              </Pressable>
-            </View>
-          ) : rows.length === 0 ? (
-            <View style={ss.cEmpty}>
-              <Icon name="sms" size={28} color={palette.zinc[300]} />
-              <Text style={ss.noComments}>{t('travelers.noComments')}</Text>
-            </View>
-          ) : (
-            <ScrollView style={{ maxHeight: listMaxH }} keyboardShouldPersistTaps="always">
-              {rows.map((r, i) => (
-                <View key={r.id} style={i > 0 ? ss.cThread : undefined}>
+        ) : rows.length === 0 ? (
+          <View style={ss.cEmpty}>
+            <Icon name="sms" size={28} color={palette.zinc[300]} />
+            <Text style={ss.noComments}>{t('travelers.noComments')}</Text>
+          </View>
+        ) : (
+          <ScrollView style={{ maxHeight: listMaxH }} keyboardShouldPersistTaps="always">
+            {rows.map((r, i) => (
+              <View key={r.id} style={i > 0 ? ss.cThread : undefined}>
+                <CommentRow
+                  row={r}
+                  depth={0}
+                  onReply={(id, author) => setReplyTo({ id, author })}
+                  onEdit={startEdit}
+                  onDelete={confirmDelete}
+                  labels={labels}
+                />
+                {r.replies.map((rr) => (
                   <CommentRow
-                    row={r}
-                    depth={0}
-                    onReply={(id, author) => setReplyTo({ id, author })}
+                    key={rr.id}
+                    row={rr}
+                    depth={1}
                     onEdit={startEdit}
                     onDelete={confirmDelete}
                     labels={labels}
                   />
-                  {r.replies.map((rr) => (
-                    <CommentRow
-                      key={rr.id}
-                      row={rr}
-                      depth={1}
-                      onEdit={startEdit}
-                      onDelete={confirmDelete}
-                      labels={labels}
-                    />
-                  ))}
-                </View>
-              ))}
-            </ScrollView>
-          )}
-          {/* 모드 배너 — 지금 무엇을 하는 중인지(답글/수정) 보여주고 취소 가능 */}
-          {(replyTo || editing) && (
-            <View style={ss.replyBanner}>
-              <Text style={ss.replyBannerText} numberOfLines={1}>
-                {editing
-                  ? t('travelers.editingMode')
-                  : `${t('travelers.replyingMode')} · @${replyTo?.author ?? ''}`}
-              </Text>
-              <Pressable
-                onPress={() => (editing ? cancelEdit() : setReplyTo(null))}
-                hitSlop={8}
-                accessibilityRole="button"
-                accessibilityLabel={t('common.cancel')}>
-                <Icon name="close" size={15} color={palette.zinc[500]} />
-              </Pressable>
-            </View>
-          )}
-          <View style={ss.inputRow}>
-            <TextInput
-              ref={inputRef}
-              style={ss.input}
-              placeholder={
-                editing
-                  ? t('travelers.editingMode')
-                  : replyTo
-                    ? t('travelers.addReply')
-                    : t('travelers.addComment')
-              }
-              placeholderTextColor={palette.zinc[400]}
-              value={text}
-              onChangeText={(v) => setText(v.slice(0, MAX_COMMENT))}
-              onSubmitEditing={submit}
-              returnKeyType="send"
-              blurOnSubmit={false}
-              maxLength={MAX_COMMENT}
-              accessibilityLabel={replyTo ? t('travelers.addReply') : t('travelers.addComment')}
-            />
-            {/* 전송 전용 — 닫기는 헤더 X·배경 탭이 담당한다(한 버튼이 두 일을 하지 않게) */}
-            {/* 전송은 touch-down(onPressIn)에서 확정한다.
+                ))}
+              </View>
+            ))}
+          </ScrollView>
+        )}
+        {/* 모드 배너 — 지금 무엇을 하는 중인지(답글/수정) 보여주고 취소 가능 */}
+        {(replyTo || editing) && (
+          <View style={ss.replyBanner}>
+            <Text style={ss.replyBannerText} numberOfLines={1}>
+              {editing
+                ? t('travelers.editingMode')
+                : `${t('travelers.replyingMode')} · @${replyTo?.author ?? ''}`}
+            </Text>
+            <Pressable
+              onPress={() => (editing ? cancelEdit() : setReplyTo(null))}
+              hitSlop={8}
+              accessibilityRole="button"
+              accessibilityLabel={t('common.cancel')}>
+              <Icon name="close" size={15} color={palette.zinc[500]} />
+            </Pressable>
+          </View>
+        )}
+        <View style={ss.inputRow}>
+          <TextInput
+            ref={inputRef}
+            style={ss.input}
+            placeholder={
+              editing
+                ? t('travelers.editingMode')
+                : replyTo
+                  ? t('travelers.addReply')
+                  : t('travelers.addComment')
+            }
+            placeholderTextColor={palette.zinc[400]}
+            value={text}
+            onChangeText={(v) => setText(v.slice(0, MAX_COMMENT))}
+            onSubmitEditing={submit}
+            returnKeyType="send"
+            blurOnSubmit={false}
+            maxLength={MAX_COMMENT}
+            accessibilityLabel={replyTo ? t('travelers.addReply') : t('travelers.addComment')}
+          />
+          {/* 전송 전용 — 닫기는 헤더 X·배경 탭이 담당한다(한 버튼이 두 일을 하지 않게) */}
+          {/* 전송은 touch-down(onPressIn)에서 확정한다.
                 [알려진 한계] Android 에서 키보드가 떠 있는 동안 이 Modal 안의 첫 탭은 앱에
                 도달하지 않고 키보드 내리기로 소비된다(실기기 확인: padding·clearance·
                 statusBarTranslucent 와 무관하게 재현). 그래서 키보드의 "보내기" 키를
                 주 경로로 열어 뒀다(multiline 을 쓰지 않는 이유). 근본 해결은 이 시트를
                 Modal 이 아닌 화면 내 오버레이로 옮기는 것이며 별도 작업으로 분리한다. */}
-            <Pressable
-              style={[ss.sendBtn, !text.trim() && ss.sendBtnOff]}
-              onPressIn={submit}
-              disabled={!text.trim()}
-              accessibilityRole="button"
-              accessibilityLabel={t('travelers.addComment')}
-              accessibilityState={{ disabled: !text.trim() }}>
-              <Icon
-                name={editing ? 'check_circle' : 'arrow_upward'}
-                size={18}
-                color={text.trim() ? '#fff' : palette.zinc[400]}
-              />
-            </Pressable>
-          </View>
+          <Pressable
+            style={[ss.sendBtn, !text.trim() && ss.sendBtnOff]}
+            onPressIn={submit}
+            disabled={!text.trim()}
+            accessibilityRole="button"
+            accessibilityLabel={t('travelers.addComment')}
+            accessibilityState={{ disabled: !text.trim() }}>
+            <Icon
+              name={editing ? 'check_circle' : 'arrow_upward'}
+              size={18}
+              color={text.trim() ? '#fff' : palette.zinc[400]}
+            />
+          </Pressable>
         </View>
       </View>
-    </Modal>
+    </View>
   )
 }
 
@@ -765,7 +775,7 @@ export function TravelerFeed({
   posts: TravelerPost[]
   loadingMore?: boolean
 }) {
-  const [openPostId, setOpenPostId] = useState<string | null>(null)
+  const openSheet = useCommentSheet((s) => s.open)
   // 차단한 작성자·신고로 가린 글은 목록에서 제외 (REQ-UGC-3)
   const blocked = useFeedStore((s) => s.blocked)
   const hidden = useFeedStore((s) => s.hidden)
@@ -778,9 +788,9 @@ export function TravelerFeed({
   const cards = useMemo(
     () =>
       shown.map((p) => (
-        <PostCard key={p.id} post={p} onOpenComments={setOpenPostId} serverCount={counts?.[p.id]} />
+        <PostCard key={p.id} post={p} onOpenComments={openSheet} serverCount={counts?.[p.id]} />
       )),
-    [shown, counts],
+    [shown, counts, openSheet],
   )
   return (
     <View style={{ gap: 12 }}>
@@ -790,7 +800,6 @@ export function TravelerFeed({
           <ActivityIndicator color={palette.blue[50]} />
         </View>
       )}
-      <CommentSheet postId={openPostId} onClose={() => setOpenPostId(null)} />
     </View>
   )
 }
@@ -899,7 +908,16 @@ const ss = StyleSheet.create({
   footer: { paddingVertical: 16, alignItems: 'center' },
 
   // 댓글 시트
-  modalRoot: { flex: 1, justifyContent: 'flex-end' },
+  // 루트 오버레이 — 화면 전체를 덮고 시트는 하단에 붙인다(Modal 미사용, 위 주석 참조)
+  overlayRoot: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    justifyContent: 'flex-end',
+    zIndex: 50,
+  },
   backdrop: {
     position: 'absolute',
     top: 0,

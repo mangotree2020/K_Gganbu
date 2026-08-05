@@ -12,6 +12,7 @@ import { queryClient } from '@/lib/queryClient'
 import { useAuth } from '@/hooks/useAuth'
 import { useOnboardingStore } from '@/features/onboarding/store'
 import { LoginPromptSheet } from '@/features/auth/LoginPromptSheet'
+import { CommentSheetHost } from '@/features/travelers/TravelerFeed'
 import { setupNotificationDisplay } from '@/features/notifications/services'
 
 LogBox.ignoreAllLogs()
@@ -105,6 +106,8 @@ function RootLayoutNav() {
         <Stack.Screen name="reviews" options={{ presentation: 'modal' }} />
       </Stack>
       <LoginPromptSheet />
+      {/* 피드 댓글 시트 — Modal 대신 루트 오버레이(키보드 위 첫 탭이 먹히던 문제) */}
+      <CommentSheetHost />
     </>
   )
 }
