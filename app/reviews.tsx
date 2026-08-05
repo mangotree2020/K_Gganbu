@@ -2,12 +2,15 @@
 import { useQuery } from '@tanstack/react-query'
 import { LinearGradient } from 'expo-linear-gradient'
 import { router } from 'expo-router'
+import { useState } from 'react'
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 
 import { Icon } from '@/components/brand'
 import { PlaceThumb } from '@/components/PlaceThumb'
+import { ReviewSheet, type ReviewTargetPlace } from '@/features/review/ReviewSheet'
 import { getMyReviews } from '@/features/review/services'
+import { markVisitReviewed, readPendingVisits } from '@/features/review/visits'
 import { useT } from '@/lib/i18n'
 import { palette, shadows } from '@/theme/tokens'
 
@@ -29,8 +32,16 @@ function Stars({ n }: { n: number }) {
 
 export default function ReviewsScreen() {
   const t = useT()
-  const { data } = useQuery({ queryKey: ['my-reviews'], queryFn: getMyReviews })
+  const { data, refetch } = useQuery({ queryKey: ['my-reviews'], queryFn: getMyReviews })
   const reviews = data ?? []
+  // 후기를 기다리는 방문 — 다녀왔지만 아직 안 남긴 곳(로컬 방문 기록). 작성하면 목록에서 빠진다.
+  const [pending, setPending] = useState(() => readPendingVisits())
+  const [reviewFor, setReviewFor] = useState<ReviewTargetPlace | null>(null)
+  const onSaved = (placeKey: string) => {
+    markVisitReviewed(placeKey)
+    setPending(readPendingVisits())
+    void refetch()
+  }
 
   return (
     <View style={ss.container}>
@@ -58,7 +69,42 @@ export default function ReviewsScreen() {
       <ScrollView
         showsVerticalScrollIndicator={false}
         contentContainerStyle={{ padding: 16, paddingBottom: 28, gap: 10 }}>
-        {reviews.length === 0 ? (
+        {/* 후기 대기 — 방문 직후를 놓쳤어도 여기서 마저 남길 수 있다 */}
+        {pending.length > 0 && (
+          <>
+            <Text style={ss.section}>{t('review.pendingTitle')}</Text>
+            {pending.map((v) => (
+              <Pressable
+                key={v.placeKey}
+                style={[ss.pendingCard, shadows.card]}
+                onPress={() =>
+                  // 쿠폰 방문은 발급 id를 그대로 넘겨야 서버 중복 제약이 걸린다
+                  setReviewFor({
+                    placeKey: v.placeKey,
+                    name: v.name,
+                    cat: v.cat,
+                    refId: v.refId ?? null,
+                  })
+                }>
+                <View style={ss.thumb}>
+                  <PlaceThumb category={v.cat} height={52} />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={ss.place} numberOfLines={1}>
+                    {v.name}
+                  </Text>
+                  <Text style={ss.date}>{new Date(v.at).toISOString().slice(0, 10)}</Text>
+                </View>
+                <View style={ss.writeChip}>
+                  <Icon name="star" size={13} color={palette.amber[50]} filled />
+                  <Text style={ss.writeChipText}>{t('review.write')}</Text>
+                </View>
+              </Pressable>
+            ))}
+          </>
+        )}
+
+        {reviews.length === 0 && pending.length === 0 ? (
           <Text style={ss.empty}>{t('review.empty')}</Text>
         ) : (
           reviews.map((r) => (
@@ -78,6 +124,13 @@ export default function ReviewsScreen() {
           ))
         )}
       </ScrollView>
+
+      <ReviewSheet
+        visible={!!reviewFor}
+        place={reviewFor}
+        onClose={() => setReviewFor(null)}
+        onSaved={onSaved}
+      />
     </View>
   )
 }
@@ -123,6 +176,27 @@ const ss = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  section: { fontSize: 13, fontWeight: '800', color: palette.zinc[600], marginTop: 2 },
+  pendingCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    backgroundColor: '#FFFBEB',
+    borderRadius: 16,
+    padding: 10,
+    borderWidth: 1,
+    borderColor: palette.amber[90],
+  },
+  writeChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingVertical: 5,
+    paddingHorizontal: 9,
+    borderRadius: 999,
+    backgroundColor: '#fff',
+  },
+  writeChipText: { fontSize: 11, fontWeight: '800', color: palette.zinc[700] },
   empty: { fontSize: 13, color: palette.zinc[400], textAlign: 'center', marginTop: 48 },
   card: {
     flexDirection: 'row',

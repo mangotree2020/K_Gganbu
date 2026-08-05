@@ -27,6 +27,7 @@ import {
   type TierKey,
 } from '@/features/points/queries'
 import { routePayment } from '@/features/payment/router'
+import { recordVisit } from '@/features/review/visits'
 import { useStampCards } from '@/features/stamp/queries'
 import { getTickets, saveMyTicket, type Ticket } from '@/features/ticket/services'
 import { useAuthStore } from '@/features/auth/store'
@@ -246,6 +247,13 @@ export default function CouTixScreen() {
               purchasedAt: new Date().toISOString(),
               voucher: pay.pgTxId ?? pay.id,
               status: 'active',
+            })
+            // 구매 = 방문 예정 — 지갑 티켓 카드에 후기 진입점이 열린다(아웃링크라 사용 콜백은 없다)
+            recordVisit({
+              placeKey: `ticket:${x.id}`,
+              name: x.title,
+              cat: x.category,
+              source: 'ticket',
             })
             Alert.alert(t('ticket.purchased'), '', [
               { text: t('common.ok'), style: 'cancel' },

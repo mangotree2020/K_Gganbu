@@ -15,6 +15,8 @@ import { PlaceThumb } from '@/components/PlaceThumb'
 import { useFavorites, useToggleFavorite } from '@/features/favorites/queries'
 import { PlaceReviewsSection } from '@/features/review/PlaceReviewsSection'
 import { usePlaceReviews } from '@/features/review/queries'
+import { ReviewSheet } from '@/features/review/ReviewSheet'
+import { markVisitReviewed, needsReviewFor } from '@/features/review/visits'
 import { useLocaleStore, useT } from '@/lib/i18n'
 import { supabase } from '@/lib/supabase'
 import { palette } from '@/theme/tokens'
@@ -48,6 +50,11 @@ export default function PlaceScreen() {
   const desc =
     p.desc ??
     "Beloved by locals for fresh, no-frills seafood. Try the seaside terrace — it's where Haeundae sunsets feel infinite."
+
+  // 후기 진입점 — 최근 방문 + 아직 후기 없음일 때만. 저장 후에는 감춰 중복 작성을 막는다
+  // (도착·장소 경로는 refId가 없어 서버 unique 제약이 걸리지 않는다).
+  const [canReview, setCanReview] = useState(() => needsReviewFor(extId))
+  const [reviewOpen, setReviewOpen] = useState(false)
 
   // 평점 표시용 — 리뷰 본문은 공용 PlaceReviewsSection이 담당(동일 쿼리라 중복 호출 없음)
   const reviewTarget = useMemo(() => ({ id: extId, name, lat, lng }), [extId, name, lat, lng])
@@ -202,10 +209,8 @@ export default function PlaceScreen() {
               <Icon name="navigation" size={16} color="#fff" filled />
               <Text style={ss.dirText}>{t('place.directions')}</Text>
             </Pressable>
-            <Pressable
-              style={[ss.iconBtn, isFav && ss.iconBtnActive]}
-              onPress={onBookmark}
-              disabled={toggleFav.isPending}>
+            {/* 저장은 로컬 우선 반영이라 서버 전송 중에도 계속 누를 수 있다(연타 = 토글) */}
+            <Pressable style={[ss.iconBtn, isFav && ss.iconBtnActive]} onPress={onBookmark}>
               <Icon
                 name={isFav ? 'bookmark' : 'bookmark_add'}
                 size={18}
@@ -218,12 +223,31 @@ export default function PlaceScreen() {
             </Pressable>
           </View>
 
+          {/* 후기 쓰기 — 다녀온 곳에만 노출한다. 가보지 않은 장소의 별점은 신뢰를 떨어뜨리고,
+              모든 장소에 버튼을 두면 후기 요청이 배경 소음이 된다. */}
+          {canReview && (
+            <Pressable style={ss.writeBtn} onPress={() => setReviewOpen(true)}>
+              <Icon name="star" size={16} color={palette.amber[50]} filled />
+              <Text style={ss.writeText}>{t('review.write')}</Text>
+            </Pressable>
+          )}
+
           {/* ── 리뷰 — 지도 시트와 동일한 공용 섹션(AI 요약·출처 카드 필터·번역 토글) ── */}
           <View style={{ marginTop: 14 }}>
             <PlaceReviewsSection target={reviewTarget} />
           </View>
         </View>
       </ScrollView>
+
+      <ReviewSheet
+        visible={reviewOpen}
+        place={{ placeKey: extId, name, cat }}
+        onClose={() => setReviewOpen(false)}
+        onSaved={(key) => {
+          markVisitReviewed(key)
+          setCanReview(false)
+        }}
+      />
     </View>
   )
 }
@@ -258,6 +282,19 @@ const ss = StyleSheet.create({
     paddingVertical: 11,
   },
   dirText: { color: '#fff', fontWeight: '700', fontSize: 13 },
+  writeBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    marginTop: 12,
+    paddingVertical: 11,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: palette.amber[90],
+    backgroundColor: '#FFFBEB',
+  },
+  writeText: { fontSize: 13, fontWeight: '800', color: palette.zinc[700] },
   iconBtn: {
     width: 48,
     borderWidth: 0.5,

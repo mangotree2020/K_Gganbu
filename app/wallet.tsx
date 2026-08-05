@@ -14,6 +14,8 @@ import { PlaceThumb } from '@/components/PlaceThumb'
 import { SheetHeader } from '@/components/SheetHeader'
 import { useCouponPhotos } from '@/features/coupon/photos'
 import { useCoupons, useUserCoupons } from '@/features/coupon/queries'
+import { ReviewSheet, type ReviewTargetPlace } from '@/features/review/ReviewSheet'
+import { markVisitReviewed } from '@/features/review/visits'
 import { getMyTickets } from '@/features/ticket/services'
 import { useT } from '@/lib/i18n'
 import { palette } from '@/theme/tokens'
@@ -32,6 +34,8 @@ export default function WalletScreen() {
   const t = useT()
   const params = useLocalSearchParams<{ seg?: string }>()
   const [seg, setSeg] = useState<Seg>(params.seg === 'tickets' ? 'tickets' : 'coupons')
+  // 후기 작성 시트 대상 — 사용한 쿠폰·구매한 티켓에서 진입
+  const [reviewFor, setReviewFor] = useState<ReviewTargetPlace | null>(null)
   const { data: coupons, isLoading } = useUserCoupons()
   const { data: myTickets } = useQuery({ queryKey: ['my-tickets'], queryFn: getMyTickets })
   // 쿠폰 카탈로그 조인 — 사용처 설명·거리 표시용 (couponId 매칭)
@@ -151,6 +155,25 @@ export default function WalletScreen() {
                           </Pill>
                         )}
                       </View>
+                      {/* 사용한 쿠폰 → 후기. QR 화면을 이미 벗어난 사용자에게 남는 유일한
+                          후기 진입점이다(QR 화면의 1탭 별점은 그 화면이 떠 있을 때만 뜬다). */}
+                      {c.status === 'used' && (
+                        <Pressable
+                          style={ss.reviewBtn}
+                          hitSlop={6}
+                          onPress={() =>
+                            setReviewFor({
+                              placeKey: `coupon:${c.couponId}`,
+                              name: c.name,
+                              cat: info?.icon ?? c.category,
+                              // 사용한 발급 건 id — 서버가 "사용 1건당 1후기"를 강제한다
+                              refId: c.id,
+                            })
+                          }>
+                          <Icon name="star" size={13} color={palette.amber[50]} filled />
+                          <Text style={ss.reviewText}>{t('review.write')}</Text>
+                        </Pressable>
+                      )}
                     </View>
                     <Text style={ss.disc}>{c.disc}</Text>
                   </Pressable>
@@ -187,6 +210,21 @@ export default function WalletScreen() {
                       {tk.voucher}
                     </Pill>
                   </View>
+                  {/* 구매한 티켓 → 다녀온 뒤 후기. 아웃링크 예매라 사용 확인 콜백이 없어
+                      상태와 무관하게 열어두고, 실제 방문 여부는 사용자가 판단한다. */}
+                  <Pressable
+                    style={ss.reviewBtn}
+                    hitSlop={6}
+                    onPress={() =>
+                      setReviewFor({
+                        placeKey: `ticket:${tk.id}`,
+                        name: tk.title,
+                        cat: tk.category,
+                      })
+                    }>
+                    <Icon name="star" size={13} color={palette.amber[50]} filled />
+                    <Text style={ss.reviewText}>{t('review.write')}</Text>
+                  </Pressable>
                 </View>
                 <Text style={ss.disc}>₩{tk.price.toLocaleString()}</Text>
               </View>
@@ -194,6 +232,13 @@ export default function WalletScreen() {
           )}
         </ScrollView>
       </SafeAreaView>
+
+      <ReviewSheet
+        visible={!!reviewFor}
+        place={reviewFor}
+        onClose={() => setReviewFor(null)}
+        onSaved={markVisitReviewed}
+      />
     </View>
   )
 }
@@ -244,5 +289,19 @@ const ss = StyleSheet.create({
   thumb: { width: 52, height: 52, borderRadius: 12, overflow: 'hidden' },
   name: { fontSize: 15, fontWeight: '700', color: palette.zinc[900] },
   detail: { fontSize: 11.5, color: palette.zinc[500], marginTop: 2 },
+  reviewBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    alignSelf: 'flex-start',
+    marginTop: 6,
+    paddingVertical: 4,
+    paddingHorizontal: 8,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: palette.amber[90],
+    backgroundColor: '#FFFBEB',
+  },
+  reviewText: { fontSize: 11, fontWeight: '800', color: palette.zinc[700] },
   disc: { fontSize: 15, fontWeight: '800', color: palette.coral[50] },
 })

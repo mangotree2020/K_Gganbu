@@ -3,7 +3,7 @@
 // 여백에는 매장 정보 카드(실사진 썸네일·주소·거리)와 길찾기 버튼 제공.
 import { LinearGradient } from 'expo-linear-gradient'
 import { router, useLocalSearchParams } from 'expo-router'
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
 import { CachedImage } from '@/components/CachedImage'
 import { SafeAreaView } from 'react-native-safe-area-context'
@@ -16,6 +16,7 @@ import { track } from '@/features/analytics/service'
 import { getCachedIssue, issueCoupon, type CouponIssue } from '@/features/coupon/services'
 import * as ImagePicker from 'expo-image-picker'
 import { addReview, uploadReviewPhoto } from '@/features/review/services'
+import { markVisitReviewed, recordVisit } from '@/features/review/visits'
 import { storage } from '@/lib/mmkv'
 import { supabase } from '@/lib/supabase'
 import { useProfileStore } from '@/features/profile/store'
@@ -62,6 +63,11 @@ export default function CouponQrScreen() {
     () => storage.getString(`dealphoto:${p.name ?? ''}`) || null,
   )
   const [merchant, setMerchant] = useState<Merchant>(null)
+  // 폴링 콜백에서 최신 매장 정보를 읽기 위한 미러(방문 기록에 좌표·카테고리를 함께 남긴다)
+  const merchantRef = useRef<Merchant>(null)
+  useEffect(() => {
+    merchantRef.current = merchant
+  }, [merchant])
   // 사용 완료 감지 (UX_REVIEW §4-4) — 매장에서 QR을 스캔하면 status가 'used'로 바뀐다.
   // 그 순간이 후기를 받기 가장 좋은 시점이라 1탭 별점을 띄운다(실후기 축적 = UGC의 전제).
   const [used, setUsed] = useState(false)
@@ -129,7 +135,20 @@ export default function CouponQrScreen() {
         .select('status')
         .eq('id', issue.id)
         .maybeSingle()
-      if (alive && data?.status === 'used') setUsed(true)
+      if (alive && data?.status === 'used') {
+        setUsed(true)
+        // 매장 스캔 = 확실한 방문. 이 화면을 떠난 뒤에도 지갑에서 후기를 남길 수 있게 기록한다.
+        recordVisit({
+          placeKey: `coupon:${couponId}`,
+          name: p.name ?? 'Place',
+          cat: merchantRef.current?.cat,
+          lat: merchantRef.current?.lat,
+          lng: merchantRef.current?.lng,
+          source: 'coupon',
+          // 발급 id를 함께 남겨야 지갑·후기 대기 목록에서 써도 서버 중복 제약이 걸린다
+          refId: issue?.id ?? null,
+        })
+      }
     }
     const timer = setInterval(check, 8000)
     void check()
@@ -137,6 +156,8 @@ export default function CouponQrScreen() {
       alive = false
       clearInterval(timer)
     }
+    // couponId·p.name은 이 화면의 라우트 파라미터로 고정 — 폴링을 재시작할 이유가 없다
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [issue?.id, used])
 
   // 별점 저장 — 1탭으로 끝난다(본문은 선택). 같은 사용 건은 서버 unique 가 중복을 막는다.
@@ -145,7 +166,7 @@ export default function CouponQrScreen() {
     try {
       // 사진은 부가 정보 — 업로드가 실패해도 후기는 저장한다
       const photoUrl = sharePublic && photoUri ? await uploadReviewPhoto(photoUri) : null
-      await addReview({
+      const saved = await addReview({
         placeName: p.name ?? p.detail ?? 'Place',
         rating: n,
         cat: merchant?.cat,
@@ -155,8 +176,15 @@ export default function CouponQrScreen() {
         authorName: profileName,
         photos: photoUrl ? [photoUrl] : [],
       })
+      // 세션이 없으면 addReview가 예외 대신 false를 준다 — 저장 안 된 걸 완료로 표시하면
+      // 지갑의 후기 진입점까지 함께 사라진다. 별점을 되돌려 다시 누를 수 있게 둔다.
+      if (!saved) {
+        setRated(null)
+        return
+      }
+      markVisitReviewed(`coupon:${couponId}`) // 지갑에서 같은 쿠폰을 다시 묻지 않도록
     } catch {
-      // 저장 실패해도 화면은 감사 상태로 둔다(재시도 유도는 과함)
+      setRated(null) // 실패 — 같은 자리에서 다시 시도할 수 있게 별점 초기화
     }
   }
 
