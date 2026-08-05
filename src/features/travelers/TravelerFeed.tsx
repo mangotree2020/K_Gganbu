@@ -444,6 +444,10 @@ function CommentSheet({ postId, onClose }: { postId: string | null; onClose: () 
   const [pending, setPending] = useState<RemoteComment[]>([])
   // 직전 전송(본문·시각) — 습관적 연타나 이벤트 중복으로 같은 댓글이 두 번 올라가지 않게 한다
   const lastSentRef = useRef<{ body: string; at: number }>({ body: '', at: 0 })
+  const inputRef = useRef<TextInput>(null)
+  // 전송 후에도 입력창 포커스를 유지한다. 키보드가 내려가면 시트 padding이 줄어들며
+  // 전송 버튼이 손가락 아래에서 밀려나, 바로 다음 탭이 빗나간다(두 번 눌러야 하던 원인).
+  const keepFocus = () => inputRef.current?.focus()
 
   // 다음 틱으로 미뤄 실행(이펙트 내 동기 setState로 인한 연쇄 렌더 방지 — ai.tsx와 동일 패턴)
   useEffect(() => {
@@ -571,7 +575,7 @@ function CommentSheet({ postId, onClose }: { postId: string | null; onClose: () 
       else editRemote.mutate({ id: editing.id, postId, body })
       setEditing(null)
       setText('')
-      Keyboard.dismiss()
+      keepFocus()
       return
     }
     const nowMs = Date.now()
@@ -616,14 +620,15 @@ function CommentSheet({ postId, onClose }: { postId: string | null; onClose: () 
     }
     setText('')
     setReplyTo(null)
-    Keyboard.dismiss() // 등록 후 키보드를 자연히 내려 입력 영역이 사라지게 함
+    keepFocus()
   }
 
-  // 키보드가 뜨면 그 높이 + 여유(자동완성 툴바까지 확실히 넘도록)만큼 입력창을 자판 위로 올린다.
-  const KB_CLEARANCE = 52 // 자동완성 툴바·여백 버퍼
+  // Modal 은 별도 창이라 액티비티의 adjustResize 가 적용되지 않는다(패딩을 빼면 시트가
+  // 키보드 뒤로 완전히 가려지는 것을 실기기로 확인). 키보드 높이만큼 직접 띄운다.
+  const KB_CLEARANCE = 96
   const bottomPad = kbHeight > 0 ? kbHeight + KB_CLEARANCE : insets.bottom + 14
-  // 목록 높이는 화면 비율로 — 고정값(300/150)은 큰 화면에서 시트를 쓸데없이 좁게 만들었다
-  const listMaxH = kbHeight > 0 ? Math.max(140, winH * 0.28) : winH * 0.5
+  // 목록은 키보드가 뜨면 좁혀 입력 영역이 가리지 않게 한다(창 자체가 줄어든 상태)
+  const listMaxH = kbHeight > 0 ? Math.max(140, winH * 0.22) : winH * 0.5
 
   return (
     <Modal visible={!!postId} transparent animationType="slide" onRequestClose={close}>
@@ -664,7 +669,7 @@ function CommentSheet({ postId, onClose }: { postId: string | null; onClose: () 
               <Text style={ss.noComments}>{t('travelers.noComments')}</Text>
             </View>
           ) : (
-            <ScrollView style={{ maxHeight: listMaxH }} keyboardShouldPersistTaps="handled">
+            <ScrollView style={{ maxHeight: listMaxH }} keyboardShouldPersistTaps="always">
               {rows.map((r, i) => (
                 <View key={r.id} style={i > 0 ? ss.cThread : undefined}>
                   <CommentRow
@@ -708,6 +713,7 @@ function CommentSheet({ postId, onClose }: { postId: string | null; onClose: () 
           )}
           <View style={ss.inputRow}>
             <TextInput
+              ref={inputRef}
               style={ss.input}
               placeholder={
                 editing
@@ -721,15 +727,17 @@ function CommentSheet({ postId, onClose }: { postId: string | null; onClose: () 
               onChangeText={(v) => setText(v.slice(0, MAX_COMMENT))}
               onSubmitEditing={submit}
               returnKeyType="send"
-              multiline
+              blurOnSubmit={false}
               maxLength={MAX_COMMENT}
               accessibilityLabel={replyTo ? t('travelers.addReply') : t('travelers.addComment')}
             />
             {/* 전송 전용 — 닫기는 헤더 X·배경 탭이 담당한다(한 버튼이 두 일을 하지 않게) */}
             {/* 전송은 touch-down(onPressIn)에서 확정한다.
-                버튼을 누르면 입력이 blur되며 키보드가 내려가고, 그 순간 시트 padding이 줄어
-                버튼이 손가락 아래에서 밀려나 touch-up(onPress)이 빗나갔다 —
-                "등록하려면 두 번 눌러야 하는" 문제의 원인. */}
+                [알려진 한계] Android 에서 키보드가 떠 있는 동안 이 Modal 안의 첫 탭은 앱에
+                도달하지 않고 키보드 내리기로 소비된다(실기기 확인: padding·clearance·
+                statusBarTranslucent 와 무관하게 재현). 그래서 키보드의 "보내기" 키를
+                주 경로로 열어 뒀다(multiline 을 쓰지 않는 이유). 근본 해결은 이 시트를
+                Modal 이 아닌 화면 내 오버레이로 옮기는 것이며 별도 작업으로 분리한다. */}
             <Pressable
               style={[ss.sendBtn, !text.trim() && ss.sendBtnOff]}
               onPressIn={submit}
