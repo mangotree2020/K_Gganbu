@@ -13,6 +13,7 @@ import {
   StyleSheet,
   Text,
   TextInput,
+  useWindowDimensions,
   View,
 } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
@@ -22,7 +23,9 @@ import { useVideoPlayer, VideoView } from 'expo-video'
 import { Icon } from '@/components/brand'
 import { CachedImage } from '@/components/CachedImage'
 import { PlaceThumb } from '@/components/PlaceThumb'
+import { useAuthStore } from '@/features/auth/store'
 import { ProfileAvatar as MyProfileAvatar } from '@/features/profile/Avatar'
+import { countRows, mergeComments, type CommentRow as CRow, type RemoteComment } from './comments'
 import { ageLabel, type MediaItem, type TravelerPost } from './feed'
 import { blockAuthorRemote, reportContent } from './moderation'
 import {
@@ -33,7 +36,7 @@ import {
   type FeedCount,
 } from './social'
 import { useProfileStore } from '@/features/profile/store'
-import { useFeedStore, type MyComment } from './store'
+import { useFeedStore } from './store'
 import { useT } from '@/lib/i18n'
 import { palette, shadows } from '@/theme/tokens'
 
@@ -199,6 +202,7 @@ function PostCard({
   }
   const liked = useFeedStore((s) => !!s.liked[post.id])
   const myComments = useFeedStore((s) => s.comments[post.id])
+  const commentedHere = useFeedStore((s) => !!s.commentedPosts[post.id])
   const toggleLike = useFeedStore((s) => s.toggleLike)
   const likeRemote = useToggleLikeRemote()
 
@@ -209,10 +213,12 @@ function PostCard({
   const likeCount = serverCount
     ? serverCount.likes + (liked && !serverCount.liked_by_me ? 1 : 0)
     : post.likes + (liked ? 1 : 0)
-  const commentCount = serverCount
-    ? serverCount.comments + post.seedComments
-    : post.seedComments + myCommentCount
-  const commented = myCommentCount > 0 // 내가 이 후기에 댓글/답글을 남겼는지
+  // 로컬 댓글은 게스트(또는 서버 저장 실패 폴백)의 것뿐이라 서버 집계와 겹치지 않는다 →
+  // 항상 합산한다. 예전에는 서버 집계가 있으면 로컬을 버려 게스트 댓글이 카드에 안 잡혔다.
+  const commentCount = (serverCount?.comments ?? 0) + post.seedComments + myCommentCount
+  // 내가 이 후기에 댓글을 남겼는지 — 로그인 사용자의 댓글은 서버에만 있으므로(중복 방지)
+  // 로컬 개수만으로는 알 수 없다. 남긴 사실 자체를 따로 기억해 표시에 쓴다.
+  const commented = myCommentCount > 0 || commentedHere
   const onToggleLike = () => {
     toggleLike(post.id)
     likeRemote.mutate({ postId: post.id, liked: !liked })
@@ -301,71 +307,160 @@ function PostCard({
   )
 }
 
-// 한 댓글 행(대댓글 포함) — 답글 버튼 탭 시 상위 입력이 답글 모드로 전환
-function CommentItem({
-  comment,
-  onReply,
-  replyLabel,
-  youLabel,
-}: {
-  comment: MyComment
-  onReply: (id: string) => void
-  replyLabel: string
-  youLabel: string
-}) {
+// 댓글 작성자 아바타(타인) — 카드 헤더와 같은 이름→색 규칙을 써서 같은 사람이 같은 색으로 보인다.
+// (예전에는 서버 댓글에 아바타가 아예 없어 한 목록 안에 두 가지 모양이 섞였다)
+function CommentAvatar({ name, size }: { name: string; size: number }) {
   return (
-    <View>
-      <View style={ss.commentRow}>
-        {/* 작성자(나) 프로필 사진 — 설정한 사진/12지신/기본 순 */}
-        <MyProfileAvatar size={34} />
-        <View style={{ flex: 1 }}>
-          <Text style={ss.commentAuthor}>{youLabel}</Text>
-          <Text style={ss.commentText}>{comment.text}</Text>
-          <Pressable onPress={() => onReply(comment.id)} hitSlop={6}>
-            <Text style={ss.replyBtn}>{replyLabel}</Text>
-          </Pressable>
-        </View>
-      </View>
-      {/* 대댓글 — 좌측 들여쓰기 + 작은 프로필 사진 */}
-      {comment.replies?.map((r) => (
-        <View key={r.id} style={[ss.commentRow, ss.replyRow]}>
-          <MyProfileAvatar size={26} />
-          <View style={{ flex: 1 }}>
-            <Text style={ss.commentAuthor}>{youLabel}</Text>
-            <Text style={ss.commentText}>{r.text}</Text>
-          </View>
-        </View>
-      ))}
+    <View
+      style={{
+        width: size,
+        height: size,
+        borderRadius: size / 2,
+        backgroundColor: avatarColor(name),
+        alignItems: 'center',
+        justifyContent: 'center',
+      }}>
+      <Text style={{ color: '#fff', fontWeight: '800', fontSize: size * 0.42 }}>
+        {(name.trim()[0] ?? '?').toUpperCase()}
+      </Text>
     </View>
   )
 }
 
-// 댓글 시트 — 내 댓글 목록 + 대댓글 + 입력.
-// 키보드 높이만큼 시트를 띄워 입력·목록이 가리지 않게 하고, 등록 후 키보드를 자연히 내린다.
-// 서버 댓글 id 판별 — 로컬 댓글 id 는 `${postId}:1` 형태라 형식으로 구분된다
+// 댓글 한 줄 — 아바타 + 이름·시간 + 본문 + 답글. 출처와 무관하게 같은 모양이다.
+function CommentRow({
+  row,
+  depth,
+  onReply,
+  replyLabel,
+  youLabel,
+  justNow,
+}: {
+  row: CRow
+  depth: 0 | 1
+  onReply?: (id: string, author: string) => void
+  replyLabel: string
+  youLabel: string
+  justNow: string
+}) {
+  const size = depth === 0 ? 34 : 26
+  return (
+    <View style={[ss.cRow, depth === 1 && ss.cReplyRow]}>
+      {row.mine ? <MyProfileAvatar size={size} /> : <CommentAvatar name={row.author} size={size} />}
+      <View style={{ flex: 1 }}>
+        <View style={ss.cMetaLine}>
+          <Text style={ss.cAuthor} numberOfLines={1}>
+            {row.author}
+          </Text>
+          {row.mine && (
+            <View style={ss.cYouPill}>
+              <Text style={ss.cYouText}>{youLabel}</Text>
+            </View>
+          )}
+          <Text style={ss.cTime}>{ageLabel(row.ageMin, justNow)}</Text>
+        </View>
+        {!!row.replyToName && <Text style={ss.cReplyTo}>@{row.replyToName}</Text>}
+        <Text style={ss.cBody}>{row.body}</Text>
+        {onReply && (
+          <Pressable
+            onPress={() => onReply(row.id, row.author)}
+            hitSlop={8}
+            style={ss.cReplyBtn}
+            accessibilityRole="button"
+            accessibilityLabel={replyLabel}>
+            <Text style={ss.cReplyText}>{replyLabel}</Text>
+          </Pressable>
+        )}
+      </View>
+    </View>
+  )
+}
+
+// 댓글 시트 — 서버 댓글과 (게스트의) 로컬 댓글을 시간순 한 목록으로 보여준다.
+// 서버 댓글 id 판별 — 로컬 댓글 id 는 `local:...` 형태라 형식으로 구분된다
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+// 입력 상한 — 제출 후 서버에서야 잘리는 것보다 입력 단계에서 막는 편이 낫다
+const MAX_COMMENT = 300
 
 function CommentSheet({ postId, onClose }: { postId: string | null; onClose: () => void }) {
   const t = useT()
   const insets = useSafeAreaInsets()
-  const comments = useFeedStore((s) => (postId ? s.comments[postId] : undefined))
+  const { height: winH } = useWindowDimensions()
+  const user = useAuthStore((s) => s.user)
+  // 계정이 있으면 서버가 원본, 게스트는 로컬이 원본 — 한 댓글이 양쪽에 저장돼 두 번 보이지 않게
+  // 저장처를 하나로 고정한다(중복 표시의 근본 원인이었다).
+  const isGuest = !user || user.isGuest
+  const localComments = useFeedStore((s) => (postId ? s.comments[postId] : undefined))
   const addComment = useFeedStore((s) => s.addComment)
   const addReply = useFeedStore((s) => s.addReply)
-  // 서버 댓글(다른 여행자 것 포함, 차단 작성자는 RLS 제외) — 내 로컬 댓글 위에 함께 보여준다
-  const { data: remoteComments } = usePostComments(postId)
-  // 서버 댓글을 원댓글 + 대댓글 1단계로 묶는다(정렬은 서버가 시간순으로 준다)
-  const remoteTree = useMemo(() => {
-    const roots = (remoteComments ?? []).filter((c) => !c.parentId)
-    return roots.map((r) => ({
-      ...r,
-      replies: (remoteComments ?? []).filter((c) => c.parentId === r.id),
-    }))
-  }, [remoteComments])
+  const pruneSynced = useFeedStore((s) => s.pruneSynced)
+  const markCommented = useFeedStore((s) => s.markCommented)
+  const { data: remoteComments, isLoading, isError, refetch } = usePostComments(postId)
   const addRemote = useAddCommentRemote()
   const myName = useProfileStore((s) => s.displayName) || 'Traveler'
   const [text, setText] = useState('')
-  const [replyTo, setReplyTo] = useState<string | null>(null) // 답글 대상 댓글 id
+  const [replyTo, setReplyTo] = useState<{ id: string; author: string } | null>(null)
   const [kbHeight, setKbHeight] = useState(0)
+  // 경과 시간 기준 시각 — 렌더 중 Date.now()를 부르면 렌더가 비순수해진다(목록 갱신 때만 새로 잡는다)
+  const [now, setNow] = useState(Date.now)
+  // 전송했지만 아직 서버 목록에 안 잡힌 내 댓글 — 쿼리 캐시에 끼워 넣으면 다른 전송의
+  // 재조회가 통째로 덮어써 사라진다. 시트가 직접 들고 있다가 서버에 나타나면 뺀다.
+  const [pending, setPending] = useState<RemoteComment[]>([])
+
+  // 다음 틱으로 미뤄 실행(이펙트 내 동기 setState로 인한 연쇄 렌더 방지 — ai.tsx와 동일 패턴)
+  useEffect(() => {
+    const id = setTimeout(() => setNow(Date.now()), 0)
+    return () => clearTimeout(id)
+  }, [postId, remoteComments, localComments])
+
+  // 서버에 반영된 전송분은 pending에서 뺀다(같은 댓글이 두 줄로 보이지 않게)
+  useEffect(() => {
+    if (!pending.length) return
+    const landed = new Set((remoteComments ?? []).map((c) => `${c.author}::${c.body}`))
+    const next = pending.filter((p) => !landed.has(`${p.author}::${p.body}`))
+    if (next.length === pending.length) return
+    // 다음 틱으로 미뤄 실행(이펙트 내 동기 setState로 인한 연쇄 렌더 방지)
+    const id = setTimeout(() => setPending(next), 0)
+    return () => clearTimeout(id)
+  }, [remoteComments, pending])
+
+  // 시트를 닫거나 다른 글로 옮기면 전송 대기 목록은 비운다
+  useEffect(() => {
+    const id = setTimeout(() => setPending([]), 0)
+    return () => clearTimeout(id)
+  }, [postId])
+
+  // 이전 버전이 같은 댓글을 서버·로컬 양쪽에 저장해 둔 기기 자가 복구 —
+  // 내 이름으로 서버에 올라간 본문과 같은 로컬 댓글은 지운다(중복 표시 제거).
+  useEffect(() => {
+    if (!postId || !remoteComments?.length) return
+    const mine = remoteComments
+      .filter((c) => c.author === myName)
+      .map((c) => ({ body: c.body, ts: new Date(c.createdAt).getTime() }))
+    if (mine.length) pruneSynced(postId, mine)
+  }, [postId, remoteComments, myName, pruneSynced])
+
+  // 서버 + 로컬을 하나의 트리로 — 조립 규칙은 comments.ts(순수 로직·단위 테스트)
+  const rows = useMemo<CRow[]>(
+    () =>
+      mergeComments(
+        [
+          ...(remoteComments ?? []).map((c) => ({
+            id: c.id,
+            author: c.author,
+            parentId: c.parentId,
+            body: c.body,
+            createdAt: c.createdAt,
+          })),
+          ...pending,
+        ],
+        localComments ?? [],
+        myName,
+        now,
+      ),
+    [remoteComments, pending, localComments, myName, now],
+  )
+  const total = useMemo(() => countRows(rows), [rows])
 
   // 키보드 높이 추적 — Modal 안에서는 adjustResize가 안 먹으므로 직접 시트를 띄운다
   useEffect(() => {
@@ -388,28 +483,54 @@ function CommentSheet({ postId, onClose }: { postId: string | null; onClose: () 
   }
 
   const submit = () => {
-    if (!postId || !text.trim()) return
-    // 로컬 먼저 반영(즉시 표시) → 서버 저장(로그인 사용자만, 실패해도 화면은 유지)
-    if (replyTo && !UUID_RE.test(replyTo)) addReply(postId, replyTo, text)
-    else if (!replyTo) addComment(postId, text)
-    // 답글 대상이 서버 댓글(uuid)이면 parent_id 로 붙이고, 로컬 댓글 id 면 원 댓글로 저장한다
-    addRemote.mutate({
-      postId,
-      body: text,
-      authorName: myName,
-      parentId: replyTo && UUID_RE.test(replyTo) ? replyTo : null,
-    })
+    const body = text.trim()
+    if (!postId || !body) return
+    const target = replyTo
+    // 답글 대상이 로컬 댓글이면(게스트 시절 기록 등) 서버에 루트로 저장되지 않도록 로컬에 붙인다
+    const localTarget = !!target && !UUID_RE.test(target.id)
+    if (isGuest || localTarget) {
+      if (target && localTarget) addReply(postId, target.id, body)
+      else addComment(postId, body, `local:${Date.now()}`, target?.author)
+      markCommented(postId)
+    } else {
+      const parentId = target ? target.id : null
+      const optimistic: RemoteComment = {
+        id: `tmp:${Date.now()}`,
+        author: myName,
+        parentId,
+        body,
+        createdAt: new Date().toISOString(),
+      }
+      setPending((p) => [...p, optimistic])
+      const dropPending = () => setPending((p) => p.filter((c) => c.id !== optimistic.id))
+      addRemote.mutate(
+        { postId, body, authorName: myName, parentId },
+        {
+          // 서버가 저장을 건너뛴 경우(세션 해석 실패 등)는 예외가 아니라 null이 온다.
+          // 그대로 두면 다음 재조회에서 댓글이 소리 없이 사라지므로 로컬로 받아둔다.
+          onSuccess: (res) => {
+            if (res) {
+              markCommented(postId)
+              return
+            }
+            dropPending()
+            addComment(postId, body, `local:${Date.now()}`, target?.author)
+            markCommented(postId)
+          },
+          onError: dropPending,
+        },
+      )
+    }
     setText('')
     setReplyTo(null)
     Keyboard.dismiss() // 등록 후 키보드를 자연히 내려 입력 영역이 사라지게 함
   }
 
-  const startReply = (id: string) => setReplyTo(id)
-
   // 키보드가 뜨면 그 높이 + 여유(자동완성 툴바까지 확실히 넘도록)만큼 입력창을 자판 위로 올린다.
   const KB_CLEARANCE = 52 // 자동완성 툴바·여백 버퍼
   const bottomPad = kbHeight > 0 ? kbHeight + KB_CLEARANCE : insets.bottom + 14
-  const listMaxH = kbHeight > 0 ? 150 : 300
+  // 목록 높이는 화면 비율로 — 고정값(300/150)은 큰 화면에서 시트를 쓸데없이 좁게 만들었다
+  const listMaxH = kbHeight > 0 ? Math.max(140, winH * 0.28) : winH * 0.5
 
   return (
     <Modal visible={!!postId} transparent animationType="slide" onRequestClose={close}>
@@ -417,45 +538,75 @@ function CommentSheet({ postId, onClose }: { postId: string | null; onClose: () 
         <Pressable style={ss.backdrop} onPress={close} />
         <View style={[ss.sheet, { paddingBottom: bottomPad }]}>
           <View style={ss.sheetGrab} />
-          <Text style={ss.sheetTitle}>{t('travelers.comments')}</Text>
-          <ScrollView style={{ maxHeight: listMaxH }} keyboardShouldPersistTaps="handled">
-            {/* 서버 댓글 — 원 댓글 아래에 대댓글을 들여 쓴다(parent_id 1단계) */}
-            {remoteTree.map((rc) => (
-              <View key={rc.id}>
-                <View style={ss.remoteComment}>
-                  <Text style={ss.remoteAuthor}>{rc.author}</Text>
-                  <Text style={ss.remoteBody}>{rc.body}</Text>
-                  <Pressable onPress={() => startReply(rc.id)} hitSlop={6}>
-                    <Text style={ss.remoteReply}>{t('travelers.reply')}</Text>
-                  </Pressable>
-                </View>
-                {rc.replies.map((rr) => (
-                  <View key={rr.id} style={[ss.remoteComment, ss.remoteReplyItem]}>
-                    <Text style={ss.remoteAuthor}>{rr.author}</Text>
-                    <Text style={ss.remoteBody}>{rr.body}</Text>
-                  </View>
-                ))}
-              </View>
-            ))}
-            {comments && comments.length > 0 ? (
-              comments.map((c) => (
-                <CommentItem
-                  key={c.id}
-                  comment={c}
-                  onReply={startReply}
-                  replyLabel={t('travelers.reply')}
-                  youLabel={t('travelers.you')}
-                />
-              ))
-            ) : (remoteComments?.length ?? 0) === 0 ? (
+          <View style={ss.sheetHead}>
+            <Text style={ss.sheetTitle}>
+              {t('travelers.comments')}
+              {total > 0 ? ` ${total}` : ''}
+            </Text>
+            <Pressable
+              onPress={close}
+              hitSlop={10}
+              style={ss.sheetClose}
+              accessibilityRole="button"
+              accessibilityLabel={t('common.close')}>
+              <Icon name="close" size={16} color={palette.zinc[500]} />
+            </Pressable>
+          </View>
+          {isLoading && rows.length === 0 ? (
+            <View style={ss.cLoading}>
+              <ActivityIndicator color={palette.blue[50]} />
+            </View>
+          ) : isError && rows.length === 0 ? (
+            // 오류를 "댓글 없음"으로 보여주면 사용자는 글이 없는 줄 안다 — 재시도를 준다
+            <View style={ss.cEmpty}>
+              <Icon name="wifi_off" size={26} color={palette.zinc[300]} />
+              <Text style={ss.noComments}>{t('common.loadFailed')}</Text>
+              <Pressable onPress={() => refetch()} style={ss.retryBtn} hitSlop={6}>
+                <Text style={ss.retryText}>{t('common.retry')}</Text>
+              </Pressable>
+            </View>
+          ) : rows.length === 0 ? (
+            <View style={ss.cEmpty}>
+              <Icon name="sms" size={28} color={palette.zinc[300]} />
               <Text style={ss.noComments}>{t('travelers.noComments')}</Text>
-            ) : null}
-          </ScrollView>
-          {/* 답글 모드 배너 — 취소 가능 */}
+            </View>
+          ) : (
+            <ScrollView style={{ maxHeight: listMaxH }} keyboardShouldPersistTaps="handled">
+              {rows.map((r, i) => (
+                <View key={r.id} style={i > 0 ? ss.cThread : undefined}>
+                  <CommentRow
+                    row={r}
+                    depth={0}
+                    onReply={(id, author) => setReplyTo({ id, author })}
+                    replyLabel={t('travelers.reply')}
+                    youLabel={t('travelers.you')}
+                    justNow={t('travelers.justNow')}
+                  />
+                  {r.replies.map((rr) => (
+                    <CommentRow
+                      key={rr.id}
+                      row={rr}
+                      depth={1}
+                      replyLabel={t('travelers.reply')}
+                      youLabel={t('travelers.you')}
+                      justNow={t('travelers.justNow')}
+                    />
+                  ))}
+                </View>
+              ))}
+            </ScrollView>
+          )}
+          {/* 답글 모드 배너 — 누구에게 답하는지 보여주고 취소 가능 */}
           {replyTo && (
             <View style={ss.replyBanner}>
-              <Text style={ss.replyBannerText}>{t('travelers.replyingMode')}</Text>
-              <Pressable onPress={() => setReplyTo(null)} hitSlop={8}>
+              <Text style={ss.replyBannerText} numberOfLines={1}>
+                {t('travelers.replyingMode')} · @{replyTo.author}
+              </Text>
+              <Pressable
+                onPress={() => setReplyTo(null)}
+                hitSlop={8}
+                accessibilityRole="button"
+                accessibilityLabel={t('common.cancel')}>
                 <Icon name="close" size={15} color={palette.zinc[500]} />
               </Pressable>
             </View>
@@ -466,18 +617,25 @@ function CommentSheet({ postId, onClose }: { postId: string | null; onClose: () 
               placeholder={replyTo ? t('travelers.addReply') : t('travelers.addComment')}
               placeholderTextColor={palette.zinc[400]}
               value={text}
-              onChangeText={setText}
+              onChangeText={(v) => setText(v.slice(0, MAX_COMMENT))}
               onSubmitEditing={submit}
               returnKeyType="send"
+              multiline
+              maxLength={MAX_COMMENT}
+              accessibilityLabel={replyTo ? t('travelers.addReply') : t('travelers.addComment')}
             />
-            {/* 입력 없으면 X(시트 닫기), 입력하면 등록(전송) 버튼으로 전환 */}
+            {/* 전송 전용 — 닫기는 헤더 X·배경 탭이 담당한다(한 버튼이 두 일을 하지 않게) */}
             <Pressable
-              style={[ss.sendBtn, !text.trim() && ss.sendBtnClose]}
-              onPress={text.trim() ? submit : close}>
+              style={[ss.sendBtn, !text.trim() && ss.sendBtnOff]}
+              onPress={submit}
+              disabled={!text.trim()}
+              accessibilityRole="button"
+              accessibilityLabel={t('travelers.addComment')}
+              accessibilityState={{ disabled: !text.trim() }}>
               <Icon
-                name={text.trim() ? 'arrow_upward' : 'close'}
+                name="arrow_upward"
                 size={18}
-                color={text.trim() ? '#fff' : palette.zinc[600]}
+                color={text.trim() ? '#fff' : palette.zinc[400]}
               />
             </Pressable>
           </View>
@@ -655,15 +813,6 @@ const ss = StyleSheet.create({
     marginBottom: 12,
   },
   sheetTitle: { fontSize: 15, fontWeight: '800', color: palette.zinc[900], marginBottom: 10 },
-  commentRow: { flexDirection: 'row', gap: 10, paddingVertical: 8 },
-  meAvatar: { width: 32, height: 32, backgroundColor: palette.blue[50] },
-  commentAuthor: { fontSize: 12, fontWeight: '700', color: palette.zinc[900] },
-  commentText: { fontSize: 13, color: palette.zinc[700], marginTop: 2, lineHeight: 18 },
-  remoteComment: { paddingVertical: 8, gap: 2 },
-  remoteReply: { fontSize: 11, fontWeight: '700', color: palette.blue[50], marginTop: 2 },
-  remoteReplyItem: { paddingLeft: 22, borderLeftWidth: 2, borderLeftColor: palette.zinc[200] },
-  remoteAuthor: { fontSize: 12, fontWeight: '800', color: palette.zinc[700] },
-  remoteBody: { fontSize: 13, color: palette.zinc[700] },
   noComments: {
     fontSize: 12.5,
     color: palette.zinc[400],
@@ -671,9 +820,6 @@ const ss = StyleSheet.create({
     paddingVertical: 24,
   },
   // 답글(대댓글)
-  replyBtn: { fontSize: 11.5, fontWeight: '700', color: palette.blue[50], marginTop: 5 },
-  replyRow: { paddingLeft: 30, paddingVertical: 6 }, // 좌측 들여쓰기
-  replyAvatar: { width: 24, height: 24, backgroundColor: palette.teal[40] },
   replyBanner: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -685,6 +831,58 @@ const ss = StyleSheet.create({
     marginTop: 8,
   },
   replyBannerText: { fontSize: 11.5, fontWeight: '700', color: palette.blue[30] },
+
+  // ── 댓글 시트 ──
+  sheetHead: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 6,
+  },
+  sheetClose: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: palette.zinc[100],
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  cRow: { flexDirection: 'row', gap: 10, paddingVertical: 9 },
+  // 대댓글 — 들여쓰기 + 좌측 레일로 관계를 눈에 보이게
+  cReplyRow: {
+    marginLeft: 17,
+    paddingLeft: 15,
+    borderLeftWidth: 2,
+    borderLeftColor: palette.zinc[200],
+  },
+  cMetaLine: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  cAuthor: { fontSize: 12.5, fontWeight: '800', color: palette.zinc[900], flexShrink: 1 },
+  cYouPill: {
+    paddingHorizontal: 6,
+    paddingVertical: 1,
+    borderRadius: 999,
+    backgroundColor: palette.blue[95],
+  },
+  cYouText: { fontSize: 9.5, fontWeight: '800', color: palette.blue[50] },
+  cTime: { fontSize: 11, color: palette.zinc[400] },
+  cReplyTo: { fontSize: 11.5, fontWeight: '700', color: palette.blue[50], marginTop: 2 },
+  cBody: { fontSize: 13.5, color: palette.zinc[700], marginTop: 3, lineHeight: 19 },
+  // 답글 버튼 — 링크가 아니라 누를 것으로 보이게 여백을 준다(탭 영역 확보)
+  cReplyBtn: { alignSelf: 'flex-start', marginTop: 2, paddingVertical: 8, paddingRight: 14 },
+  cReplyText: { fontSize: 11.5, fontWeight: '800', color: palette.zinc[500] },
+  // 스레드 사이 구분선 — 대댓글까지 한 덩어리로 읽히게
+  cThread: { borderTopWidth: 1, borderTopColor: palette.zinc[100] },
+  cLoading: { paddingVertical: 34, alignItems: 'center' },
+  cEmpty: { paddingVertical: 26, alignItems: 'center', gap: 8 },
+  sendBtnOff: { backgroundColor: palette.zinc[100] },
+  retryBtn: {
+    marginTop: 2,
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    borderRadius: 999,
+    backgroundColor: palette.zinc[100],
+  },
+  retryText: { fontSize: 12, fontWeight: '800', color: palette.zinc[700] },
   inputRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 12 },
   input: {
     flex: 1,
@@ -704,5 +902,4 @@ const ss = StyleSheet.create({
     justifyContent: 'center',
   },
   // 입력 없음(닫기 X) 상태 — 중립 회색 배경
-  sendBtnClose: { backgroundColor: palette.zinc[200] },
 })
