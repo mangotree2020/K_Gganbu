@@ -9,6 +9,7 @@ import {
   ActivityIndicator,
   Alert,
   Animated,
+  AppState,
   Modal,
   PermissionsAndroid,
   Platform,
@@ -27,7 +28,7 @@ import { isGganbuActive } from '@/features/gganbu/live'
 import { askGganbu } from '@/features/gganbu/services'
 import { useCityLabel } from '@/features/weather/useCityLabel'
 import { useCurrentLocation } from '@/hooks/useCurrentLocation'
-import { speakMessage } from '@/lib/speak'
+import { speakMessage, stopSpeak } from '@/lib/speak'
 import { toSpeakable } from '@/lib/speakable'
 import { storage } from '@/lib/mmkv'
 import { startLiveTranslate, type LiveSession } from '@/features/translate/geminiLive'
@@ -270,6 +271,10 @@ export default function VoiceInterpretScreen() {
   )
   const scrollRef = useRef<ScrollView>(null)
 
+  // 세션 세대(epoch) — teardown/언어전환마다 증가. 연결·권한 요청·AI 답변은 모두 비동기라
+  // 화면을 떠난 뒤에 완료될 수 있다. 세대가 바뀐 결과물은 폐기해 이탈 후에도 마이크·통역·
+  // TTS가 계속 도는 것을 막는다(ai.tsx의 focusedRef 가드와 같은 목적, 경로가 많아 세대로 처리).
+  const epochRef = useRef(0)
   const sessionRef = useRef<LiveSession | null>(null)
   const micRef = useRef<MicHandle | null>(null)
   const playerRef = useRef<Player | null>(null)
@@ -331,6 +336,7 @@ export default function VoiceInterpretScreen() {
   const requestAdvice = useCallback(async () => {
     const cur = turnsRef.current
     if (adviceBusyRef.current || cur.length === 0) return
+    const epoch = epochRef.current
     adviceBusyRef.current = true
     advisedAtRef.current = cur.length
     try {
@@ -348,6 +354,8 @@ export default function VoiceInterpretScreen() {
         location: gganbuLocation,
       })
       const last = turnsRef.current[turnsRef.current.length - 1]
+      // 응답 대기 중 화면을 떠났으면 버린다(이탈한 대화에 조언이 끼어들지 않게)
+      if (epoch !== epochRef.current) return
       if (reply && last) {
         setAdvices((a) => [...a, { id: Date.now(), afterTurnId: last.id, text: reply }])
       }
@@ -369,14 +377,29 @@ export default function VoiceInterpretScreen() {
 
   // 깐부 답변 TTS — 재생 중 마이크 입력을 전부 차단(half-duplex)해 에코 재번역 방지
   const gganbuSpeakingRef = useRef(false)
+  // 잔향 대기 타이머 — stopSpeak()가 이전 발화의 완료 콜백을 부르면 이 타이머가 예약된다.
+  // 취소하지 않으면 새 발화 중에 마이크 차단이 풀려 답변 음성이 다시 통역된다.
+  const speakTailRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const clearSpeakTail = () => {
+    if (speakTailRef.current) {
+      clearTimeout(speakTailRef.current)
+      speakTailRef.current = null
+    }
+  }
   const speakGganbu = useCallback((text: string, lang: string) => {
     if (!isGganbuActive()) return // 전역 휴면 — 텍스트 답변만
     const spoken = toSpeakable(text)
     if (!spoken) return
+    clearSpeakTail()
     gganbuSpeakingRef.current = true
+    const epoch = epochRef.current
     speakMessage(spoken, lang, () => {
+      // 이탈/재진입 후 뒤늦게 도착한 완료 콜백 — 새 세션의 마이크 차단을 풀면 안 된다
+      if (epoch !== epochRef.current) return
       // 스피커 잔향이 마이크에 남는 시간 여유 후 입력 재개 (ai 탭과 동일)
-      setTimeout(() => {
+      clearSpeakTail()
+      speakTailRef.current = setTimeout(() => {
+        speakTailRef.current = null
         gganbuSpeakingRef.current = false
       }, 400)
     })
@@ -386,6 +409,7 @@ export default function VoiceInterpretScreen() {
   const answerWake = useCallback(
     async (turnId: number, question: string, lang: string) => {
       if (adviceBusyRef.current) return
+      const epoch = epochRef.current
       adviceBusyRef.current = true
       try {
         const context = turnsRef.current
@@ -397,6 +421,8 @@ export default function VoiceInterpretScreen() {
           `Recent conversation:\n${context}\n\n` +
           `Answer briefly (2-3 sentences) as their local Busan friend, in language "${lang}".`
         const { reply } = await askGganbu([{ role: 'user', text: prompt }], { language: lang })
+        // 답변 대기 중 이탈 — 말풍선 삽입도 TTS 낭독도 하지 않는다
+        if (epoch !== epochRef.current) return
         if (reply) {
           setAdvices((a) => [...a, { id: Date.now(), afterTurnId: turnId, text: reply }])
           speakGganbu(reply, lang) // v2 — 답변 음성 낭독(재생 중 마이크 차단)
@@ -461,6 +487,8 @@ export default function VoiceInterpretScreen() {
   }
 
   const teardown = () => {
+    // 세대 증가 — 진행 중이던 연결/콜백/AI 답변이 뒤늦게 도착해도 무시된다
+    epochRef.current += 1
     // 의도적 종료 — 자동 재연결 중단
     intentionalCloseRef.current = true
     reconnectingRef.current = false
@@ -478,6 +506,9 @@ export default function VoiceInterpretScreen() {
     routeSubRef.current = null
     routedToSpeakerRef.current = false
     resetSpeaker() // 오디오 라우팅 원복
+    stopSpeak() // 진행 중인 깐부 TTS 중단(이탈 후 낭독 지속 방지)
+    clearSpeakTail() // stopSpeak 콜백이 예약할 수 있는 잔향 타이머까지 정리
+    gganbuSpeakingRef.current = false
     audioStoreRef.current.clear()
   }
 
@@ -546,11 +577,15 @@ export default function VoiceInterpretScreen() {
   // 세션 연결 — start(신규)와 자동 재연결이 공유. 성공 시 true.
   // mic/player는 이미 있으면 유지(재연결 시 대화·재생 큐 보존).
   async function connect(): Promise<boolean> {
+    // 이 연결이 속한 세대. 화면 이탈·언어 전환으로 세대가 바뀌면 이 세션의 콜백은 전부 무시한다.
+    const epoch = epochRef.current
+    const stale = () => epoch !== epochRef.current
     try {
       const session = await startLiveTranslate(
         { appLang: myLang, peerLang },
         {
           onStatus: (s) => {
+            if (stale()) return
             if (s === 'open') {
               setStatus('connected')
               reconnectAttemptRef.current = 0
@@ -585,6 +620,7 @@ export default function VoiceInterpretScreen() {
             }
           },
           onTurn: (turn) => {
+            if (stale()) return
             // 선제 라우팅 — 원문(자막)이 통역 음성보다 먼저 도착하므로, 화자가 정해지는
             // 즉시 출력 라우팅을 전환해 음성 도착 전 전환을 끝낸다(앞부분 잘림 방지).
             if (headsetRef.current && speakerMyVoiceRef.current) {
@@ -633,6 +669,7 @@ export default function VoiceInterpretScreen() {
             }
           },
           onAudio: (pcm24, sourceText, sourceLang) => {
+            if (stale()) return
             // 화자 판단: 원문이 내 언어면 내 발화 통역, 아니면 상대 발화 통역(미상이면 직전 유지)
             const isMine = resolveLang(sourceText, sourceLang) === myLang
             const enabled = isMine ? myVoiceRef.current : otherVoiceRef.current
@@ -644,6 +681,11 @@ export default function VoiceInterpretScreen() {
         },
       )
       if (!session) return false
+      // 이탈 레이스 — 연결을 기다리는 동안 화면을 떠났으면 늦게 도착한 세션을 즉시 폐기한다
+      if (stale()) {
+        session.close()
+        return false
+      }
       sessionRef.current = session
       return true
     } catch {
@@ -652,19 +694,23 @@ export default function VoiceInterpretScreen() {
   }
 
   const start = async () => {
+    const epoch = epochRef.current
     intentionalCloseRef.current = false
     reconnectAttemptRef.current = 0
     setStatus('connecting')
     setTurns([])
     setCurrent(null)
     if (!(await ensureMicPermission())) {
-      setStatus('error')
+      if (epoch === epochRef.current) setStatus('error')
       return
     }
+    // 권한 다이얼로그 대기 중 이탈 — 마이크·구독을 시작하지 않는다
+    if (epoch !== epochRef.current) return
     // 이어폰 연결 여부 초기 조회 + 라우팅 변경 구독(연결/해제 시 게이트 자동 전환)
     refreshHeadset()
     routeSubRef.current = observeRouteChange(refreshHeadset)
     const ok = await connect()
+    if (epoch !== epochRef.current) return
     if (ok) setActive(true)
     else setStatus('unavailable')
   }
@@ -679,12 +725,25 @@ export default function VoiceInterpretScreen() {
   // 탭 화면이라 mount/unmount가 아닌 focus/blur 생명주기 사용.
   // 포커스: 새 세션 시작(상태 리셋, persistedRef 초기화) — 중간 화면 없이 바로 통역.
   // 블러(다른 탭/뒤로): 이력 저장(로컬+원격) + 정리. 다시 들어오면 새 대화로 시작.
+  // 앱이 백그라운드로 가면 화면은 포커스를 유지하므로 위 정리가 돌지 않는다 → 마이크·Live
+  // 세션·오디오가 그대로 살아 통역이 계속되고 과금도 계속된다. 포그라운드 복귀 시에는
+  // blur→focus와 같은 규칙으로 새 대화를 시작한다(이전 대화는 백그라운드 진입 때 저장됨).
   useFocusEffect(
     useCallback(() => {
       persistedRef.current = false
       flushRemoteQueue() // 진입 시 미전송 세션 재시도
       start()
+      const appSub = AppState.addEventListener('change', (s) => {
+        if (s === 'background') {
+          persist()
+          teardown()
+        } else if (s === 'active' && !sessionRef.current) {
+          persistedRef.current = false
+          start()
+        }
+      })
       return () => {
+        appSub.remove()
         persist()
         teardown()
       }
@@ -700,6 +759,8 @@ export default function VoiceInterpretScreen() {
       return
     }
     if (!active) return
+    // 세대 증가 — 닫는 세션의 close 콜백이 뒤늦게 도착해 새 세션을 재연결로 끊지 않게 한다
+    epochRef.current += 1
     // 진행 중 세션의 자동 재연결을 막고(의도적 close) 새 언어쌍으로 재연결
     intentionalCloseRef.current = true
     if (reconnectTimerRef.current) {
@@ -713,7 +774,11 @@ export default function VoiceInterpretScreen() {
     setStatus('connecting')
     intentionalCloseRef.current = false
     reconnectAttemptRef.current = 0
+    const epoch = epochRef.current
     connect().then((ok) => {
+      // 연속 전환·이탈로 세대가 또 바뀌었으면 이 결과로 상태를 되돌리지 않는다
+      // (뒤늦게 실패한 이전 연결이 이미 연결된 최신 세션을 unavailable로 덮는 것 방지)
+      if (epoch !== epochRef.current) return
       if (!ok) setStatus('unavailable')
     })
     // eslint-disable-next-line react-hooks/exhaustive-deps

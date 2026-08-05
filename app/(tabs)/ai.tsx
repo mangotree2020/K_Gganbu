@@ -2,6 +2,7 @@ import { LinearGradient } from 'expo-linear-gradient'
 import { useEffect, useRef, useState } from 'react'
 import {
   Alert,
+  AppState,
   Keyboard,
   Modal,
   PermissionsAndroid,
@@ -406,6 +407,21 @@ export default function AiMateScreen() {
     return () => clearTimeout(id)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isFocused, gganbuActive])
+
+  // 앱이 백그라운드로 가도 화면 포커스는 유지되므로 위 정리가 돌지 않는다 → 마이크가 계속
+  // 열린 채로 남는다(프라이버시·과금). 백그라운드에서 끄고, 복귀 시 포커스 상태면 재개.
+  useEffect(() => {
+    const sub = AppState.addEventListener('change', (s) => {
+      if (s === 'background') {
+        stopListening()
+        stopSpeak()
+      } else if (s === 'active' && focusedRef.current && isGganbuActive()) {
+        void startListening(true)
+      }
+    })
+    return () => sub.remove()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   // GPS 좌표 → 지역 사투리 자동 감지(버튼 표시·사투리 답변용)
   useEffect(() => {
