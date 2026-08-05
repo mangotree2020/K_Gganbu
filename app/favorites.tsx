@@ -13,7 +13,9 @@ import { palette } from '@/theme/tokens'
 
 export default function FavoritesScreen() {
   const t = useT()
-  const { data: favorites, isLoading } = useFavorites()
+  // 로컬 캐시가 즉시 채워지므로 isLoading은 항상 false다. 캐시가 비었을 때만 첫 조회를 기다린다.
+  const { data: favorites, isFetching } = useFavorites()
+  const isLoading = isFetching && !favorites?.length
   const toggleFav = useToggleFavorite()
 
   // 길찾기 — 우리 지도 탭으로 (장소 시트 선택 + 도보 경로까지, map.tsx focus 파라미터)

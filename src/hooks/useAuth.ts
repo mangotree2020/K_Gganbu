@@ -2,6 +2,7 @@ import { useEffect } from 'react'
 
 import { toAuthUser } from '@/features/auth/mapper'
 import { useAuthStore } from '@/features/auth/store'
+import { flushFavorites } from '@/features/favorites/local'
 import { flushRemoteQueue } from '@/features/translate/history'
 import { flushSync } from '@/lib/remoteSync'
 import { supabase } from '@/lib/supabase'
@@ -23,6 +24,7 @@ export function useAuth() {
       if (data.session) {
         flushRemoteQueue()
         flushSync()
+        void flushFavorites() // 오프라인/미로그인 상태에서 저장한 즐겨찾기 서버 반영
       }
     })
 
@@ -34,6 +36,7 @@ export function useAuth() {
       if (session) {
         flushRemoteQueue()
         flushSync()
+        void flushFavorites() // 오프라인/미로그인 상태에서 저장한 즐겨찾기 서버 반영
       }
     })
 

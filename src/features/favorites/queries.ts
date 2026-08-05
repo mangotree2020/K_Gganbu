@@ -1,88 +1,73 @@
 // 즐겨찾기 — favorites 테이블 CRUD (PLANNING §20, BACKLOG #20)
-// 외부 POI(TourAPI/Naver)를 place_ext_id + 표시정보로 비정규화 저장. RLS: 본인 데이터만.
+// 로컬 우선(local-first): 저장 버튼은 MMKV에 즉시 쓰고 UI를 바꾼 뒤, 서버 반영은 뒤에서 한다.
+// 서버 왕복(사용자 id 조회 → 존재 확인 → insert → 목록 재조회)을 기다리던 지연을 제거한다.
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useAuthStore } from '@/features/auth/store'
 import { supabase } from '@/lib/supabase'
+import {
+  enqueueFavOp,
+  flushFavorites,
+  readLocalFavorites,
+  readQueue,
+  writeLocalFavorites,
+} from './local'
+import { applyOps, dedupeRows, toggleRows } from './ops'
+import type { FavoriteRow, FavPoi } from './types'
 
-// 즐겨찾기 대상 POI (앱 Poi에서 추출)
-export type FavPoi = {
-  extId: string
-  name: string
-  address?: string | null
-  lat?: number | null
-  lng?: number | null
-  imageUrl?: string | null
-  cat?: string | null
-}
+export type { FavPoi, FavoriteRow } from './types'
 
-export type FavoriteRow = {
-  id: string
-  place_ext_id: string
-  name: string
-  address: string | null
-  lat: number | null
-  lng: number | null
-  image_url: string | null
-  cat: string | null
-  created_at: string
-}
-
-// 현재 사용자(로그인/Guest)의 public.users.id 해석 (favorites.user_id, RLS용)
-async function myUserId(): Promise<string | null> {
-  const { data, error } = await supabase.from('users').select('id').single()
-  if (error) return null
-  return (data?.id as string) ?? null
+// 캐시 키에 계정을 포함한다. 전역 키 하나만 쓰면 로그아웃 후 다른 계정으로 들어왔을 때
+// 이전 사용자의 목록이 그대로 보이고(initialData는 캐시가 있으면 적용되지 않는다),
+// 그 목록을 기준으로 토글이 계산된다.
+function useFavKey() {
+  const authId = useAuthStore((s) => s.user?.id ?? null)
+  return ['favorites', authId] as const
 }
 
 export function useFavorites() {
+  const favKey = useFavKey()
   return useQuery({
-    queryKey: ['favorites'],
+    queryKey: favKey,
+    // 로컬 캐시로 즉시 표시(콜드 스타트·오프라인). updatedAt 0 → 마운트 시 서버와 재동기화.
+    initialData: readLocalFavorites,
+    initialDataUpdatedAt: 0,
     queryFn: async (): Promise<FavoriteRow[]> => {
+      await flushFavorites() // 미전송 로컬 변경을 먼저 올려 조회 결과와의 순서 역전을 막는다
       const { data, error } = await supabase
         .from('favorites')
         .select('id, place_ext_id, name, address, lat, lng, image_url, cat, created_at')
         .eq('type', 'place')
         .order('created_at', { ascending: false })
       if (error) throw error
-      return (data ?? []) as FavoriteRow[]
+      // 아직 못 올린 작업이 남아 있으면 서버 응답 위에 다시 얹는다(방금 저장한 항목 유실 방지)
+      const merged = dedupeRows(applyOps((data ?? []) as FavoriteRow[], readQueue()))
+      writeLocalFavorites(merged)
+      return merged
     },
   })
 }
 
-// 토글: 있으면 삭제, 없으면 추가. 반환값 = 토글 후 즐겨찾기 여부
+// 토글: 있으면 삭제, 없으면 추가. 로컬 반영은 즉시, 서버 반영은 큐를 통해 비동기.
 export function useToggleFavorite() {
   const qc = useQueryClient()
+  const FAV_KEY = useFavKey()
   return useMutation({
-    mutationFn: async (poi: FavPoi): Promise<boolean> => {
-      const uid = await myUserId()
-      if (!uid) throw new Error('not_authenticated')
-
-      const { data: existing } = await supabase
-        .from('favorites')
-        .select('id')
-        .eq('place_ext_id', poi.extId)
-        .eq('type', 'place')
-        .maybeSingle()
-
-      if (existing?.id) {
-        const { error } = await supabase.from('favorites').delete().eq('id', existing.id)
-        if (error) throw error
-        return false
-      }
-
-      const { error } = await supabase.from('favorites').insert({
-        user_id: uid,
-        place_ext_id: poi.extId,
-        name: poi.name,
-        address: poi.address ?? null,
-        lat: poi.lat ?? null,
-        lng: poi.lng ?? null,
-        image_url: poi.imageUrl ?? null,
-        cat: poi.cat ?? null,
-        type: 'place',
-      })
-      if (error) throw error
-      return true
+    // onMutate는 동기 — 네트워크를 기다리지 않고 이 프레임에서 아이콘/목록이 바뀐다
+    onMutate: (poi: FavPoi) => {
+      // 진행 중인 조회가 낙관적 결과를 덮어쓰지 않도록 취소(대기하지 않음).
+      // 취소가 늦어 응답이 도착해도 queryFn이 대기열을 재적용하므로 결과는 동일하다.
+      void qc.cancelQueries({ queryKey: FAV_KEY })
+      const prev = qc.getQueryData<FavoriteRow[]>(FAV_KEY) ?? readLocalFavorites()
+      const at = Date.now()
+      const { rows, added } = toggleRows(prev, poi, at)
+      qc.setQueryData(FAV_KEY, rows)
+      writeLocalFavorites(rows)
+      enqueueFavOp({ op: added ? 'add' : 'remove', poi, at })
+      return { added }
     },
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['favorites'] }),
+    // 서버 반영 시도 — 실패해도 큐에 남아 다음 조회/토글 때 재시도되므로 롤백하지 않는다
+    mutationFn: async (_poi: FavPoi): Promise<void> => {
+      await flushFavorites()
+    },
   })
 }
