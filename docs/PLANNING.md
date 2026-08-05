@@ -11,7 +11,7 @@
 
 - 깐부 = 가장 믿을 수 있는 친구·동반자. "한국 여행 중 곁에 있는 현지 친구" 컨셉
 - K = Korea / K-Culture / K-Food / K-Travel
-- 패키지명: `com.mangotree.kgganbu` / 슬로건: _"Your Korean Best Friend on Trip"_
+- 패키지명: `com.mangonw.gganbu` (iOS 번들 ID 동일) / 슬로건: _"Your Korean Best Friend on Trip"_
 
 ## 2. 프로젝트 범주
 

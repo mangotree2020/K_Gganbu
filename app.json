@@ -9,7 +9,7 @@
     "scheme": "travel-app",
     "ios": {
       "supportsTablet": false,
-      "bundleIdentifier": "com.mangonw.k-kambu",
+      "bundleIdentifier": "com.mangonw.gganbu",
       "googleServicesFile": "./GoogleService-Info.plist"
     },
     "android": {
